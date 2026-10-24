@@ -17,6 +17,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
+      - run: npm run test:sql
       - run: npm run build
 
   # Faqat main'ga push bo'lganda, tekshiruvlar o'tgandan keyin va Cloudflare sozlangan bo'lsa

@@ -13,6 +13,7 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:sql": "vitest run --config vitest.sql.config.ts",
     "test:watch": "vitest",
     "deploy": "npm run build && wrangler deploy"
   },
@@ -23,6 +24,7 @@
     "react-router-dom": "^6.30.6"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
