@@ -22,8 +22,8 @@ Qurilish firmasida material va pul yo'qolishini kamaytiradigan veb tizim. Kelaja
 - Telegram WebApp SDK (`https://telegram.org/js/telegram-web-app.js`) — Mini App
 - Supabase Edge Functions (Deno) — Telegram autentifikatsiyasi va bot
 - `pg_cron` + `pg_net` — kunlik hisobot va ogohlantirish xabarlari
-- Hosting: **GitHub Pages** (Netlify va Vercel ishlatilmaydi). Mini App ham shu HTTPS domendan ochiladi (`https://<user>.github.io/<repo>/tg`). Sayt `/<repo>/` ichida ochiladi — yo'llar `import.meta.env.BASE_URL` orqali, qattiq yozilgan `/` emas
-- GitHub Actions — har push'da lint, typecheck, test; `main` ga push'da GitHub Pages'ga deploy
+- Hosting: **Cloudflare Workers Static Assets** — faqat frontend (`dist/`), sozlama `wrangler.jsonc` da. Backend to'liq Supabase'da; Cloudflare'da API, baza yoki sir yo'q. Mini App ham shu HTTPS domendan ochiladi (`https://<domen>/tg`). Netlify, Vercel, GitHub Pages ishlatilmaydi
+- GitHub Actions — har push'da lint, typecheck, test; `main` ga push'da `wrangler deploy`
 
 ## Arxitektura qoidalari (buzilmaydi)
 
@@ -144,7 +144,7 @@ Har bir qoida alohida, sof (pure) funksiya va unit testlar bilan.
 
 Har bir batch oxirida: testlar o'tadi, typecheck toza, qisqa hisobot yoziladi. **Keyingi batch'ga faqat men tasdiqlaganimdan keyin o'tiladi.** Veb va Mini App ekranlari bir batch ichida parallel qilinadi, chunki ma'lumot qatlami umumiy.
 
-- **Batch 0 — Asos.** Vite + React + TS + Tailwind, router (`/` va `/tg`), Supabase client, `.env.example`, papka tuzilmasi, GitHub Actions, GitHub Pages'ga birinchi deploy. BotFather'da bot yaratish va Mini App URL'ini ulash bo'yicha menga qadamma-qadam yo'riqnoma.
+- **Batch 0 — Asos.** Vite + React + TS + Tailwind, router (`/` va `/tg`), Supabase client, `.env.example`, papka tuzilmasi, GitHub Actions, Cloudflare'ga birinchi deploy. BotFather'da bot yaratish va Mini App URL'ini ulash bo'yicha menga qadamma-qadam yo'riqnoma.
 - **Batch 1 — Ma'lumotlar bazasi.** Barcha jadvallar, RLS, audit trigger, soft delete, qoldiq view. Seed: namuna firma, 3 obyekt, materiallar shabloni (g'isht, sement, qum, shag'al, armatura, beton, kafel va ularning birliklari).
 - **Batch 2 — Kirish va rollar.** Veb: email/telefon bilan kirish. Mini App: `tg-auth` Edge Function, kontakt orqali bog'lash. Admin foydalanuvchi qo'shadi, rol beradi, obyektga biriktiradi. Rolga qarab menyu.
 - **Batch 3 — Materiallar va birliklar.** Katalog (veb), birliklar va koeffitsientlar (doimiy va variantli), ruscha muqobil nomlar. Konvertatsiya funksiyasi to'liq testlar bilan.

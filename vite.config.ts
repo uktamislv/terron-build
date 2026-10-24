@@ -5,8 +5,6 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  // GitHub Pages: deploy workflow BASE_PATH=/<repo>/ beradi. Lokalda va testlarda — '/'
-  base: process.env.BASE_PATH ?? '/',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },

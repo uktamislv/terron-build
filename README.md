@@ -22,6 +22,7 @@ npm run dev
 | `npm run typecheck` | TypeScript tekshiruvi |
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest |
+| `npm run deploy` | Cloudflare'ga qo'lda deploy |
 
 ## Papkalar
 
@@ -35,5 +36,5 @@ src/
   i18n/       interfeys matnlari (uz.ts)
   lib/        yordamchilar (sana, summa formati)
 supabase/     migratsiyalar, Edge Functions, RLS testlari
-docs/         deploy va Telegram bot yo'riqnomalari
+docs/         Cloudflare deploy va Telegram bot yo'riqnomalari
 ```

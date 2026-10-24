@@ -1,0 +1,12 @@
+// Cloudflare faqat hosting: dist/ dagi frontend (veb panel va Mini App) statik fayl sifatida beriladi.
+// Backend — Supabase. Bu yerda hech qanday sir yoki kalit saqlanmaydi.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "terron-build",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    // /tg/purchase kabi yo'llar index.html ga (haqiqiy 200 javob bilan)
+    "not_found_handling": "single-page-application"
+  }
+}

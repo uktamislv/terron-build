@@ -1,8 +1,8 @@
 # Telegram bot va Mini App'ni ulash
 
-Bu yo'riqnoma bir marta bajariladi. Oldin GitHub Pages'ga deploy qilingan bo'lishi kerak (Mini App faqat HTTPS manzildan ochiladi) — `docs/deploy-github-pages.md` ga qarang.
+Bu yo'riqnoma bir marta bajariladi. Oldin Cloudflare'ga deploy qilingan bo'lishi kerak (Mini App faqat HTTPS manzildan ochiladi) — `docs/deploy-cloudflare.md` ga qarang.
 
-Quyida `https://FOYDALANUVCHI.github.io/terron-build` o'rniga o'zingizning GitHub Pages manzilingizni qo'ying.
+Quyida `https://terron-build.SUBDOMEN.workers.dev` o'rniga o'zingizning manzilingizni qo'ying (deploy oxirida chiqadi).
 
 ## 1. Bot yaratish
 
@@ -30,7 +30,7 @@ BotFather'da `/mybots` → botingizni tanlang → **Edit Bot**:
 **A. Menyu tugmasi (asosiy usul)**
 
 1. `/mybots` → bot → **Bot Settings** → **Menu Button** → **Configure menu button**.
-2. URL: `https://FOYDALANUVCHI.github.io/terron-build/tg`
+2. URL: `https://terron-build.SUBDOMEN.workers.dev/tg`
 3. Tugma matni: `Ochish`.
 
 Endi botdagi chap pastki tugma Mini App'ni ochadi.
@@ -38,7 +38,7 @@ Endi botdagi chap pastki tugma Mini App'ni ochadi.
 **B. Asosiy Mini App (profil va havola uchun)**
 
 1. `/mybots` → bot → **Bot Settings** → **Configure Mini App** → **Enable Mini App**.
-2. URL: `https://FOYDALANUVCHI.github.io/terron-build/tg`
+2. URL: `https://terron-build.SUBDOMEN.workers.dev/tg`
 3. Shundan keyin `https://t.me/terron_build_bot?startapp` havolasi to'g'ridan-to'g'ri Mini App'ni ochadi (kunlik hisobotdagi tugma uchun kerak bo'ladi).
 
 ## 4. `.env` ga qo'shish
@@ -49,12 +49,12 @@ Faqat bot **username** (token emas!):
 VITE_TELEGRAM_BOT_USERNAME=terron_build_bot
 ```
 
-GitHub'da ham: **Settings → Secrets and variables → Actions** → `VITE_TELEGRAM_BOT_USERNAME` secret'ini qo'shing.
+GitHub'da ham: **Settings → Secrets and variables → Actions → Variables** → `VITE_TELEGRAM_BOT_USERNAME` qo'shing.
 
 ## 5. Tekshirish
 
 1. Telefonda botni oching → **Ochish** tugmasi.
 2. Mini App ochiladi, bosh ekranda **"Telegram ichida ochilgan"** yashil belgisi ko'rinadi.
-3. Brauzerda `https://FOYDALANUVCHI.github.io/terron-build/tg` ochsangiz — sariq **"Brauzerda ochilgan"** belgisi chiqadi. Bu to'g'ri.
+3. Brauzerda `https://terron-build.SUBDOMEN.workers.dev/tg` ochsangiz — sariq **"Brauzerda ochilgan"** belgisi chiqadi. Bu to'g'ri.
 
 Kirish (telefon raqami orqali bog'lash, `tg-auth`) Batch 2 da qo'shiladi.
