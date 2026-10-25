@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Image as ImageIcon, RotateCcw, Trash2, Warehouse } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { History, Image as ImageIcon, RotateCcw, Trash2, Warehouse } from 'lucide-react'
 import { MovementPhoto } from '@/components/MovementPhoto'
 import {
   ActionMenu,
@@ -30,6 +31,7 @@ import { exportFileName, exportWorkbook } from '@/lib/excelExport'
 import { formatDateTime } from '@/lib/format'
 import { ExportButton } from '../ExportButton'
 import { movementsSheet } from '../exports'
+import { useHistoryHref } from '../history/useHistoryHref'
 import { MOVEMENT_ENTRY_KIND } from './stockRows'
 import { EMPTY_FILTERS, toRepoFilters, type MovementFilterForm } from './movementFilters'
 
@@ -149,6 +151,8 @@ export function MovementsTabView({
     })
 
   const [detail, setDetail] = useState<Movement | null>(null)
+  const navigate = useNavigate()
+  const historyHref = useHistoryHref()
 
   /** Qator amallari: jadvalda "⋯" menyusi, telefonda — tafsilot varag'ida. */
   const actionItems = (m: Movement): ActionItem[] => {
@@ -157,6 +161,8 @@ export function MovementsTabView({
       items.push({ key: 'photo', label: to.showPhoto, icon: <ImageIcon {...ic} />, onSelect: () => onShowPhoto(m) })
     if (isAdmin && m.deleted_at && onRestore)
       items.push({ key: 'restore', label: to.restore, icon: <RotateCcw {...ic} />, disabled: busy, onSelect: () => onRestore(m) })
+    const href = historyHref('movements', m.id)
+    if (href) items.push({ key: 'history', label: t.history.link, icon: <History {...ic} />, onSelect: () => navigate(href) })
     if (isAdmin && !m.deleted_at && onDelete)
       items.push({ key: 'delete', label: to.delete, icon: <Trash2 {...ic} />, danger: true, onSelect: () => onDelete(m) })
     return items

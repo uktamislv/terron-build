@@ -1,4 +1,5 @@
 import {
+  ArchiveRestore,
   ArrowLeftRight,
   ClipboardList,
   FileDiff,
@@ -34,5 +35,7 @@ export function AlertTypeIcon({ type }: { type: AlertType }) {
       return <FileDiff {...p} />
     case 'otkazma_farqi':
       return <ArrowLeftRight {...p} />
+    case 'yozuv_tiklandi':
+      return <ArchiveRestore {...p} />
   }
 }

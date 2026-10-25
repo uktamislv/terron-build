@@ -180,8 +180,11 @@ describe('/movements — Harakatlar', () => {
     expect(within(table).getByText(t.movements.deleted)).toBeInTheDocument()
     expect(within(table).queryByRole('button', { name: to.delete })).not.toBeInTheDocument()
     expect(within(table).queryByRole('button', { name: to.restore })).not.toBeInTheDocument()
-    // Rasm yo'q va o'chirish/tiklash huquqi yo'q — "⋯" menyusi umuman chiqmaydi
-    expect(within(table).queryByRole('button', { name: t.ui.actions })).not.toBeInTheDocument()
+    // Rasm yo'q va o'chirish/tiklash huquqi yo'q — "⋯" menyusida faqat "Tarix" (Batch 10)
+    fireEvent.click(within(table).getAllByRole('button', { name: t.ui.actions })[0]!)
+    expect(within(table).getAllByRole('menuitem').map((el) => el.textContent)).toEqual([t.history.link])
+    fireEvent.click(within(table).getByRole('menuitem', { name: t.history.link }))
+    expect(await screen.findByRole('heading', { name: t.history.title })).toBeInTheDocument()
   })
 
   it('prorab — o‘chirish tugmasi yo‘q', async () => {

@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9, 10)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -109,6 +109,7 @@ Bu Batch 1 asosi; keyingi batch'larda (masalan creator o'z yozuvini tuzatishi) k
 
 - Har jadvalda `before delete` trigger → 42501, hint `soft_delete_only` (service_role uchun ham).
 - O'chirish = `deleted_at` qo'yish (qiymat — server vaqti `now()`, klientniki e'tiborga olinmaydi; qo'yilgani o'zgarmaydi — Batch 3); tiklash = `deleted_at = null` (faqat admin).
+- Batch 10: tiklash UI uchun `public.restore_record(p_table, p_id)` (oq ro'yxat, invoker) — "Tarix va tiklash" bo'limi.
 
 ## Audit
 
@@ -264,6 +265,13 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `inventory_details_forbidden` | 42501 | `inventory_count_details` (Batch 8) | Rol admin / direktor / buxgalter / super_admin emas |
 | `report_period_invalid` | 22023 | `dashboard_summary`, `dashboard_daily`, `spend_breakdown` (Batch 9) | Davr noto'g'ri: `p_from`/`p_to` null, `p_from > p_to` yoki `p_to − p_from > 365` (ko'pi bilan 366 kun, ikkala chegara kiradi) |
 | `report_group_invalid` | 22023 | `spend_breakdown` (Batch 9) | `p_group` — `material` / `object` / `buyer` / `supplier` emas (null ham) |
+| `estimate_materials_forbidden` | 42501 | `estimate_create_materials` (20261104000001) | Rol admin / super_admin emas |
+| `estimate_materials_invalid` | 22023 | `estimate_create_materials` (20261104000001) | `p_items` massiv emas, bo'sh, > 2000 yoki qator xatosi (`message`: `Qator <n>: <sabab>`, n — massivdagi o'rni 1 dan; `detail`: n) |
+| `estimate_aliases_invalid` | 22023 | `remember_estimate_aliases` (20261104000001) | `p_items` massiv emas, > 5000 yoki qator xatosi (material yo'q / o'chirilgan / boshqa firmaniki, shifr > 100, nom > 1000); `message`/`detail` — yuqoridagidek |
+
+`remember_estimate_aliases` qayta ishlatadi: `auth_required`, `estimate_import_forbidden` (rol admin / buxgalter / super_admin emas). `estimate_create_materials` — `auth_required`.
+
+`material_aliases.lang` (20261104000001): `'ru' | 'uz' | 'code'` — `'code'` smetadagi resurs/narx to'plami shifri; unikallik o'zgarmagan (firma bo'yicha `norm_name(alias)`, barcha `lang` birga).
 
 Batch 8 qayta ishlatadi: `auth_required`, `inventory_not_found`, `purchase_not_open` (so'rovga bog'langan xarid yo'q / o'chirilgan), `ops_unit_not_found` / `ops_unit_material_mismatch` (`b_compute_counted`, o'tkazma harakatlari), `catalog_material_*` (o'tkazma, inventarizatsiya).
 
@@ -461,7 +469,7 @@ Shartnoma va oqim: `docs/estimate-design.md`. Bu yerda — baza tomoni.
 ### Smetani faqat RPC orqali o'zgartirish
 
 - Ikkala RPC ichida `set_config('terron.estimate_rpc', 'on', true)` (oxirida `'off'`); tekshiruv — `private.estimate_rpc_active()`. PostgREST ixtiyoriy SQL'ni va `pg_catalog.set_config` ni ochmaydi — klient bu GUC ni o'rnata olmaydi. `auth.uid()` yo'q (service_role, cron, migratsiya) — tizim, cheklovsiz (o'zgarmas ustunlardan tashqari).
-- `estimates` — `b_estimates_guard`: `object_id`, `version`, `import_hash` hech kim uchun o'zgarmaydi (`company_id` — `a_before_update`). Foydalanuvchi RPC'siz: INSERT yo'q; `is_current` ni o'zgartira olmaydi (istisno: tiklash bilan birga `is_current = false`). Ruxsat: `title`, `estimate_date`, `source_file_name`, soft delete (tiklash — admin). O'chirilgan `is_current` versiyani tiklash, obyektda boshqa joriy versiya bo'lsa — `23505 estimate_restore_conflict` (yechim: `deleted_at = null, is_current = false`). Eslatma: RPC'lar eski joriylikni o'chirilgan qatorlardan ham olib tashlaydi, shuning uchun to'qnashuv amalda faqat tizim yozuvlarida chiqadi.
+- `estimates` — `b_estimates_guard`: `object_id`, `version`, `import_hash` hech kim uchun o'zgarmaydi (`company_id` — `a_before_update`). Foydalanuvchi RPC'siz: INSERT yo'q; `is_current` ni o'zgartira olmaydi (istisno: tiklash bilan birga `is_current = false`). Ruxsat: `title`, `estimate_date`, `source_file_name`, soft delete (tiklash — admin). O'chirilgan `is_current` versiyani to'g'ridan-to'g'ri UPDATE bilan tiklash, obyektda boshqa joriy versiya bo'lsa — `23505 estimate_restore_conflict` (yechim: `deleted_at = null, is_current = false`; Batch 10 `restore_record` buni o'zi qiladi). Eslatma: RPC'lar eski joriylikni o'chirilgan qatorlardan ham olib tashlaydi, shuning uchun to'qnashuv amalda faqat tizim yozuvlarida chiqadi.
 - `estimate_items` — `b_compute_norm` boshida: foydalanuvchi va super_admin emas, `company_id ≠ my_company_id()` → rad (RLS'dan oldin, RPC ichida ham); RPC'siz INSERT yo'q; RPC'siz UPDATE'da faqat `deleted_at` (va `updated_at`) o'zgaradi. Hammasi `42501 estimate_direct_edit`.
 - Natija (rol matritsasi): `estimates`, `estimate_items` ga to'g'ridan-to'g'ri INSERT — hech kimga (faqat RPC); UPDATE (soft delete) — admin, buxgalter.
 
@@ -599,6 +607,20 @@ Obyekt filtri obyektga bog'langan ko'rsatkichlarga (alerts — `object_id = p_ob
 `movements_company_occurred_idx (company_id, occurred_at)`, `purchases_company_purchased_idx (company_id, purchased_at)`, `purchases_company_object_purchased_idx (company_id, object_id, purchased_at)`, `alerts_company_created_idx (company_id, created_at)`, `cash_advances_company_issued_idx (company_id, issued_at)`. Obyekt + vaqt harakatlar uchun mavjud `movements_company_object_time_idx`. EXPLAIN (PGlite, 2 firma × 6000 harakat / 2000 xarid, 250 kun): davr so'rovlari shu indekslardan bitmap scan.
 
 **`private.purchase_has_receipt(p_company_id uuid, p_purchase_id uuid) → boolean`** — `security definer`, `stable`, `search_path = ''`; xaridga bog'langan o'chirilmagan `kirim` bormi (`movements_company_purchase_idx`). Faqat chaqiruvchi firmasi (`my_company_id()`, super_admin — istalgan), aks holda `null`. Faqat boolean — miqdor sizmaydi; haydovchi harakatlarni ko'rmasa ham o'z xaridining qabul holatini to'g'ri ko'radi. Execute — faqat `authenticated`.
+
+## Tarix va tiklash (Batch 10 — `20261103000001_history.sql`)
+
+To'liq shartnoma va yorliq formatlari: `docs/history-design.md` → "Baza".
+
+- `public.audit_feed(p_from, p_to, p_table, p_action, p_actor, p_device, p_record_id, p_before_id bigint, p_limit int default 50)` — `audit_log` (RLS: admin/direktor — o'z firmasi, super_admin — hammasi, qolganlar — 0), keyset `id < p_before_id`, `order by id desc`, `p_limit` 1..200, davr `private.report_period` (≤ 366 kun).
+- `public.deleted_records(p_from, p_to, p_table default null, p_limit default 100, p_offset default 0)` — oq ro'yxatdagi jadvallarning o'chirilgan qatorlari (`union all`, RLS), faqat admin/direktor/super_admin; `deleted_by_name` — oxirgi `SOFT_DELETE` aktyori. O'tkazma harakatlari chiqmaydi.
+- `public.restore_record(p_table, p_id) → void` — `volatile`; rol tekshiruvi → oq ro'yxat → `execute format('update public.%I set deleted_at = null where id = $1 and deleted_at is not null', p_table) using p_id` → `get diagnostics`. Batch 1/3/7/8 triggerlari (tiklash faqat admin, nom/alias/birlik to'qnashuvi, alias kaskadi, smeta joriyligi, inventarizatsiya qulfi) o'zgarmagan va o'z hint'ini beradi.
+- `private.audit_record_label(table, record_id, new_data, old_data)` — invoker; faqat yozuvning o'z qiymatlari + RLS bo'yicha nomlar (material, obyekt, profil, sotuvchi), join'lar `company_id` bilan; boshqa firma — `null`. Yordamchilar `private.history_tables()`, `history_num(numeric)`, `history_money(numeric)`. Execute — `authenticated` (invoker zanjiri).
+- **Oq ro'yxat** (16): `profiles`, `objects`, `object_members`, `materials`, `material_units`, `material_aliases`, `suppliers`, `cash_advances`, `purchases`, `movements`, `material_requests`, `inventory_counts`, `inventory_count_items`, `estimates`, `estimate_items`, `estimate_import_templates`. Kirmaydi: `companies`, `transfers` (o'tkazma bekor qilinadi, tiklanmaydi), `alerts`, `audit_log`, `notification_outbox`.
+- Indekslar: `audit_log_company_id_idx (company_id, id desc)`, `audit_log_company_record_idx (company_id, table_name, record_id, id desc)`, `audit_log_company_actor_idx (company_id, actor_profile_id, id desc)`, `audit_log_company_record_id_idx (company_id, record_id, id desc)` (O4: "Shu yozuv tarixi"); partial `(company_id, deleted_at) where deleted_at is not null` — `movements`, `purchases`, `cash_advances`, `material_requests`, `estimate_items`, `inventory_count_items`.
+- Yangi hint'lar: `history_limit_invalid` (22023), `restore_table_invalid` (22023), `restore_not_found` (P0002), `restore_not_deleted` (55000), `restore_transfer_movement` (55000), `restore_conflict` (23505, hint'siz unique to'qnashuv), `inventory_apply_expired` (55000). `restore_admin_only` (42501) — mavjud kalit, RPC ham beradi.
+- **Review tuzatishlari (shu migratsiyada, `create or replace`):** `tg_compute_qty` va `tg_material_requests_guard` — tiklashda bog'langan xarid tekshiriladi (`purchase_not_open`); `tg_soft_delete_alert` — tiklash → `yozuv_tiklandi` alerti (details va severity — `docs/history-design.md`); `b_profiles_restore_unlink` — profil tiklanganda bog'lanishlar null, `login_kind = 'none'`, `is_active = false`; `restore_record('estimates', …)` — boshqa joriy versiya bo'lsa `is_current = false` bilan tiklaydi; `inventory_counts.submitted_at` + `b_inventory_submitted_at`; `apply_inventory_adjustments` — `inventory_apply_expired` (> 7 kun); `daily_report_stats` — `restored_count`. `audit_feed` — dinamik SQL, aniq firma sharti (oraliq ko'rinishida — tartib kaliti saqlanadi).
+- **Maxfiy ustunlar `audit_log` da (P8).** `old_data`/`new_data` — qatorning to'liq nusxasi (`to_jsonb`), jumladan authenticated'ga ustun grantlari bilan yopilgan yoki ichki maydonlar: `profiles.auth_user_id`, `telegram_user_id`, `telegram_chat_id`, `login_kind`; `inventory_count_items.qty_expected`, `price_per_base` (Y1/O5 — tekshiruvchidan yashirilgan); `auth` hodisalari `details`. Hozir `audit_log` ni faqat admin, direktor, super_admin o'qiydi — ular uchun bu ochiq bo'lishi qabul qilingan. **`audit_log_select` RLS'i boshqa rollarga kengaytirilsa** (masalan "Mening yozuvlarim" tarixi) yoki `audit_feed` boshqa rollarga ochilsa — `old_data`/`new_data` dan shu kalitlarni olib tashlaydigan redaksiya (view yoki RPC ichida `- 'key'`) majburiy.
 
 ## Qoldiq
 

@@ -1,14 +1,21 @@
 import { createContext, useContext } from 'react'
 
 export type ToastTone = 'ok' | 'danger' | 'info'
+/** Toast ichidagi havola (masalan "Foydalanuvchilar" sahifasiga). */
+export interface ToastAction {
+  label: string
+  to: string
+}
+
 export interface ToastItem {
   id: number
   message: string
   tone: ToastTone
+  action?: ToastAction
 }
 
 interface ToastApi {
-  show: (message: string, tone?: ToastTone) => void
+  show: (message: string, tone?: ToastTone, action?: ToastAction) => void
 }
 
 export const ToastContext = createContext<ToastApi>({ show: () => undefined })

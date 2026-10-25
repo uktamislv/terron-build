@@ -7,6 +7,7 @@ import type { Material } from '@/data/types'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatQty } from '@/lib/format'
+import { HistoryLink } from '../history/HistoryLink'
 import { AliasesSection } from './AliasesSection'
 import { UnitCalculator } from './UnitCalculator'
 import { UnitsSection } from './UnitsSection'
@@ -127,6 +128,9 @@ export function MaterialDetailDialog({
         <UnitsSection material={material} canManage={canManage} onChanged={onChanged} />
         <UnitCalculator material={material} />
         <AliasesSection material={material} materials={materials} canManage={canManage} onChanged={onChanged} />
+        <div className="flex">
+          <HistoryLink table="materials" id={material.id} />
+        </div>
       </div>
     </Modal>
   )

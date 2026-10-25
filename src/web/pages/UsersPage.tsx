@@ -10,6 +10,7 @@ import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatPhoneDisplay } from '@shared/phone'
+import { HistoryLink } from '../history/HistoryLink'
 import { SetLoginDialog } from '../users/SetLoginDialog'
 import { UserFormDialog } from '../users/UserFormDialog'
 
@@ -189,6 +190,7 @@ export function UsersPage() {
                         {p.is_active ? t.users.deactivate : t.users.activate}
                       </Button>
                     )}
+                    <HistoryLink table={null} id={p.id} />
                   </div>
                 )}
               </li>

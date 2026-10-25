@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { ChevronRight, Receipt, RotateCcw, ShoppingCart, Trash2 } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { ChevronRight, History, Receipt, RotateCcw, ShoppingCart, Trash2 } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import {
   ActionMenu,
@@ -24,14 +24,7 @@ import { DEFAULT_COMPANY_SETTINGS, getCompanySettings } from '@/data/companiesRe
 import { listMaterials } from '@/data/materialsRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { listProfiles } from '@/data/profilesRepo'
-import {
-  listAllPurchases,
-  listPurchases,
-  PURCHASES_PAGE_SIZE,
-  restorePurchase,
-  softDeletePurchase,
-  type PurchaseFilters,
-} from '@/data/purchasesRepo'
+import { listAllPurchases, listPurchases, PURCHASES_PAGE_SIZE, restorePurchase, softDeletePurchase, type PurchaseFilters } from '@/data/purchasesRepo'
 import type { Material, ObjectRow, Profile, Purchase } from '@/data/types'
 import { can } from '@/domain/roles'
 import { unitLabel } from '@/domain/units'
@@ -40,6 +33,8 @@ import { errorText } from '@/i18n/errorText'
 import { exportFileName, exportWorkbook } from '@/lib/excelExport'
 import { formatDateTime, formatSum } from '@/lib/format'
 import { ExportButton } from '../ExportButton'
+import { HistoryLink } from '../history/HistoryLink'
+import { useHistoryHref } from '../history/useHistoryHref'
 import { purchasesSheet } from '../exports'
 import { paramDate, paramId } from '../urlFilters'
 import { dayStartIso, nextDayStartIso } from '../movements/movementFilters'
@@ -48,7 +43,11 @@ import { ReceiptBadge } from '../purchases/ReceiptBadge'
 
 const tp = t.purchases
 const to = t.ombor
-const ic = { className: 'size-5', strokeWidth: 1.75, 'aria-hidden': true } as const
+const ic = {
+  className: 'size-5',
+  strokeWidth: 1.75,
+  'aria-hidden': true,
+} as const
 
 export interface PurchaseFilterForm {
   objectId: string
@@ -59,7 +58,14 @@ export interface PurchaseFilterForm {
   includeDeleted: boolean
 }
 
-const EMPTY: PurchaseFilterForm = { objectId: '', materialId: '', buyerId: '', from: '', to: '', includeDeleted: false }
+const EMPTY: PurchaseFilterForm = {
+  objectId: '',
+  materialId: '',
+  buyerId: '',
+  from: '',
+  to: '',
+  includeDeleted: false,
+}
 
 function toFilters(f: PurchaseFilterForm, canSeeDeleted: boolean): PurchaseFilters {
   return {
@@ -184,13 +190,42 @@ export function PurchasesView({
       onChange: (v) => onFilter({ includeDeleted: v }),
     })
 
+  const navigate = useNavigate()
+  const historyHref = useHistoryHref()
   /** Jadval qatori "⋯" menyusi. Telefonda qator bosilsa tafsilot ochiladi (amallar o'sha yerda). */
   const actions = (p: Purchase) => (
     <ActionMenu
       items={[
-        onOpen && { key: 'open', label: tp.open, icon: <ChevronRight {...ic} />, onSelect: () => onOpen(p) },
-        canDelete && Boolean(p.deleted_at) && onRestore && { key: 'restore', label: to.restore, icon: <RotateCcw {...ic} />, disabled: busy, onSelect: () => onRestore(p) },
-        canDelete && !p.deleted_at && onDelete && { key: 'delete', label: to.delete, icon: <Trash2 {...ic} />, danger: true, onSelect: () => onDelete(p) },
+        onOpen && {
+          key: 'open',
+          label: tp.open,
+          icon: <ChevronRight {...ic} />,
+          onSelect: () => onOpen(p),
+        },
+        canDelete &&
+          Boolean(p.deleted_at) &&
+          onRestore && {
+            key: 'restore',
+            label: to.restore,
+            icon: <RotateCcw {...ic} />,
+            disabled: busy,
+            onSelect: () => onRestore(p),
+          },
+        Boolean(historyHref('purchases', p.id)) && {
+          key: 'history',
+          label: t.history.link,
+          icon: <History {...ic} />,
+          onSelect: () => navigate(historyHref('purchases', p.id) ?? '/history'),
+        },
+        canDelete &&
+          !p.deleted_at &&
+          onDelete && {
+            key: 'delete',
+            label: to.delete,
+            icon: <Trash2 {...ic} />,
+            danger: true,
+            onSelect: () => onDelete(p),
+          },
       ]}
     />
   )
@@ -242,7 +277,12 @@ export function PurchasesView({
                 </span>
               ),
             },
-            { key: 'qty', header: tp.colQty, align: 'right', cell: (p) => <Qty value={p.qty_input} unit={inputUnit(p)} size="sm" /> },
+            {
+              key: 'qty',
+              header: tp.colQty,
+              align: 'right',
+              cell: (p) => <Qty value={p.qty_input} unit={inputUnit(p)} size="sm" />,
+            },
             {
               key: 'total',
               header: tp.colTotal,
@@ -256,10 +296,28 @@ export function PurchasesView({
                 </span>
               ),
             },
-            { key: 'receipt', header: tp.colReceipt, align: 'center', cell: receiptIcon },
-            { key: 'status', header: tp.colStatus, cell: (p) => <ReceiptBadge p={p} thresholdPct={thresholdPct} nowIso={nowIso} level /> },
-            { key: 'alerts', header: tp.colAlerts, cell: (p) => <AlertBadges p={p} /> },
-            { key: 'actions', header: tp.colActions, srHeader: true, cell: actions },
+            {
+              key: 'receipt',
+              header: tp.colReceipt,
+              align: 'center',
+              cell: receiptIcon,
+            },
+            {
+              key: 'status',
+              header: tp.colStatus,
+              cell: (p) => <ReceiptBadge p={p} thresholdPct={thresholdPct} nowIso={nowIso} level />,
+            },
+            {
+              key: 'alerts',
+              header: tp.colAlerts,
+              cell: (p) => <AlertBadges p={p} />,
+            },
+            {
+              key: 'actions',
+              header: tp.colActions,
+              srHeader: true,
+              cell: actions,
+            },
           ]}
           renderMobile={(p) => (
             <EntryRow
@@ -296,6 +354,7 @@ type Dialog = { kind: 'detail'; purchase: Purchase } | { kind: 'delete'; purchas
 /** Xaridlar jadvali: filtrlar, qabul holati, alert belgilari, tafsilot. Ko'rinish RLS bilan cheklanadi. */
 export function PurchasesPage() {
   const { profile: me } = useAuth()
+  const purchaseHistoryHref = useHistoryHref()
   const [objects, setObjects] = useState<ObjectRow[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -388,7 +447,11 @@ export function PurchasesPage() {
 
   const runExport = async (signal: AbortSignal) => {
     const rows = await listAllPurchases(toFilters(form, canSeeDeleted), signal)
-    await exportWorkbook({ fileName: exportFileName(t.excel.sections.purchases), sheets: [purchasesSheet(rows)], signal })
+    await exportWorkbook({
+      fileName: exportFileName(t.excel.sections.purchases),
+      sheets: [purchasesSheet(rows)],
+      signal,
+    })
   }
 
   return (
@@ -425,30 +488,35 @@ export function PurchasesPage() {
           nowIso={nowIso}
           onClose={closeDialog}
           footer={
-            canDelete &&
-            (dialog.purchase.deleted_at ? (
-              <Button
-                variant="secondary"
-                className="flex-1 sm:flex-none"
-                icon={<RotateCcw aria-hidden className="size-5" strokeWidth={1.75} />}
-                loading={busy}
-                onClick={() => {
-                  const id = dialog.purchase.id
-                  void run(() => restorePurchase(id))
-                }}
-              >
-                {to.restore}
-              </Button>
-            ) : (
-              <Button
-                variant="danger"
-                className="flex-1 sm:flex-none"
-                icon={<Trash2 aria-hidden className="size-5" strokeWidth={1.75} />}
-                onClick={() => setDialog({ kind: 'delete', purchase: dialog.purchase })}
-              >
-                {to.delete}
-              </Button>
-            ))
+            (canDelete || Boolean(purchaseHistoryHref('purchases', dialog.purchase.id))) && (
+              <>
+                <HistoryLink table="purchases" id={dialog.purchase.id} className="flex-1 sm:flex-none" />
+                {canDelete &&
+                  (dialog.purchase.deleted_at ? (
+                    <Button
+                      variant="secondary"
+                      className="flex-1 sm:flex-none"
+                      icon={<RotateCcw aria-hidden className="size-5" strokeWidth={1.75} />}
+                      loading={busy}
+                      onClick={() => {
+                        const id = dialog.purchase.id
+                        void run(() => restorePurchase(id))
+                      }}
+                    >
+                      {to.restore}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="danger"
+                      className="flex-1 sm:flex-none"
+                      icon={<Trash2 aria-hidden className="size-5" strokeWidth={1.75} />}
+                      onClick={() => setDialog({ kind: 'delete', purchase: dialog.purchase })}
+                    >
+                      {to.delete}
+                    </Button>
+                  ))}
+              </>
+            )
           }
         />
       )}

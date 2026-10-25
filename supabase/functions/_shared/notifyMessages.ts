@@ -32,6 +32,7 @@ export interface DailyReportPayload {
   alerts_by_type: Record<string, number>
   self_received_count: number
   deleted_count: number
+  restored_count: number
   failed_count: number
   transfers_pending_count: number
   chiqim_without_estimate_count: number
@@ -79,12 +80,28 @@ export const NOTIFY_TEXTS = {
     movements: "Ombor harakati o'chirildi",
     other: "Yozuv o'chirildi",
   },
+  restoredTitles: {
+    purchases: 'Xarid tiklandi',
+    cash_advances: 'Podotchet tiklandi',
+    kirim: 'Kirim tiklandi',
+    chiqim: 'Chiqim tiklandi',
+    movements: 'Ombor harakati tiklandi',
+    other: 'Yozuv tiklandi',
+  },
+  restored: {
+    recordDate: 'Yozuv sanasi: ',
+    /** "o'chirilganiga 12 kun" */
+    daysSince: (n: string) => `o'chirilganiga ${n} kun`,
+    actor: 'Tikladi: ',
+    pastReportsChange: "⚠️ O'tgan davr hisobotlari o'zgaradi",
+  },
   /** Kunlik hisobot va digest'dagi qisqa nomlar. */
   alertShort: {
     xarid_qabul_farqi: 'xarid/qabul',
     narx_ogishi: 'narx',
     ozi_qabul_qilgan: "o'zi qabul",
     yozuv_ochirildi: "o'chirish",
+    yozuv_tiklandi: 'tiklandi',
     normadan_oshish: 'norma',
     inventarizatsiya_kamomadi: 'kamomad',
     smetadan_ortiq_sorov: 'smetadan ortiq',
@@ -163,6 +180,7 @@ export const NOTIFY_TEXTS = {
     alertsNew: 'Yangi farqlar: ',
     selfReceived: "O'zi qabul qilgan: ",
     deleted: "O'chirilgan yozuvlar: ",
+    restored: 'Tiklangan yozuvlar: ',
     failed: 'Yuborilmagan xabarlar: ',
     transfersPending: "Qabul qilinmagan o'tkazmalar: ",
     chiqimWithoutEstimate: 'Smetasiz obyektlarda chiqim: ',
@@ -350,6 +368,7 @@ function safeDetails(p: AlertPayload): Record<string, unknown> {
 
 function alertEmoji(type: string, severity: string, details: Record<string, unknown> = {}): string {
   if (type === 'yozuv_ochirildi') return '🗑'
+  if (type === 'yozuv_tiklandi') return severity === 'jiddiy' ? '🔴' : '♻️'
   if (type === 'smeta_ozgarishi') {
     if (details.kind === 'old_version_restored') return '↩️'
     if (details.kind === 'current_deleted') return '🗑'
@@ -436,24 +455,70 @@ function deletedTitle(d: Record<string, unknown>): string {
   return t.other
 }
 
-function deletedLines(p: AlertPayload): { main: string; extra: string[] } {
-  const t = NOTIFY_TEXTS.deleted
+/** O'chirilgan/tiklangan yozuv qisqa tavsifi: "Sement M400 · 1 000 kg · 1 250 000 so‘m · Ali". */
+function recordSummary(p: AlertPayload): string {
   const d = p.details
   const material = nameHtml(d.material_name) ?? nameHtml(p.material_name)
-  const object = nameHtml(p.object_name)
+  const unit = typeof d.base_unit === 'string' && d.base_unit.trim() !== '' ? d.base_unit : p.base_unit
   const parts: (string | null)[] = []
   if (d.table === 'cash_advances') {
     parts.push(moneyText(d.amount), nameHtml(d.recipient_name))
   } else if (d.table === 'purchases') {
-    parts.push(material, qtyText(d.qty_base, p.base_unit), moneyText(d.amount), nameHtml(d.buyer_name))
+    parts.push(material, qtyText(d.qty_base, unit), moneyText(d.amount), nameHtml(d.buyer_name))
   } else {
-    parts.push(material, qtyText(d.qty_base, p.base_unit), moneyText(d.amount))
+    parts.push(material, qtyText(d.qty_base, unit), moneyText(d.amount))
   }
+  return parts.filter((x) => x).join(' · ')
+}
+
+function restoredTitle(d: Record<string, unknown>): string {
+  const t = NOTIFY_TEXTS.restoredTitles
+  if (d.table === 'purchases') return t.purchases
+  if (d.table === 'cash_advances') return t.cash_advances
+  if (d.table === 'movements') {
+    if (d.movement_type === 'kirim') return t.kirim
+    if (d.movement_type === 'chiqim') return t.chiqim
+    return t.movements
+  }
+  return t.other
+}
+
+/** Sana: ISO vaqt → Toshkent sanasi, "yyyy-mm-dd" → "dd.mm.yyyy". Noto'g'ri → null. */
+function dateOnly(v: unknown): string | null {
+  if (typeof v !== 'string' || v.trim() === '') return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) return formatDateIso(v.trim())
+  const dt = formatDateTimeTashkent(v)
+  return dt ? dt.slice(0, 10) : null
+}
+
+/** Batch 10: "Yozuv sanasi: 03.10.2026 (o'chirilganiga 12 kun)", "Tikladi: Admin", jiddiy ogohlantirish. */
+function restoredLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.restored
+  const d = p.details
+  const lines = [recordSummary(p)]
+  const object = nameHtml(p.object_name)
+  if (object) lines.push(NOTIFY_TEXTS.deleted.object + object)
+  const date = dateOnly(d.occurred_at)
+  const days = formatDecimal(d.days_since, 0)
+  const since = days !== null && !days.startsWith('-') ? t.daysSince(days) : null
+  if (date) lines.push(`${t.recordDate}${date}${since ? ` (${since})` : ''}`)
+  else if (since) lines.push(since)
+  const actor = nameHtml(d.actor_name)
+  if (actor) lines.push(t.actor + actor)
+  if (p.severity === 'jiddiy') lines.push(t.pastReportsChange)
+  return lines
+}
+
+function deletedLines(p: AlertPayload): { main: string; extra: string[] } {
+  const t = NOTIFY_TEXTS.deleted
+  const d = p.details
+  const object = nameHtml(p.object_name)
+  const parts = [recordSummary(p)]
   const extra: string[] = []
   if (object) extra.push(t.object + object)
   const actor = nameHtml(d.actor_name)
   if (actor) extra.push(t.actor + actor)
-  return { main: parts.filter((x) => x).join(' · '), extra }
+  return { main: parts.join(''), extra }
 }
 
 /** "Obyekt A · v2 → v3 (Ali)" — smeta o'zgarishi konteksti. */
@@ -718,6 +783,8 @@ function alertTitle(type: string, details: Record<string, unknown>): string {
           : titles.narx_ogishi
     case 'yozuv_ochirildi':
       return deletedTitle(details)
+    case 'yozuv_tiklandi':
+      return restoredTitle(details)
     case 'normadan_oshish':
       return titles.normadan_oshish
     case 'inventarizatsiya_kamomadi':
@@ -777,6 +844,9 @@ export function formatAlertMessage(p: AlertPayload): string {
     case 'narx_ogishi':
       lines.push(ctx, ...priceLines(payload))
       break
+    case 'yozuv_tiklandi':
+      lines.push(...restoredLines(payload))
+      break
     case 'yozuv_ochirildi': {
       const { main, extra } = deletedLines(payload)
       lines.push(main, ...extra)
@@ -797,6 +867,7 @@ const ALERT_TYPE_ORDER = [
   'xarid_qabul_farqi',
   'narx_ogishi',
   'yozuv_ochirildi',
+  'yozuv_tiklandi',
   'normadan_oshish',
   'inventarizatsiya_kamomadi',
   'smetadan_ortiq_sorov',
@@ -840,7 +911,7 @@ export function formatAlertDigest(payloads: AlertPayload[]): string {
   const items = shown.map((p) => {
     const details = safeDetails(p)
     const ctx =
-      p.type === 'yozuv_ochirildi'
+      p.type === 'yozuv_ochirildi' || p.type === 'yozuv_tiklandi'
         ? [nameHtml(details.material_name) ?? nameHtml(p.material_name), nameHtml(p.object_name)]
             .filter((x) => x)
             .join(' · ')
@@ -891,6 +962,7 @@ export function formatDailyReport(p: DailyReportPayload): string {
     return c !== '0' && !c.startsWith('-') ? c : null
   }
   const pending = positive(p.transfers_pending_count)
+  const restored = positive(p.restored_count)
   const noEstimate = positive(p.chiqim_without_estimate_count)
   return fitLines([
     `📊 <b>${t.title} · ${formatDateIso(p.date)}</b>`,
@@ -904,6 +976,7 @@ export function formatDailyReport(p: DailyReportPayload): string {
     `${t.alertsNew}${count(p.alerts_new)}${breakdown ? ` (${breakdown})` : ''}`,
     `${t.selfReceived}${count(p.self_received_count)}`,
     `${t.deleted}${count(p.deleted_count)}`,
+    restored ? t.restored + restored : '',
     failed !== '0' && !failed.startsWith('-') ? `⚠️ ${t.failed}${failed}` : '',
   ])
 }

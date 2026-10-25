@@ -109,6 +109,13 @@ export const SERVER_HINTS = {
   inventory_already_applied: { showServerMessage: false },
   report_period_invalid: { showServerMessage: false },
   report_group_invalid: { showServerMessage: false },
+  restore_table_invalid: { showServerMessage: false },
+  restore_not_found: { showServerMessage: false },
+  restore_not_deleted: { showServerMessage: false },
+  restore_transfer_movement: { showServerMessage: false },
+  restore_conflict: { showServerMessage: false },
+  history_limit_invalid: { showServerMessage: false },
+  inventory_apply_expired: { showServerMessage: false },
 } as const satisfies Record<string, { showServerMessage: boolean }>
 
 export type ServerHintCode = keyof typeof SERVER_HINTS

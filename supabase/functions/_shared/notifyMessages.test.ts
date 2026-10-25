@@ -50,6 +50,7 @@ function report(over: Partial<DailyReportPayload> = {}): DailyReportPayload {
     failed_count: 0,
     transfers_pending_count: 0,
     chiqim_without_estimate_count: 0,
+    restored_count: 0,
     ...over,
   }
 }
@@ -1017,6 +1018,76 @@ describe('Batch 8 reviewer tuzatishlari', () => {
     )
     expect(msg).toContain('Kirim: 3 · Chiqim: 2\nSmetasiz obyektlarda chiqim: 1\n')
     expect(msg).toContain("So'rovlar: 0\nQabul qilinmagan o'tkazmalar: 2\n")
+  })
+
+  it('Batch 10: yozuv_tiklandi — xarid', () => {
+    expect(
+      formatAlertMessage(
+        alert({
+          type: 'yozuv_tiklandi',
+          object_name: null,
+          details: {
+            table: 'purchases',
+            actor_name: 'Admin',
+            material_name: 'Sement M400',
+            amount: '1250000.00',
+            buyer_name: 'Ali',
+            occurred_at: '2026-10-02T20:30:00Z',
+            deleted_at_before: '2026-10-17T10:00:00Z',
+            days_since: 12,
+          },
+        }),
+      ),
+    ).toBe(
+      '♻️ <b>Xarid tiklandi</b>\n' +
+        `Sement M400 · 1 250 000 ${SOM} · Ali\n` +
+        "Yozuv sanasi: 03.10.2026 (o'chirilganiga 12 kun)\n" +
+        'Tikladi: Admin\n' +
+        '29.10.2026 14:32',
+    )
+  })
+
+  it.each([
+    [{ table: 'cash_advances', amount: 500000, recipient_name: 'Hasan' }, 'Podotchet tiklandi', `500 000 ${SOM} · Hasan`],
+    [{ table: 'movements', movement_type: 'kirim', qty_base: '12.5', base_unit: 'm³', material_name: 'Qum' }, 'Kirim tiklandi', 'Qum · 12,5 m³'],
+    [{ table: 'movements', movement_type: 'chiqim', qty_base: 3, material_name: 'Qum' }, 'Chiqim tiklandi', 'Qum · 3 kg'],
+    [{ table: 'movements', movement_type: 'transfer_in', qty_base: 3 }, 'Ombor harakati tiklandi', 'Sement M400 · 3 kg'],
+  ])('Batch 10: yozuv_tiklandi — %o', (details, title, summary) => {
+    const msg = formatAlertMessage(alert({ type: 'yozuv_tiklandi', details }))
+    expect(msg).toContain(`♻️ <b>${title}</b>\n${summary}\n`)
+    expect(msg).toContain('Obyekt: Obyekt A')
+  })
+
+  it('Batch 10: yozuv_tiklandi — jiddiy, sana satri, escape, bo‘sh details', () => {
+    const msg = formatAlertMessage(
+      alert({
+        type: 'yozuv_tiklandi',
+        severity: 'jiddiy',
+        details: { table: 'purchases', occurred_at: '2026-09-01', days_since: '40', actor_name: '<b>A</b>', buyer_name: '&' },
+      }),
+    )
+    expect(msg.startsWith('🔴 <b>Xarid tiklandi</b>')).toBe(true)
+    expect(msg).toContain("Yozuv sanasi: 01.09.2026 (o'chirilganiga 40 kun)")
+    expect(msg).toContain('Tikladi: &lt;b&gt;A&lt;/b&gt;')
+    expect(msg).toContain(' · &amp;')
+    expect(msg).toContain("\n⚠️ O'tgan davr hisobotlari o'zgaradi\n")
+    expect(msg.match(/<[^>]*>/g)).toEqual(['<b>', '</b>'])
+    expect(formatAlertMessage(alert({ type: 'yozuv_tiklandi', details: {} }))).toBe(
+      '♻️ <b>Yozuv tiklandi</b>\nSement M400\nObyekt: Obyekt A\n29.10.2026 14:32',
+    )
+  })
+
+  it('Batch 10: digest va kunlik hisobot', () => {
+    const digest = formatAlertDigest([
+      alert({ type: 'yozuv_tiklandi', details: { table: 'purchases' } }),
+      alert({ type: 'yozuv_ochirildi', details: { table: 'purchases' } }),
+    ])
+    expect(digest).toContain("o'chirish — 1, tiklandi — 1")
+    expect(digest).toContain('♻️ Xarid tiklandi: Sement M400 · Obyekt A')
+    expect(formatDailyReport(report())).not.toContain('Tiklangan')
+    expect(formatDailyReport(report({ restored_count: 2 }))).toContain(
+      "O'chirilgan yozuvlar: 0\nTiklangan yozuvlar: 2",
+    )
   })
 
   it('6. ozi_qabul_qilgan kind = transfer', () => {

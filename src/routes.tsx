@@ -28,6 +28,7 @@ const CashPage = page(() => import('@/web/pages/CashPage'), 'CashPage')
 const EstimatesPage = page(() => import('@/web/pages/EstimatesPage'), 'EstimatesPage')
 const RequestsPage = page(() => import('@/web/pages/RequestsPage'), 'RequestsPage')
 const AlertsPage = page(() => import('@/web/pages/AlertsPage'), 'AlertsPage')
+const HistoryPage = page(() => import('@/web/pages/HistoryPage'), 'HistoryPage')
 const UsersPage = page(() => import('@/web/pages/UsersPage'), 'UsersPage')
 const ObjectsPage = page(() => import('@/web/pages/ObjectsPage'), 'ObjectsPage')
 
@@ -47,6 +48,7 @@ const webPages: Partial<Record<WebNavKey, ComponentType>> = {
   estimates: EstimatesPage,
   requests: RequestsPage,
   alerts: AlertsPage,
+  history: HistoryPage,
   users: UsersPage,
   objects: ObjectsPage,
 }

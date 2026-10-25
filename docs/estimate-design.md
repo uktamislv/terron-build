@@ -67,3 +67,71 @@ set_current_estimate(p_estimate_id uuid) returns void
 - `parseRows(rows, headerRow, mapping): ParsedRow[]` — `{ rowNumber, kind: 'item' | 'section' | 'total' | 'empty' | 'invalid', name, unit, qty: Dec | null, price: Dec | null, sum: Dec | null, type: 'ish' | 'material' | null, code, errors: string[] }`.
 - `diffEstimates(prev: DiffItem[], next: DiffItem[]): DiffResult` — material bo'yicha (`material_id`, `ish` uchun normallashtirilgan nom) guruhlab: `added`, `removed`, `changed` (`qtyBaseBefore/After`, `priceBefore/After`), `unchanged` soni; jami summa farqi.
 - Hammasi `Dec` bilan, float yo'q.
+
+## Resurs smetasi — avtomatik moslash (20261104000001)
+
+Sabab: haqiqiy rus resurs smetasi (ЛРВ, 821 ta noyob material, 1308 qator) qo'lda moslandi. Maqsad — keyingi importlar deyarli avtomatik: smetadagi **shifr** (resurs / narx to'plami kodi) va **asl nom** katalogda muqobil nom sifatida eslab qolinadi, moslanmaganlar bitta tugma bilan ommaviy yaratiladi.
+
+### `material_aliases.lang = 'code'`
+
+- Ruxsat etilgan qiymatlar: `'ru' | 'uz' | 'code'`. `'code'` — smetadagi shifr ("101-0123", "С101-0123", 6 xonali kod).
+- Unikallik o'zgarmagan: firma bo'yicha `private.norm_name(alias)` o'chirilmaganlar orasida — barcha `lang` birgalikda (shifr matni oddiy alias bilan ham to'qnashadi). Nom ↔ alias to'qnashuvi (`catalog_name_alias_conflict`) shifrlarga ham tegishli.
+- Klient moslashda: avval `lang = 'code'` alias'lar shifr ustuni bo'yicha, keyin nom + boshqa alias'lar (`matchMaterialByName`).
+
+### RPC `public.estimate_create_materials`
+
+```
+estimate_create_materials(p_items jsonb) returns jsonb
+
+p_items (1..2000): [{
+  key        text | number   -- klient kaliti, javobda qaytadi (≤ 200)
+  name       text            -- ≤ 200
+  base_unit  text            -- ≤ 50
+  category   text | null     -- ≤ 100
+  code       text | null     -- shifr, ≤ 100
+  alias      text | null     -- smetadagi asl (ruscha) nom, ≤ 200
+  units      [{ unit text (≤ 50), factor number | string (> 0, < 1e10), variant text | null (≤ 100) }] | null   -- ≤ 50 ta
+}]
+→ [{ key text, material_id uuid, created boolean }]   -- kirish tartibida
+```
+
+- `security invoker` (RLS amal qiladi), `search_path = ''`. Ruxsat: `super_admin`, `admin` (katalog boshqaruvi bilan bir xil). Boshqalar — `42501 estimate_materials_forbidden`; profilsiz — `42501 auth_required`. Firma — chaqiruvchining `my_company_id()` (super_admin uchun ham).
+- **Avval tekshiruv** (hammasi, yozishdan oldin), keyin firma katalogi qulfi — `pg_advisory_xact_lock(hashtextextended('terron.catalog_names:' || company_id, 0))` (katalog triggerlari bilan bir xil kalit), so'ng elementlar ketma-ket.
+- **Idempotent qidiruv** (hammasi `norm_name` bo'yicha, faqat o'chirilmagan material / alias, faqat o'z firmasi):
+  1. `lang = 'code'` alias = `code`;
+  2. material nomi = `name`;
+  3. material nomi = `alias`;
+  4. har qanday alias = `name` yoki `alias` (`name` ga moslik ustun).
+  Topilsa — `created = false`; `code` alias'i yo'q va matn bo'sh bo'lsa — qo'shiladi (birlik va boshqa alias qo'shilmaydi). Nofaol (`is_active = false`) material ham topiladi.
+- **Topilmasa — yaratiladi:** material (`created_by` = chaqiruvchi; asosiy birlik qatori `factor = 1` — mavjud `b_base_unit` triggeri), `units` (mavjud birlik bilan `norm_name(unit)` + `norm_name(variant)` bo'yicha takrorlari, asosiy birlik ham — jimgina o'tkaziladi; `factor` `numeric(20,10)` ga yaxlitlanadi), `code` → `lang = 'code'`, `alias` → `lang = 'ru'` (nomdan `norm_name` bo'yicha farqli bo'lsa).
+- **Alias o'g'irlanmaydi:** matn firmada faol alias (har qanday material, har qanday `lang`) yoki faol material nomi sifatida band bo'lsa — o'tkaziladi, xato yo'q.
+- Bitta chaqiruvda takroriy nom/shifr — keyingisi oldingisi yaratgan materialni qaytaradi (`created = false`).
+- **Xato:** `22023 estimate_materials_invalid`. Ro'yxat darajasida: massiv emas / bo'sh / > 2000 (`Materiallar juda ko'p: N (ko'pi bilan 2000)`). Qator: `message` = `Qator <n>: <sabab>`, `n` — massivdagi o'rni (1 dan), `detail` = `n`. Faqat birinchi xato; **hech narsa yozilmaydi**. Sabablar: `qator noto'g'ri formatda`, `kalit (key) ko'rsatilmagan`, `nomi bo'sh`, `nomi juda uzun (200 belgigacha)`, `asosiy birlik ko'rsatilmagan`, `... juda uzun`, `birliklar ro'yxat bo'lishi kerak`, `birlik nomi bo'sh`, `«<birlik>» koeffitsienti ko'rsatilmagan / raqam emas / 0 dan katta bo'lishi kerak / juda katta`.
+- Klient: 200 belgidan uzun smeta nomini `name` uchun qisqartiradi (asl nom `alias` ga yoki keyin `remember_estimate_aliases` ga — u 1000 gacha qabul qiladi).
+
+### RPC `public.remember_estimate_aliases`
+
+```
+remember_estimate_aliases(p_items jsonb) returns integer
+
+p_items (0..5000): [{ material_id uuid, code text | null (≤ 100), name text | null (≤ 1000) }]
+→ qo'shilgan alias'lar soni
+```
+
+- Muvaffaqiyatli `import_estimate` dan **keyin** chaqiriladi (alohida tranzaksiya; xato bo'lsa import saqlangan qoladi — klient jimgina log qiladi).
+- Ruxsat: `super_admin`, `admin`, `buxgalter` (`import_estimate` bilan bir xil) — boshqalar `42501 estimate_import_forbidden`; profilsiz `42501 auth_required`.
+- `security definer`, `search_path = ''` — buxgalter `material_aliases` ga RLS orqali yoza olmaydi. Aniq tekshiruvlar: chaqiruvchining faol profili va firmasi; har `material_id` **shu firmaniki va o'chirilmagan** (aks holda butun chaqiruv rad etiladi).
+- Har element: `code` → `lang = 'code'`, `name` → `lang = 'ru'` — faqat matn firmada faol alias yoki faol material nomi (o'zi ham) sifatida band bo'lmasa. Ustidan yozmaydi, o'g'irlamaydi; takroriy chaqiruv — 0.
+- `created_by` = chaqiruvchi profili. Audit (`z_audit`): `actor_profile_id` / `actor_auth_uid` — haqiqiy chaqiruvchi (`auth.uid()` definer ichida ham), `device` — `x-client-device`.
+- Qulf — `private.lock_catalog_names(company_id)` (yuqoridagi bilan bir xil kalit).
+- **Xato:** `22023 estimate_aliases_invalid` — massiv emas / > 5000; qator: `Qator <n>: <sabab>` (`detail` = n), sabablar: `qator noto'g'ri formatda`, `material ko'rsatilmagan`, `material topilmadi yoki o'chirilgan`, `shifr juda uzun (100 belgigacha)`, `nomi juda uzun (1000 belgigacha)`. Hech narsa yozilmaydi.
+
+### Yangi `hint` kalitlari (frontend `src/data/errors.ts`, `src/i18n/uz.ts`)
+
+| `hint` | `errcode` | RPC |
+|---|---|---|
+| `estimate_materials_forbidden` | 42501 | `estimate_create_materials` |
+| `estimate_materials_invalid` | 22023 | `estimate_create_materials` |
+| `estimate_aliases_invalid` | 22023 | `remember_estimate_aliases` |
+
+Qayta ishlatiladi: `auth_required` (ikkalasi), `estimate_import_forbidden` (`remember_estimate_aliases`).

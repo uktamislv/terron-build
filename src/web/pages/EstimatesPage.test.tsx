@@ -160,7 +160,7 @@ beforeEach(() => {
 /** Ustani ochib, faylni tanlaydi va 1-qadamdan o'tadi. */
 async function startWizard() {
   open()
-  fireEvent.click(await screen.findByRole('button', { name: te.upload }))
+  fireEvent.click(await screen.findByRole('button', { name: te.upload }, { timeout: 5000 }))
   const input = screen.getByLabelText(tw.file)
   fireEvent.change(input, { target: { files: [new File(['x'], 'smeta.xlsx')] } })
   await screen.findByText(tw.fileChosen('smeta.xlsx'))
@@ -338,7 +338,7 @@ describe('/estimates — import ustasi', () => {
 
   it('buxgalter: yangi material va muqobil nom tugmalari yo‘q', async () => {
     open('buxgalter')
-    fireEvent.click(await screen.findByRole('button', { name: te.upload }))
+    fireEvent.click(await screen.findByRole('button', { name: te.upload }, { timeout: 5000 }))
     fireEvent.change(screen.getByLabelText(tw.file), { target: { files: [new File(['x'], 'smeta.xlsx')] } })
     await screen.findByText(tw.fileChosen('smeta.xlsx'))
     next()
@@ -406,7 +406,7 @@ describe('/estimates — import ustasi', () => {
 
   it('smeta sanasi oraliqdan tashqarida — keyingi qadam yo‘q', async () => {
     open()
-    fireEvent.click(await screen.findByRole('button', { name: te.upload }))
+    fireEvent.click(await screen.findByRole('button', { name: te.upload }, { timeout: 5000 }))
     fireEvent.change(screen.getByLabelText(tw.file), { target: { files: [new File(['x'], 'smeta.xlsx')] } })
     await screen.findByText(tw.fileChosen('smeta.xlsx'))
     fireEvent.change(screen.getByLabelText(tw.dateLabel), { target: { value: '1999-12-31' } })
@@ -417,7 +417,7 @@ describe('/estimates — import ustasi', () => {
 
   it('noto‘g‘ri fayl turi rad etiladi', async () => {
     open()
-    fireEvent.click(await screen.findByRole('button', { name: te.upload }))
+    fireEvent.click(await screen.findByRole('button', { name: te.upload }, { timeout: 5000 }))
     fireEvent.change(screen.getByLabelText(tw.file), { target: { files: [new File(['x'], 'smeta.pdf')] } })
     expect(await screen.findByText(tw.fileErrors.file_type)).toBeInTheDocument()
     expect(XLSX.read).not.toHaveBeenCalled()

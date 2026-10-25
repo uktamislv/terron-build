@@ -1,7 +1,7 @@
 // Davr tugmalari + ixtiyoriy oraliq (dd.mm.yyyy) + obyekt filtri.
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { CalendarRange } from 'lucide-react'
-import { Button, chipClass, FilterBar, TextField } from '@/components/ui'
+import { Button, chipClass, FilterBar, TextField, type FilterDef } from '@/components/ui'
 import type { ObjectRow } from '@/data/types'
 import { PERIOD_PRESETS, periodRange, validateRange, type PeriodPreset } from '@/domain/reports'
 import { t } from '@/i18n'
@@ -14,11 +14,18 @@ export function PeriodBar({
   todayIso,
   objects,
   onChange,
+  filters,
+  onClear,
+  extra,
 }: {
-  query: DashboardQuery
+  query: Pick<DashboardQuery, 'from' | 'to' | 'objectId' | 'preset'>
   todayIso: string
   objects: ObjectRow[]
   onChange: (next: { from: string; to: string; objectId: string }) => void
+  /** Obyekt filtri o'rniga boshqa filtrlar (masalan, Tarix sahifasi). */
+  filters?: FilterDef[]
+  onClear?: () => void
+  extra?: ReactNode
 }) {
   const [customOpen, setCustomOpen] = useState(query.preset === null)
   const [fromText, setFromText] = useState(isoToUz(query.from))
@@ -71,7 +78,9 @@ export function PeriodBar({
         </div>
         <span aria-hidden className="hidden h-6 w-px bg-line md:block" />
         <FilterBar
-          filters={[
+          onClear={onClear}
+          extra={extra}
+          filters={filters ?? [
             {
               kind: 'select',
               key: 'object',

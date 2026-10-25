@@ -14,6 +14,8 @@
 //    not_counted_more (son), applied_at, applied_by_name
 //  smeta_ozgarishi kind = waste_changed: material_id, material_name, before, after (isrof %), actor_name
 //  ozi_qabul_qilgan kind = transfer — o'tkazmani yuborgan o'zi qabul qilgan
+//  yozuv_tiklandi (Batch 10): table, actor_name, material_name, amount, qty_base, base_unit, buyer_name,
+//    recipient_name, movement_type, occurred_at, deleted_at_before, days_since
 //  Avtomatik yopilgan: auto_closed, closed_reason (within_threshold | estimate_changed | ...), closed_by_actor
 import type { Alert } from '@/data/types'
 import { parseDec } from '@/domain/decimal'
@@ -42,6 +44,7 @@ export function alertDetailText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>
   const pct = dec(d, 'diff_pct')
   if (a.type === 'ozi_qabul_qilgan') return d.kind === 'transfer' ? td.selfTransfer : td.self
   if (a.type === 'yozuv_ochirildi') return deletedText(d)
+  if (a.type === 'yozuv_tiklandi') return restoredText(d)
   if (a.type === 'smeta_ozgarishi') return estimateText(d)
   if (a.type === 'normadan_oshish') return normText(d, a.base_unit)
   if (a.type === 'smetadan_ortiq_sorov') return requestText(d, a.base_unit)
@@ -87,6 +90,35 @@ function deletedText(d: Record<string, unknown>): string {
   const parts = [str(d, 'summary'), str(d, 'material_name', 'recipient_name'), amount !== null ? formatSum(amount) : '']
   const summary = parts.filter(Boolean).join(' · ')
   return td.deleted(what, summary, str(d, 'deleted_by_name', 'actor_name'))
+}
+
+/**
+ * `yozuv_tiklandi`: "Kirim tiklandi: Sement · 1 500 kg · yozuv sanasi 01.09.2026 · 12 kun o'chirilgan edi (Ali)".
+ */
+function restoredText(d: Record<string, unknown>): string {
+  const kinds = td.deletedKinds
+  const table = str(d, 'table', 'table_name')
+  const movementType = str(d, 'movement_type')
+  const what =
+    table === 'movements' && Object.hasOwn(t.movements.types, movementType)
+      ? t.movements.types[movementType as keyof typeof t.movements.types]
+      : table === 'purchases' || table === 'cash_advances' || table === 'movements'
+        ? kinds[table]
+        : kinds.other
+  const qtyBase = dec(d, 'qty_base')
+  const amount = dec(d, 'amount', 'total_amount')
+  const days = dec(d, 'days_since')
+  const date = str(d, 'occurred_at')
+  const dateOk = date && !Number.isNaN(new Date(date).getTime())
+  const parts = [
+    str(d, 'material_name'),
+    str(d, 'recipient_name', 'buyer_name'),
+    qtyBase !== null ? qty(qtyBase, str(d, 'base_unit') || null) : '',
+    amount !== null ? formatSum(amount) : '',
+    dateOk ? td.restoredDate(formatDate(date)) : '',
+    days !== null ? td.restoredAfter(formatQty(days, 0)) : '',
+  ]
+  return td.restored(what, parts.filter(Boolean).join(' · '), str(d, 'actor_name'))
 }
 
 export function isAutoClosed(a: Pick<Alert, 'details'>): boolean {

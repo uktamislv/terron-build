@@ -14,9 +14,10 @@ import type { PreviewView } from './types'
 import { views as kitViews } from './views/kit'
 import { views as tgViews } from './views/tg'
 import { views as webMainViews } from './views/webMain'
+import { views as webHistoryViews } from './views/webHistory'
 import { views as webOmborViews } from './views/webOmbor'
 
-const allViews: PreviewView[] = [...kitViews, ...webMainViews, ...webOmborViews, ...tgViews]
+const allViews: PreviewView[] = [...kitViews, ...webMainViews, ...webOmborViews, ...webHistoryViews, ...tgViews]
 
 function fakeAuth(role: Role): AuthState {
   const profile = previewProfile(role)

@@ -180,6 +180,7 @@ export type AlertType =
   | 'yozuv_ochirildi'
   | 'smeta_ozgarishi'
   | 'otkazma_farqi'
+  | 'yozuv_tiklandi'
 
 export const ALERT_TYPES: readonly AlertType[] = [
   'xarid_qabul_farqi',
@@ -191,6 +192,7 @@ export const ALERT_TYPES: readonly AlertType[] = [
   'yozuv_ochirildi',
   'smeta_ozgarishi',
   'otkazma_farqi',
+  'yozuv_tiklandi',
 ]
 
 export type AlertStatus = 'yangi' | 'korildi' | 'yopildi'

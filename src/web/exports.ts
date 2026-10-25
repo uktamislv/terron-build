@@ -1,10 +1,12 @@
 // Jadval sahifalari uchun Excel ustunlari va qatorlari (sof). Fayl yaratish — `src/lib/excelExport.ts`.
 import type { CashHistoryEntry } from '@/data/cashRepo'
+import type { AuditEntry, RefNames } from '@/data/historyRepo'
 import type { Alert, CashBalance, MaterialRequest, Movement, NormUsage, Purchase, StockBalance } from '@/data/types'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import type { ExportColumn, ExportRow, ExportSheetSpec } from '@/lib/excelExport'
 import { alertDetailText } from './alerts/alertDetails'
+import { actionLabel, changesText, entryChanges, entryTitle, tableLabel } from './history/historyFormat'
 
 const c = t.excel.cols
 const s = t.excel.sheets
@@ -228,5 +230,33 @@ export function normsSheet(rows: (NormUsage & { name: string; unit: string })[])
       { header: c.usagePct, key: 'usage_pct', type: 'number' },
     ],
     rows: rows.map((r): ExportRow => ({ ...r })),
+  }
+}
+
+/** Tarix (Batch 10): har audit yozuvi — bitta qator, o'zgarishlar "Maydon: oldin → keyin" matnida. */
+export function historySheet(rows: AuditEntry[], names: RefNames): ExportSheetSpec {
+  const th = t.history
+  return {
+    sheetName: th.exportSheet,
+    columns: [
+      { header: th.colWhen, key: 'created_at', type: 'datetime' },
+      { header: th.colTable, key: 'table', type: 'text' },
+      { header: th.colRecord, key: 'record', type: 'text', width: 36 },
+      { header: th.colAction, key: 'action', type: 'text' },
+      { header: th.colWho, key: 'actor', type: 'text' },
+      { header: th.colDevice, key: 'device', type: 'text' },
+      { header: th.exportChanges, key: 'changes', type: 'text', width: 80 },
+    ],
+    rows: rows.map(
+      (e): ExportRow => ({
+        created_at: e.created_at,
+        table: tableLabel(e.table_name),
+        record: entryTitle(e),
+        action: actionLabel(e.action),
+        actor: e.actor_name ?? (e.device === 'tizim' ? th.system : th.noActor),
+        device: e.device ? th.devices[e.device] : '',
+        changes: changesText(e.table_name, entryChanges(e), names),
+      }),
+    ),
   }
 }
