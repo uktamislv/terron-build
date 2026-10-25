@@ -1,5 +1,6 @@
 import { mul, round, type Dec } from '@/domain/decimal'
 import { toRepoError } from './errors'
+import { inChunks } from './fetchAll'
 import { getSupabase } from './supabaseClient'
 import type { Estimate, EstimateItem, EstimateItemType } from './types'
 
@@ -72,16 +73,19 @@ export async function listEstimates(objectId: string): Promise<Estimate[]> {
   if (error) throw toRepoError(error)
   const estimates = (data ?? []) as Omit<Estimate, 'item_count' | 'material_count' | 'total_sum'>[]
   if (estimates.length === 0) return []
-  const { data: totals, error: totalsError } = await getSupabase()
-    .from('estimate_totals')
-    .select('estimate_id, row_count, material_count, total_sum::text')
-    .in(
-      'estimate_id',
-      estimates.map((e) => e.id),
-    )
-  if (totalsError) throw toRepoError(totalsError)
+const totals = await inChunks(
+    estimates.map((e) => e.id),
+    async (chunk) => {
+      const { data, error: totalsError } = await getSupabase()
+        .from('estimate_totals')
+        .select('estimate_id, row_count, material_count, total_sum::text')
+        .in('estimate_id', chunk)
+      if (totalsError) throw toRepoError(totalsError)
+      return data ?? []
+    },
+  )
   const byId = new Map(
-    ((totals ?? []) as { estimate_id: string; row_count: number; material_count: number; total_sum: Dec | null }[]).map(
+    (totals as { estimate_id: string; row_count: number; material_count: number; total_sum: Dec | null }[]).map(
       (r) => [r.estimate_id, r],
     ),
   )

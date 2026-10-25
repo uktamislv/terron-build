@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -262,6 +262,8 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `inventory_forbidden` | 42501 | `inventory_candidate_materials` (Batch 8) | Rol tekshiruvchi / admin / super_admin emas |
 | `inventory_object_not_found` | P0002 | `inventory_candidate_materials` (Batch 8) | Obyekt yo'q, o'chirilgan yoki boshqa firmaniki |
 | `inventory_details_forbidden` | 42501 | `inventory_count_details` (Batch 8) | Rol admin / direktor / buxgalter / super_admin emas |
+| `report_period_invalid` | 22023 | `dashboard_summary`, `dashboard_daily`, `spend_breakdown` (Batch 9) | Davr noto'g'ri: `p_from`/`p_to` null, `p_from > p_to` yoki `p_to − p_from > 365` (ko'pi bilan 366 kun, ikkala chegara kiradi) |
+| `report_group_invalid` | 22023 | `spend_breakdown` (Batch 9) | `p_group` — `material` / `object` / `buyer` / `supplier` emas (null ham) |
 
 Batch 8 qayta ishlatadi: `auth_required`, `inventory_not_found`, `purchase_not_open` (so'rovga bog'langan xarid yo'q / o'chirilgan), `ops_unit_not_found` / `ops_unit_material_mismatch` (`b_compute_counted`, o'tkazma harakatlari), `catalog_material_*` (o'tkazma, inventarizatsiya).
 
@@ -549,6 +551,54 @@ Shartnoma: `docs/requests-design.md`. Bu yerda — baza tomoni.
 - **P4.** `materials.zz_waste_alert` (after update of `waste_pct`, qiymat o'zgarsa): `smeta_ozgarishi`, `ogohlantirish`, `object_id` null, `material_id`; `details {kind: 'waste_changed', material_id, material_name, before, after, actor_name}`.
 - **P9.** `cancel_transfer`: admin bo'lmagan yaratuvchi hali `from` obyekt a'zosi bo'lishi shart.
 - **Avtomatik yopish sabablari** (frontend tarjima qiladi): `within_threshold`, `estimate_changed`, `no_current_estimate`, `request_rejected`, `request_deleted`, `purchase_deleted`, `not_applicable`, `restored`, `transfer_received`, `transfer_cancelled`.
+
+## Hisobotlar (Batch 9 — `20261102000001_reports.sql`)
+
+Shartnoma: `docs/reports-design.md` → "RPC'lar". Hammasi `security invoker` (RLS chaqiruvchi huquqida), `stable`, `search_path = ''`; execute — faqat `authenticated` (`public`, `anon` dan olingan).
+
+### Umumiy qoidalar
+
+- **Firma:** doim chaqiruvchining o'z firmasi (`private.my_company_id()`), super_admin ham (o'z firmasi). RLS qo'shimcha toraytiradi. Aniq `company_id = …` sharti `(company_id, vaqt)` indekslarini ishlatadi (RLS'dagi `is_super_admin() or …` OR-sharti indeksga tushmaydi). Profil yo'q / nofaol → hamma ko'rsatkich nol.
+- **Davr:** Toshkent kunlari, `[p_from::timestamp at time zone 'Asia/Tashkent', (p_to + 1)::timestamp at time zone 'Asia/Tashkent')` — `private.report_period(p_from, p_to)`. `p_from`/`p_to` null, `p_from > p_to`, `p_to − p_from > 365` (ko'pi bilan 366 kun, ikkala chegara kiradi) → `22023 report_period_invalid`.
+- **Obyekt filtri:** `private.report_company(p_object_id)` — obyekt chaqiruvchiga RLS bo'yicha ko'rinmasa (prorab a'zo emas, boshqa firma, mavjud emas) → `null` → natija nol / bo'sh (xato emas — mavjudligi sizmaydi).
+- **O'chirilganlar:** har jadvalda `deleted_at is null` aniq (admin/direktor RLS bo'yicha o'chirilganlarni ham ko'radi — hisobotga kirmaydi).
+- **Ogohlantirishlar:** `severity = 'belgi'` (masalan `ozi_qabul_qilgan`) hisoblanmaydi. Ochiq = `status in ('yangi','korildi')`. Alerts RLS — faqat admin/direktor/buxgalter/super_admin; qolganlarga alert ko'rsatkichlari 0.
+- Pul va miqdor — `text` (`numeric(18,2)` / `numeric(20,6)` aniq qiymati).
+
+### `public.dashboard_summary(p_from date, p_to date, p_object_id uuid default null) → jsonb`
+
+| Kalit | Turi | Hisob |
+|---|---|---|
+| `kirim_count`, `chiqim_count` | int | davrdagi `movements` (`occurred_at`) |
+| `purchases_count`, `purchases_sum` | int, text | davrdagi `purchases` (`purchased_at`), Σ `total_amount` |
+| `cash_issued_sum` | text | davrdagi `cash_advances` (`issued_at`); obyekt filtriga qaramaydi |
+| `cash_on_hand_total` | text | Σ `cash_balances.balance` (RLS ko'rgan qatorlar); joriy holat, obyektsiz |
+| `alerts_open`, `alerts_serious_open` | int | ochiq; jiddiylari (`severity = 'jiddiy'`); joriy holat |
+| `alerts_new_in_period` | int | davrda yaratilgan (`created_at`, istalgan status) |
+| `unreceived_purchases_count` | int | `purchases` (RLS): `now() − 90 kun ≤ purchased_at < now() − 24 soat` va `not private.purchase_has_receipt(company_id, id)`; joriy holat |
+| `pending_transfers_count` | int | `transfers.status = 'yuborildi'` (filtr: `from` yoki `to` obyekt) |
+| `pending_requests_count` | int | `material_requests.status = 'kutilmoqda'` |
+| `objects_over_norm_count` | int | `norm_usage` (RLS) bo'yicha `consumed_qty_base > allowed_qty_base` materiali bor (o'chirilmagan) obyektlar soni — smetada yo'q, lekin sarfi bor (norm = 0) ham; prorab — a'zo obyektlari, tekshiruvchi/omborchi/haydovchi — 0 |
+
+Obyekt filtri obyektga bog'langan ko'rsatkichlarga (alerts — `object_id = p_object_id`).
+
+### `public.dashboard_daily(p_from, p_to, p_object_id default null)`
+
+`returns table (day date, kirim_count int, chiqim_count int, purchases_sum text, alerts_count int)` — `p_from..p_to` har kuni (bo'sh kunlar nol bilan, ≤ 366 qator), kun — `(ts at time zone 'Asia/Tashkent')::date`. `alerts_count` — shu kuni yaratilgan (belgi'siz). Ko'rinmaydigan obyekt — kunlar nol bilan.
+
+### `public.spend_breakdown(p_from, p_to, p_object_id default null, p_group text default 'material')`
+
+`returns table (key uuid, label text, purchases_sum text, purchases_count int)` — davrdagi xaridlar `material_id` / `object_id` / `buyer_id` / `supplier_id` bo'yicha; tartib `purchases_sum desc, purchases_count desc, key nulls last`. `label` — `materials.name` / `objects.name` / `profiles.full_name` / `suppliers.name` (RLS ko'rmasa — null). Sotuvchisiz xaridlar — `key = null, label = null`. Noto'g'ri `p_group` → `22023 report_group_invalid`.
+
+### `public.norm_overview(p_object_id uuid default null)`
+
+`returns table (object_id uuid, object_name text, material_id uuid, material_name text, base_unit text, norm_qty_base text, allowed_qty_base text, consumed_qty_base text, usage_pct text)` — `norm_usage` + nomlar; o'chirilgan obyektlar chiqmaydi; `usage_pct` null — ruxsat 0. Tartib: `object_name, material_name`. Tekshiruvchi, omborchi, haydovchi — bo'sh; prorab — a'zo obyektlar.
+
+### Indekslar (partial, `deleted_at is null`)
+
+`movements_company_occurred_idx (company_id, occurred_at)`, `purchases_company_purchased_idx (company_id, purchased_at)`, `purchases_company_object_purchased_idx (company_id, object_id, purchased_at)`, `alerts_company_created_idx (company_id, created_at)`, `cash_advances_company_issued_idx (company_id, issued_at)`. Obyekt + vaqt harakatlar uchun mavjud `movements_company_object_time_idx`. EXPLAIN (PGlite, 2 firma × 6000 harakat / 2000 xarid, 250 kun): davr so'rovlari shu indekslardan bitmap scan.
+
+**`private.purchase_has_receipt(p_company_id uuid, p_purchase_id uuid) → boolean`** — `security definer`, `stable`, `search_path = ''`; xaridga bog'langan o'chirilmagan `kirim` bormi (`movements_company_purchase_idx`). Faqat chaqiruvchi firmasi (`my_company_id()`, super_admin — istalgan), aks holda `null`. Faqat boolean — miqdor sizmaydi; haydovchi harakatlarni ko'rmasa ham o'z xaridining qabul holatini to'g'ri ko'radi. Execute — faqat `authenticated`.
 
 ## Qoldiq
 

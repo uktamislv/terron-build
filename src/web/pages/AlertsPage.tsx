@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
 import { StatusBadge } from '@/components/StatusBadge'
 import { Button, Modal, Notice, Spinner } from '@/components/ui'
@@ -7,6 +8,7 @@ import {
   CLOSE_NOTE_MAX,
   closeAlert,
   listAlerts,
+  listAllAlerts,
   markAlertSeen,
   type AlertFilters,
 } from '@/data/alertsRepo'
@@ -24,7 +26,11 @@ import {
 import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
+import { exportFileName, exportWorkbook } from '@/lib/excelExport'
 import { formatDateTime } from '@/lib/format'
+import { ExportButton } from '../ExportButton'
+import { alertsSheet } from '../exports'
+import { paramId, paramOneOf } from '../urlFilters'
 import { alertDetailText, autoCloseReason, isAutoClosed } from '../alerts/alertDetails'
 import { SEVERITY_TONE, STATUS_TONE } from '../alerts/alertTones'
 import { Pager, RetryNotice, SelectField } from '../fields'
@@ -56,7 +62,14 @@ function toFilters(f: FilterForm): AlertFilters {
 export function AlertsPage() {
   const { profile: me } = useAuth()
   const [objects, setObjects] = useState<ObjectRow[]>([])
-  const [form, setForm] = useState<FilterForm>(EMPTY)
+  const [params] = useSearchParams()
+  // Bosh sahifa havolalari: ?status=open&severity=jiddiy&object=...
+  const [form, setForm] = useState<FilterForm>(() => ({
+    status: paramOneOf<StatusFilter>(params, 'status', ['open', 'all', ...ALERT_STATUSES], EMPTY.status) || EMPTY.status,
+    type: paramOneOf(params, 'type', ALERT_TYPES, ''),
+    severity: paramOneOf(params, 'severity', ALERT_SEVERITIES, ''),
+    objectId: paramId(params, 'object'),
+  }))
   const [page, setPage] = useState(0)
   const [data, setData] = useState<{ rows: Alert[]; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -162,7 +175,19 @@ export function AlertsPage() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
-      <h1 className="text-2xl font-bold text-brand-dark">{tp.title}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-2xl font-bold text-brand-dark">{tp.title}</h1>
+        <ExportButton
+          run={async (signal) => {
+            const rows = await listAllAlerts(toFilters(form), signal)
+            await exportWorkbook({
+              fileName: exportFileName(t.excel.sections.alerts),
+              sheets: [alertsSheet(rows)],
+              signal,
+            })
+          }}
+        />
+      </div>
 
       <form
         aria-label={t.ombor.filters}

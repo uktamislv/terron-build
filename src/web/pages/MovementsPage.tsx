@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
 import { Notice } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
@@ -12,14 +13,20 @@ import { MovementsTab } from '../movements/MovementsTab'
 import { InventoryTab } from '../movements/InventoryTab'
 import { StockTab } from '../movements/StockTab'
 import { TransfersTab } from '../movements/TransfersTab'
+import { initialMovementFilters } from '../movements/movementFilters'
+import { paramOneOf } from '../urlFilters'
 
 const to = t.ombor
 type Tab = 'movements' | 'stock' | 'transfers' | 'inventory'
+const TABS: readonly Tab[] = ['movements', 'stock', 'transfers', 'inventory']
 
 /** Ombor: harakatlar jadvali va qoldiq. Ko'rinish RLS bilan cheklanadi. */
 export function MovementsPage() {
   const { profile: me } = useAuth()
-  const [tab, setTab] = useState<Tab>('movements')
+  const [params] = useSearchParams()
+  // Bosh sahifa havolalari: ?tab=transfers, ?type=kirim&from=...&to=...&object=...
+  const [tab, setTab] = useState<Tab>(() => paramOneOf(params, 'tab', TABS, 'movements') || 'movements')
+  const [initialFilters] = useState(() => initialMovementFilters(params))
   const [objects, setObjects] = useState<ObjectRow[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -79,6 +86,7 @@ export function MovementsPage() {
           objects={objects}
           materials={materials}
           profiles={profiles}
+          initial={initialFilters}
           isAdmin={isAdmin}
           canSeeDeleted={isAdmin || me.role === 'direktor'}
         />

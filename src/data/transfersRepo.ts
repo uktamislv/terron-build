@@ -1,5 +1,6 @@
 import { isUuid } from '@/lib/uuid'
 import { RepoError, toRepoError } from './errors'
+import { inChunks } from './fetchAll'
 import { getSupabase } from './supabaseClient'
 import type { Transfer, TransferStatus } from './types'
 
@@ -118,6 +119,7 @@ export async function listTransfers(
   const start = page * TRANSFERS_PAGE_SIZE
   const { data, error, count } = await q
     .order('created_at', { ascending: false })
+    .order('id')
     .range(start, start + TRANSFERS_PAGE_SIZE - 1)
   if (error) throw toRepoError(error)
   return { rows: ((data ?? []) as unknown as RawTransfer[]).map(normalize), total: count ?? 0 }
@@ -126,15 +128,19 @@ export async function listTransfers(
 /** Shu obyektlarga kelayotgan (hali qabul qilinmagan) o'tkazmalar, eskisi birinchi. */
 export async function listIncomingTransfers(objectIds: string[]): Promise<Transfer[]> {
   if (objectIds.length === 0) return []
-  const { data, error } = await getSupabase()
-    .from('transfers')
-    .select(TRANSFER_SELECT)
-    .eq('status', 'yuborildi')
-    .in('to_object_id', objectIds)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: true })
-  if (error) throw toRepoError(error)
-  return ((data ?? []) as unknown as RawTransfer[]).map(normalize)
+  const data = await inChunks(objectIds, async (chunk) => {
+    const { data: part, error } = await getSupabase()
+      .from('transfers')
+      .select(TRANSFER_SELECT)
+      .eq('status', 'yuborildi')
+      .in('to_object_id', chunk)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+    if (error) throw toRepoError(error)
+    return (part ?? []) as unknown as RawTransfer[]
+  })
+  // Bo'laklar birlashtirilgach — eskisi birinchi
+  return data.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)).map(normalize)
 }
 
 /** Men yuborgan o'tkazmalar (Mini App "Mening yozuvlarim"). */

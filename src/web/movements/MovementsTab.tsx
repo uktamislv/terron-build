@@ -2,12 +2,15 @@ import { useCallback, useEffect, useState } from 'react'
 import { MovementPhoto } from '@/components/MovementPhoto'
 import { StatusBadge } from '@/components/StatusBadge'
 import { Button, Modal, Notice, Spinner } from '@/components/ui'
-import { listMovements, MOVEMENTS_PAGE_SIZE, restoreMovement, softDeleteMovement } from '@/data/movementsRepo'
+import { listAllMovements, listMovements, MOVEMENTS_PAGE_SIZE, restoreMovement, softDeleteMovement } from '@/data/movementsRepo'
 import { MOVEMENT_KINDS, type Material, type Movement, type ObjectRow, type Profile } from '@/data/types'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
+import { exportFileName, exportWorkbook } from '@/lib/excelExport'
 import { formatDateTime, formatQty } from '@/lib/format'
+import { ExportButton } from '../ExportButton'
+import { movementsSheet } from '../exports'
 import { DateField, SelectField } from '../fields'
 import { EMPTY_FILTERS, toRepoFilters, type MovementFilterForm } from './movementFilters'
 
@@ -29,6 +32,7 @@ export function MovementsTab({
   profiles,
   isAdmin,
   canSeeDeleted,
+  initial = EMPTY_FILTERS,
 }: {
   objects: ObjectRow[]
   materials: Material[]
@@ -36,8 +40,10 @@ export function MovementsTab({
   isAdmin: boolean
   /** admin va direktor — o'chirilganlarni ko'radi (direktor faqat ko'radi) */
   canSeeDeleted: boolean
+  /** Boshlang'ich filtr (URL'dan). */
+  initial?: MovementFilterForm
 }) {
-  const [form, setForm] = useState<MovementFilterForm>(EMPTY_FILTERS)
+  const [form, setForm] = useState<MovementFilterForm>(initial)
   const [page, setPage] = useState(0)
   const [data, setData] = useState<{ rows: Movement[]; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -170,6 +176,18 @@ export function MovementsTab({
           <Button variant="ghost" onClick={() => update(EMPTY_FILTERS)}>
             {to.reset}
           </Button>
+          <div className="ml-auto">
+            <ExportButton
+              run={async (signal) => {
+                const rows = await listAllMovements(toRepoFilters(form, canSeeDeleted), signal)
+                await exportWorkbook({
+                  fileName: exportFileName(t.excel.sections.movements),
+                  sheets: [movementsSheet(rows)],
+                  signal,
+                })
+              }}
+            />
+          </div>
         </div>
       </form>
 

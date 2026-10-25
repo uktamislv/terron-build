@@ -8,7 +8,10 @@ import { isNegative } from '@/domain/decimal'
 import { evaluateNorm, usagePct, type NormStatus } from '@/domain/norms'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
+import { exportFileName, exportWorkbook } from '@/lib/excelExport'
 import { formatQty } from '@/lib/format'
+import { ExportButton } from '../ExportButton'
+import { normsSheet } from '../exports'
 import { RetryNotice } from '../fields'
 import { NormProgress } from './NormProgress'
 
@@ -61,9 +64,18 @@ export function NormUsageTable({ objectId }: { objectId: string }) {
 
   return (
     <section aria-label={tn.title} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-      <div>
-        <h2 className="font-semibold text-slate-900">{tn.title}</h2>
-        <p className="text-sm text-slate-600">{tn.hint}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-slate-900">{tn.title}</h2>
+          <p className="text-sm text-slate-600">{tn.hint}</p>
+        </div>
+        {view.length > 0 && (
+          <ExportButton
+            run={(signal) =>
+              exportWorkbook({ fileName: exportFileName(t.excel.sections.norms), sheets: [normsSheet(view)], signal })
+            }
+          />
+        )}
       </div>
       {error && <RetryNotice message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
       {!rows && !error && <Spinner />}

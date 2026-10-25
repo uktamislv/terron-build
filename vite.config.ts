@@ -6,6 +6,20 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rolldownOptions: {
+      output: {
+        // Kutubxonalar alohida (uzoq keshlanadi); sahifalar — route darajasida lazy (src/routes.tsx).
+        // Recharts va xlsx faqat dinamik import orqali — o'z chunk'larida qoladi.
+        codeSplitting: {
+          groups: [
+            { name: 'vendor-react', test: /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/ },
+            { name: 'vendor-supabase', test: /[\\/]node_modules[\\/]@supabase[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

@@ -1,4 +1,5 @@
 import { isPkeyConflict, toRepoError } from './errors'
+import { chunkOpts, fetchAll, type ChunkOpts } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
 import type { Movement, MovementKind } from './types'
@@ -114,7 +115,23 @@ export async function getMovementById(id: string): Promise<Movement> {
 
 /** Harakatlar jadvali: filtrlar, `occurred_at` bo'yicha yangisi birinchi, 50 tadan sahifa (0 dan). */
 export async function listMovements(filters: MovementFilters = {}, page = 0): Promise<MovementPage> {
-  let q = getSupabase().from('movements').select(MOVEMENT_SELECT, { count: 'exact' })
+  const start = page * MOVEMENTS_PAGE_SIZE
+  const r = await loadMovements(filters, start, start + MOVEMENTS_PAGE_SIZE - 1)
+  return { rows: r.rows, total: r.total ?? 0 }
+}
+
+/** Eksport: joriy filtr bo'yicha barcha qatorlar (1000 tadan, ≤ 50 000). */
+export function listAllMovements(filters: MovementFilters = {}, signal?: AbortSignal): Promise<Movement[]> {
+  return fetchAll((req) => loadMovements(filters, req.from, req.to, chunkOpts(req)), { signal })
+}
+
+async function loadMovements(
+  filters: MovementFilters,
+  from: number,
+  to: number,
+  opts: ChunkOpts = { count: true },
+): Promise<{ rows: Movement[]; total: number | null }> {
+  let q = getSupabase().from('movements').select(MOVEMENT_SELECT, opts.count ? { count: 'exact' } : undefined)
   if (!filters.includeDeleted) q = q.is('deleted_at', null)
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.materialId) q = q.eq('material_id', filters.materialId)
@@ -123,13 +140,16 @@ export async function listMovements(filters: MovementFilters = {}, page = 0): Pr
   if (filters.purchaseId) q = q.eq('purchase_id', filters.purchaseId)
   if (filters.from) q = q.gte('occurred_at', filters.from)
   if (filters.to) q = q.lt('occurred_at', filters.to)
-  const start = page * MOVEMENTS_PAGE_SIZE
-  const { data, error, count } = await q
+  if (opts.before) q = q.lte('created_at', opts.before)
+  let ranged = q
     .order('occurred_at', { ascending: false })
     .order('created_at', { ascending: false })
-    .range(start, start + MOVEMENTS_PAGE_SIZE - 1)
+    .order('id')
+    .range(from, to)
+  if (opts.signal) ranged = ranged.abortSignal(opts.signal)
+  const { data, error, count } = await ranged
   if (error) throw toRepoError(error)
-  return { rows: ((data ?? []) as unknown as RawMovement[]).map(normalize), total: count ?? 0 }
+  return { rows: ((data ?? []) as unknown as RawMovement[]).map(normalize), total: count ?? null }
 }
 
 /**

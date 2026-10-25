@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { Notice, Spinner } from '@/components/ui'
-import { listStock } from '@/data/stockRepo'
+import { listAllStock, listStock } from '@/data/stockRepo'
 import type { Material, ObjectRow, StockBalance } from '@/data/types'
 import { isNegative } from '@/domain/decimal'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
+import { exportFileName, exportWorkbook } from '@/lib/excelExport'
 import { formatDateTime, formatQty } from '@/lib/format'
+import { ExportButton } from '../ExportButton'
+import { stockSheet } from '../exports'
 
 const to = t.ombor
 
@@ -14,6 +17,20 @@ interface StockRow extends StockBalance {
   materialName: string
   baseUnit: string
   negative: boolean
+}
+
+function nameStock(rows: StockBalance[], objects: ObjectRow[], materials: Material[]): StockRow[] {
+  const objName = new Map(objects.map((o) => [o.id, o.name]))
+  const mat = new Map(materials.map((m) => [m.id, m]))
+  return rows
+    .map((r) => ({
+      ...r,
+      objectName: objName.get(r.object_id) ?? '—',
+      materialName: mat.get(r.material_id)?.name ?? '—',
+      baseUnit: mat.get(r.material_id)?.base_unit ?? '',
+      negative: isNegative(r.qty_base),
+    }))
+    .sort((a, b) => a.objectName.localeCompare(b.objectName) || a.materialName.localeCompare(b.materialName))
 }
 
 export function StockTab({ objects, materials }: { objects: ObjectRow[]; materials: Material[] }) {
@@ -40,39 +57,39 @@ export function StockTab({ objects, materials }: { objects: ObjectRow[]; materia
     }
   }, [objectId, reloadKey])
 
-  const view = useMemo<StockRow[]>(() => {
-    const objName = new Map(objects.map((o) => [o.id, o.name]))
-    const mat = new Map(materials.map((m) => [m.id, m]))
-    return (rows ?? [])
-      .map((r) => ({
-        ...r,
-        objectName: objName.get(r.object_id) ?? '—',
-        materialName: mat.get(r.material_id)?.name ?? '—',
-        baseUnit: mat.get(r.material_id)?.base_unit ?? '',
-        negative: isNegative(r.qty_base),
-      }))
-      .sort((a, b) => a.objectName.localeCompare(b.objectName) || a.materialName.localeCompare(b.materialName))
-  }, [rows, objects, materials])
+  const view = useMemo<StockRow[]>(() => nameStock(rows ?? [], objects, materials), [rows, objects, materials])
+
+  const runExport = async (signal: AbortSignal) => {
+    const all = await listAllStock({ objectId: objectId || undefined }, signal)
+    await exportWorkbook({
+      fileName: exportFileName(t.excel.sections.stock),
+      sheets: [stockSheet(nameStock(all, objects, materials))],
+      signal,
+    })
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5 rounded-2xl border border-slate-200 bg-white p-4 sm:max-w-sm">
-        <label htmlFor={selectId} className="text-sm font-medium text-slate-700">
-          {to.filterObject}
-        </label>
-        <select
-          id={selectId}
-          value={objectId}
-          onChange={(e) => setObjectId(e.target.value)}
-          className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-base"
-        >
-          <option value="">{to.all}</option>
-          {objects.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </select>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex w-full flex-col gap-1.5 rounded-2xl border border-slate-200 bg-white p-4 sm:max-w-sm">
+          <label htmlFor={selectId} className="text-sm font-medium text-slate-700">
+            {to.filterObject}
+          </label>
+          <select
+            id={selectId}
+            value={objectId}
+            onChange={(e) => setObjectId(e.target.value)}
+            className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-base"
+          >
+            <option value="">{to.all}</option>
+            {objects.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <ExportButton run={runExport} />
       </div>
 
       {error && (

@@ -1,4 +1,5 @@
 import { isPkeyConflict, toRepoError } from './errors'
+import { EXPORT_MAX_ROWS, fetchAll } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
 import type { CashAdvance, CashBalance } from './types'
@@ -159,8 +160,17 @@ export async function listCashHistory(
   ])
   if (issued.error) throw toRepoError(issued.error)
   if (spent.error) throw toRepoError(spent.error)
+  const entries = mergeHistory(
+    (issued.data ?? []) as unknown as RawAdvance[],
+    (spent.data ?? []) as unknown as RawSpent[],
+  )
+  // Ikki manba birlashtirilgach sana bo'yicha tartiblanadi, keyin umumiy chegara bo'yicha kesiladi
+  return entries.slice(0, CASH_HISTORY_LIMIT)
+}
+
+function mergeHistory(issued: RawAdvance[], spent: RawSpent[]): CashHistoryEntry[] {
   const entries: CashHistoryEntry[] = [
-    ...((issued.data ?? []) as unknown as RawAdvance[]).map(normalizeAdvance).map(
+    ...issued.map(normalizeAdvance).map(
       (a): CashHistoryEntry => ({
         kind: 'issued',
         id: a.id,
@@ -173,7 +183,7 @@ export async function listCashHistory(
         deletedAt: a.deleted_at,
       }),
     ),
-    ...((spent.data ?? []) as unknown as RawSpent[]).map(
+    ...spent.map(
       (p): CashHistoryEntry => ({
         kind: 'spent',
         id: p.id,
@@ -188,8 +198,49 @@ export async function listCashHistory(
       }),
     ),
   ]
-  // Ikki manba birlashtirilgach sana bo'yicha tartiblanadi, keyin umumiy chegara bo'yicha kesiladi
-  return entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, CASH_HISTORY_LIMIT)
+  return entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+}
+
+/**
+ * Eksport: berilgan va sarflangan pulning to'liq tarixi (har manba 1000 tadan, jami ≤ 50 000).
+ */
+export async function listAllCashHistory(
+  opts: { profileId?: string; includeDeleted?: boolean } = {},
+  signal?: AbortSignal,
+): Promise<CashHistoryEntry[]> {
+  const issued = await fetchAll<RawAdvance>(
+    async (req) => {
+      let q = getSupabase()
+        .from('cash_advances')
+        .select(ADVANCE_SELECT, req.first ? { count: 'exact' } : undefined)
+        .lte('created_at', req.before)
+      if (!opts.includeDeleted) q = q.is('deleted_at', null)
+      if (opts.profileId) q = q.eq('recipient_id', opts.profileId)
+      let ranged = q.order('issued_at', { ascending: false }).order('id').range(req.from, req.to)
+      if (req.signal) ranged = ranged.abortSignal(req.signal)
+      const { data, error, count } = await ranged
+      if (error) throw toRepoError(error)
+      return { rows: (data ?? []) as unknown as RawAdvance[], total: count ?? null }
+    },
+    { signal },
+  )
+  const spent = await fetchAll<RawSpent>(
+    async (req) => {
+      let q = getSupabase()
+        .from('purchases')
+        .select(SPENT_SELECT, req.first ? { count: 'exact' } : undefined)
+        .lte('created_at', req.before)
+      if (!opts.includeDeleted) q = q.is('deleted_at', null)
+      if (opts.profileId) q = q.eq('buyer_id', opts.profileId)
+      let ranged = q.order('purchased_at', { ascending: false }).order('id').range(req.from, req.to)
+      if (req.signal) ranged = ranged.abortSignal(req.signal)
+      const { data, error, count } = await ranged
+      if (error) throw toRepoError(error)
+      return { rows: (data ?? []) as unknown as RawSpent[], total: count ?? null }
+    },
+    { signal, max: EXPORT_MAX_ROWS - issued.length },
+  )
+  return mergeHistory(issued, spent)
 }
 
 export function softDeleteAdvance(id: string): Promise<void> {

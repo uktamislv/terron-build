@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
 import { StatusBadge } from '@/components/StatusBadge'
 import { Button, Modal, Notice, Spinner } from '@/components/ui'
@@ -7,6 +8,7 @@ import { listMaterials } from '@/data/materialsRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { listProfiles } from '@/data/profilesRepo'
 import {
+  listAllPurchases,
   listPurchases,
   PURCHASES_PAGE_SIZE,
   restorePurchase,
@@ -18,7 +20,11 @@ import { can } from '@/domain/roles'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
+import { exportFileName, exportWorkbook } from '@/lib/excelExport'
 import { formatDateTime, formatQty, formatSum } from '@/lib/format'
+import { ExportButton } from '../ExportButton'
+import { purchasesSheet } from '../exports'
+import { paramDate, paramId } from '../urlFilters'
 import { DateField, Pager, RetryNotice, SelectField } from '../fields'
 import { dayStartIso, nextDayStartIso } from '../movements/movementFilters'
 import { PurchaseDetailDialog } from '../purchases/PurchaseDetailDialog'
@@ -74,7 +80,14 @@ export function PurchasesPage() {
   const [objects, setObjects] = useState<ObjectRow[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
-  const [form, setForm] = useState<FilterForm>(EMPTY)
+  const [params] = useSearchParams()
+  // Bosh sahifa havolalari: ?from=...&to=...&object=...
+  const [form, setForm] = useState<FilterForm>(() => ({
+    ...EMPTY,
+    objectId: paramId(params, 'object'),
+    from: paramDate(params, 'from'),
+    to: paramDate(params, 'to'),
+  }))
   const [page, setPage] = useState(0)
   const [data, setData] = useState<{ rows: Purchase[]; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -154,6 +167,11 @@ export function PurchasesPage() {
 
   if (!me) return null
 
+  const runExport = async (signal: AbortSignal) => {
+    const rows = await listAllPurchases(toFilters(form, canSeeDeleted), signal)
+    await exportWorkbook({ fileName: exportFileName(t.excel.sections.purchases), sheets: [purchasesSheet(rows)], signal })
+  }
+
   const actions = (p: Purchase) => (
     <div className="flex flex-wrap gap-2">
       <Button variant="ghost" onClick={() => setDialog({ kind: 'detail', purchase: p })}>
@@ -174,7 +192,10 @@ export function PurchasesPage() {
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-5">
-      <h1 className="text-2xl font-bold text-brand-dark">{tp.title}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-2xl font-bold text-brand-dark">{tp.title}</h1>
+        <ExportButton run={runExport} />
+      </div>
 
       <form
         aria-label={to.filters}

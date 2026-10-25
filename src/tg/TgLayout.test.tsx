@@ -33,6 +33,13 @@ vi.mock('@/data/authRepo', () => ({
   }),
 }))
 
+// Direktor bosh ekrani ma'lumoti (tarmoqqa chiqmasin)
+vi.mock('@/data/reportsRepo', () => ({
+  getDashboardSummary: vi.fn(() => new Promise(() => undefined)),
+  getNormOverview: vi.fn(async () => []),
+}))
+vi.mock('@/data/alertsRepo', () => ({ listRecentAlerts: vi.fn(async () => []) }))
+
 vi.mock('./telegram', () => ({
   isInsideTelegram: () => true,
   getWebApp: () => null,

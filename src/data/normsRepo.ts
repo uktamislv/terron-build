@@ -1,4 +1,5 @@
 import { toRepoError } from './errors'
+import { inChunks } from './fetchAll'
 import { getSupabase } from './supabaseClient'
 import type { NormUsage } from './types'
 
@@ -27,6 +28,14 @@ function normalize(r: RawNorm): NormUsage {
 /** Obyekt(lar) bo'yicha norma va sarf. Joriy smetasi yo'q obyektlar qatorlari yo'q. */
 export async function listNormUsage(filters: { objectId?: string; objectIds?: string[]; materialId?: string } = {}): Promise<NormUsage[]> {
   if (filters.objectIds && filters.objectIds.length === 0) return []
+  if (filters.objectIds) {
+    const { objectIds, ...rest } = filters
+    return inChunks(objectIds, (chunk) => loadNormUsage({ ...rest, objectIds: chunk }))
+  }
+  return loadNormUsage(filters)
+}
+
+async function loadNormUsage(filters: { objectId?: string; objectIds?: string[]; materialId?: string }): Promise<NormUsage[]> {
   let q = getSupabase().from('norm_usage').select(NORM_COLUMNS)
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.objectIds) q = q.in('object_id', filters.objectIds)

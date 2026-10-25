@@ -1,6 +1,7 @@
 // Ombor sahifasi filtrlari — sof funksiyalar.
 import type { MovementFilters } from '@/data/movementsRepo'
-import type { MovementKind } from '@/data/types'
+import { MOVEMENT_KINDS, type MovementKind } from '@/data/types'
+import { paramDate, paramId, paramOneOf } from '../urlFilters'
 
 /** Asia/Tashkent — doimiy UTC+5 (yozgi vaqt yo'q). */
 const TASHKENT_OFFSET = '+05:00'
@@ -51,5 +52,17 @@ export function toRepoFilters(form: MovementFilterForm, canSeeDeleted: boolean):
     from: dayStartIso(form.from),
     to: nextDayStartIso(form.to),
     includeDeleted: canSeeDeleted && form.includeDeleted ? true : undefined,
+  }
+}
+
+/** URL query → boshlang'ich filtr (bosh sahifa kartochkalaridagi havolalar). */
+export function initialMovementFilters(params: URLSearchParams): MovementFilterForm {
+  return {
+    ...EMPTY_FILTERS,
+    objectId: paramId(params, 'object'),
+    materialId: paramId(params, 'material'),
+    type: paramOneOf(params, 'type', MOVEMENT_KINDS, ''),
+    from: paramDate(params, 'from'),
+    to: paramDate(params, 'to'),
   }
 }

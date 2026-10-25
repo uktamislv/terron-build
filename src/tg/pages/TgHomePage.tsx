@@ -1,9 +1,16 @@
 import { useAuth } from '@/auth/authContext'
+import type { Role } from '@/domain/roles'
 import { t } from '@/i18n'
 import { formatDate } from '@/lib/format'
+import { DirectorHome } from '../home/DirectorHome'
+
+/** Direktor bosh ekrani ko'rinadigan rollar (Mini App'da "Bosh" bandi bor rollar). */
+const DIRECTOR_HOME: readonly Role[] = ['direktor', 'admin', 'super_admin']
 
 export function TgHomePage() {
   const { profile } = useAuth()
+
+  if (profile && DIRECTOR_HOME.includes(profile.role)) return <DirectorHome name={profile.full_name} />
 
   return (
     <div className="flex flex-col gap-4">

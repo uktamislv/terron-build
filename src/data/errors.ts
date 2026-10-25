@@ -25,6 +25,7 @@ export type RepoErrorCode =
   | 'photo_too_large'
   | 'photo_type'
   | 'photo_upload_failed'
+  | 'export_too_large'
   | ServerHintCode
   | 'unknown'
 
@@ -106,6 +107,8 @@ export const SERVER_HINTS = {
   inventory_apply_forbidden: { showServerMessage: false },
   inventory_not_submitted: { showServerMessage: false },
   inventory_already_applied: { showServerMessage: false },
+  report_period_invalid: { showServerMessage: false },
+  report_group_invalid: { showServerMessage: false },
 } as const satisfies Record<string, { showServerMessage: boolean }>
 
 export type ServerHintCode = keyof typeof SERVER_HINTS

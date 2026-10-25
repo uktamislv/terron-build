@@ -1,4 +1,5 @@
 import { isPkeyConflict, toRepoError } from './errors'
+import { inChunks } from './fetchAll'
 import { getSupabase } from './supabaseClient'
 import type { InventoryCount, InventoryCountItem, InventoryDetailRow, InventoryStatus } from './types'
 
@@ -37,13 +38,16 @@ function normalizeItem(raw: RawItem): InventoryCountItem {
 async function itemCounts(countIds: string[]): Promise<Map<string, number>> {
   const result = new Map<string, number>()
   if (countIds.length === 0) return result
-  const { data, error } = await getSupabase()
-    .from('inventory_count_items')
-    .select('inventory_count_id')
-    .in('inventory_count_id', countIds)
-    .is('deleted_at', null)
-  if (error) throw toRepoError(error)
-  for (const r of (data ?? []) as { inventory_count_id: string }[]) {
+  const data = await inChunks(countIds, async (chunk) => {
+    const { data: part, error } = await getSupabase()
+      .from('inventory_count_items')
+      .select('inventory_count_id')
+      .in('inventory_count_id', chunk)
+      .is('deleted_at', null)
+    if (error) throw toRepoError(error)
+    return (part ?? []) as { inventory_count_id: string }[]
+  })
+  for (const r of data) {
     result.set(r.inventory_count_id, (result.get(r.inventory_count_id) ?? 0) + 1)
   }
   return result

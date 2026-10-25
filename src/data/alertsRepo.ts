@@ -1,4 +1,5 @@
 import { toRepoError } from './errors'
+import { chunkOpts, fetchAll, type ChunkOpts } from './fetchAll'
 import { updateById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
 import type { Alert, AlertSeverity, AlertStatus, AlertType } from './types'
@@ -39,19 +40,41 @@ function normalize(raw: RawAlert): Alert {
 
 /** Ogohlantirishlar (admin, direktor, buxgalter ko'radi — RLS), yangisi birinchi. */
 export async function listAlerts(filters: AlertFilters = {}, page = 0): Promise<{ rows: Alert[]; total: number }> {
-  let q = getSupabase().from('alerts').select(ALERT_SELECT, { count: 'exact' }).is('deleted_at', null)
+  const start = page * ALERTS_PAGE_SIZE
+  const r = await loadAlerts(filters, start, start + ALERTS_PAGE_SIZE - 1)
+  return { rows: r.rows, total: r.total ?? 0 }
+}
+
+/** Oxirgi `limit` ta ogohlantirish (bosh sahifa, Mini App direktor ekrani). */
+export async function listRecentAlerts(filters: AlertFilters = {}, limit = 5): Promise<Alert[]> {
+  const { rows } = await loadAlerts(filters, 0, limit - 1)
+  return rows
+}
+
+/** Eksport: joriy filtr bo'yicha barcha ogohlantirishlar (1000 tadan, ≤ 50 000). */
+export function listAllAlerts(filters: AlertFilters = {}, signal?: AbortSignal): Promise<Alert[]> {
+  return fetchAll((req) => loadAlerts(filters, req.from, req.to, chunkOpts(req)), { signal })
+}
+
+async function loadAlerts(
+  filters: AlertFilters,
+  from: number,
+  to: number,
+  opts: ChunkOpts = { count: true },
+): Promise<{ rows: Alert[]; total: number | null }> {
+  let q = getSupabase().from('alerts').select(ALERT_SELECT, opts.count ? { count: 'exact' } : undefined).is('deleted_at', null)
   if (filters.statuses && filters.statuses.length > 0) q = q.in('status', filters.statuses)
   if (filters.type) q = q.eq('type', filters.type)
   if (filters.severity) q = q.eq('severity', filters.severity)
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.purchaseId) q = q.eq('purchase_id', filters.purchaseId)
   if (filters.inventoryCountId) q = q.eq('inventory_count_id', filters.inventoryCountId)
-  const start = page * ALERTS_PAGE_SIZE
-  const { data, error, count } = await q
-    .order('created_at', { ascending: false })
-    .range(start, start + ALERTS_PAGE_SIZE - 1)
+  if (opts.before) q = q.lte('created_at', opts.before)
+  let ranged = q.order('created_at', { ascending: false }).order('id').range(from, to)
+  if (opts.signal) ranged = ranged.abortSignal(opts.signal)
+  const { data, error, count } = await ranged
   if (error) throw toRepoError(error)
-  return { rows: ((data ?? []) as unknown as RawAlert[]).map(normalize), total: count ?? 0 }
+  return { rows: ((data ?? []) as unknown as RawAlert[]).map(normalize), total: count ?? null }
 }
 
 /** "Ko'rildi" — faqat admin (RLS). */

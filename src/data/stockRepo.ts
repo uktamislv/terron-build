@@ -1,4 +1,5 @@
 import { toRepoError } from './errors'
+import { fetchAll } from './fetchAll'
 import { getSupabase } from './supabaseClient'
 import type { StockBalance } from './types'
 
@@ -11,6 +12,23 @@ export async function listStock(filters: { objectId?: string } = {}): Promise<St
   const { data, error } = await q.order('object_id').order('material_id')
   if (error) throw toRepoError(error)
   return (data ?? []) as unknown as StockBalance[]
+}
+
+/** Eksport: barcha qoldiq qatorlari (1000 tadan, ≤ 50 000). */
+export function listAllStock(filters: { objectId?: string } = {}, signal?: AbortSignal): Promise<StockBalance[]> {
+  // View'da `created_at` yo'q — vaqt chegarasi qo'llanmaydi; kalit — obyekt × material
+  return fetchAll(
+    async (req) => {
+      let q = getSupabase().from('stock_balances').select(STOCK_COLUMNS, req.first ? { count: 'exact' } : undefined)
+      if (filters.objectId) q = q.eq('object_id', filters.objectId)
+      let ranged = q.order('object_id').order('material_id').range(req.from, req.to)
+      if (req.signal) ranged = ranged.abortSignal(req.signal)
+      const { data, error, count } = await ranged
+      if (error) throw toRepoError(error)
+      return { rows: (data ?? []) as unknown as StockBalance[], total: count ?? null }
+    },
+    { signal, keyOf: (r) => `${r.object_id}:${r.material_id}` },
+  )
 }
 
 /** Bitta obyekt × material qoldig'i (asosiy birlikda). Harakat bo'lmasa — "0". */

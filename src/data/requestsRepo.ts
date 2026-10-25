@@ -1,4 +1,5 @@
 import { isPkeyConflict, toRepoError } from './errors'
+import { chunkOpts, fetchAll, type ChunkOpts } from './fetchAll'
 import { updateById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
 import type { MaterialRequest, RequestStatus } from './types'
@@ -98,16 +99,32 @@ export async function listRequests(
   filters: RequestFilters = {},
   page = 0,
 ): Promise<{ rows: MaterialRequest[]; total: number }> {
-  let q = getSupabase().from('material_requests').select(REQUEST_SELECT, { count: 'exact' }).is('deleted_at', null)
+  const start = page * REQUESTS_PAGE_SIZE
+  const r = await loadRequests(filters, start, start + REQUESTS_PAGE_SIZE - 1)
+  return { rows: r.rows, total: r.total ?? 0 }
+}
+
+/** Eksport: joriy filtr bo'yicha barcha so'rovlar (1000 tadan, ≤ 50 000). */
+export function listAllRequests(filters: RequestFilters = {}, signal?: AbortSignal): Promise<MaterialRequest[]> {
+  return fetchAll((req) => loadRequests(filters, req.from, req.to, chunkOpts(req)), { signal })
+}
+
+async function loadRequests(
+  filters: RequestFilters,
+  from: number,
+  to: number,
+  opts: ChunkOpts = { count: true },
+): Promise<{ rows: MaterialRequest[]; total: number | null }> {
+  let q = getSupabase().from('material_requests').select(REQUEST_SELECT, opts.count ? { count: 'exact' } : undefined).is('deleted_at', null)
   if (filters.statuses && filters.statuses.length > 0) q = q.in('status', filters.statuses)
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.materialId) q = q.eq('material_id', filters.materialId)
-  const start = page * REQUESTS_PAGE_SIZE
-  const { data, error, count } = await q
-    .order('created_at', { ascending: false })
-    .range(start, start + REQUESTS_PAGE_SIZE - 1)
+  if (opts.before) q = q.lte('created_at', opts.before)
+  let ranged = q.order('created_at', { ascending: false }).order('id').range(from, to)
+  if (opts.signal) ranged = ranged.abortSignal(opts.signal)
+  const { data, error, count } = await ranged
   if (error) throw toRepoError(error)
-  return { rows: ((data ?? []) as unknown as RawRequest[]).map(normalize), total: count ?? 0 }
+  return { rows: ((data ?? []) as unknown as RawRequest[]).map(normalize), total: count ?? null }
 }
 
 /** Mening so'rovlarim (Mini App), yangisi birinchi. */

@@ -1,7 +1,7 @@
 import { closeAlert } from './alertsRepo'
 import { CASH_HISTORY_LIMIT, issueAdvance, listCashHistory } from './cashRepo'
 import { createMovement } from './movementsRepo'
-import { checkPurchasePrice, createPurchase, listMyPurchases, listPurchases } from './purchasesRepo'
+import { checkPurchasePrice, createPurchase, listAllPurchases, listMyPurchases, listPurchases } from './purchasesRepo'
 import { createSupplier } from './suppliersRepo'
 
 type Call = [string, ...unknown[]]
@@ -195,5 +195,25 @@ describe('sharh tuzatishlari (repo)', () => {
     fake.results.push({ data: { id: 'a1' }, error: null })
     await closeAlert('a1', '   ')
     expect((arg('update') as Record<string, unknown>).close_note).toBeNull()
+  })
+})
+
+describe('listAllPurchases — .in() bo‘laklari', () => {
+  it('1000 xarid → qabul holati va alertlar 100 tadan, 10+10 so‘rov; count faqat 1-bo‘lakda; created_at <= boshlanish', async () => {
+    const rows = Array.from({ length: 1000 }, (_, i) => ({ id: `p${i}`, created_at: '2026-10-01T00:00:00Z' }))
+    fake.results.push({ data: rows, error: null, count: 1000 })
+    for (let i = 0; i < 20; i++) fake.results.push({ data: [], error: null })
+    fake.results.push({ data: [], error: null, count: null })
+    const all = await listAllPurchases({})
+    expect(all).toHaveLength(1000)
+    const fromCalls = fake.calls.filter((c) => c[0] === 'from').map((c) => c[1])
+    expect(fromCalls.filter((t) => t === 'purchase_receipts')).toHaveLength(10)
+    expect(fromCalls.filter((t) => t === 'alerts')).toHaveLength(10)
+    const ins = fake.calls.filter((c) => c[0] === 'in' && (c[1] === 'purchase_id' || c[1] === 'id'))
+    expect(ins.every((c) => (c[2] as string[]).length === 100)).toBe(true)
+    const selects = fake.calls.filter((c) => c[0] === 'select' && String(c[1]).includes('qty_input'))
+    expect(selects[0]?.[2]).toEqual({ count: 'exact' })
+    expect(selects[1]?.[2]).toBeUndefined()
+    expect(fake.calls.some((c) => c[0] === 'lte' && c[1] === 'created_at')).toBe(true)
   })
 })

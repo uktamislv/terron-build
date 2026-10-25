@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
 import { StatusBadge } from '@/components/StatusBadge'
 import { REQUEST_TONE } from '@/components/statusTones'
@@ -9,6 +10,7 @@ import { listObjects } from '@/data/objectsRepo'
 import {
   REQUESTS_PAGE_SIZE,
   approveRequest,
+  listAllRequests,
   listRequests,
   markRequestPurchased,
   rejectRequest,
@@ -22,7 +24,11 @@ import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatDate, formatDateTime, formatQty } from '@/lib/format'
+import { exportFileName, exportWorkbook } from '@/lib/excelExport'
 import { requestNormState } from '@/lib/requestNorm'
+import { ExportButton } from '../ExportButton'
+import { requestsSheet } from '../exports'
+import { paramId, paramOneOf } from '../urlFilters'
 import { Pager, RetryNotice, SelectField } from '../fields'
 import { NormProgress } from '../norms/NormProgress'
 import { PurchasedDialog, RejectDialog } from '../requests/RequestDialogs'
@@ -83,7 +89,13 @@ export function RequestsPage() {
   const { profile: me } = useAuth()
   const [objects, setObjects] = useState<ObjectRow[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
-  const [form, setForm] = useState<FilterForm>(EMPTY)
+  const [params] = useSearchParams()
+  // Bosh sahifa havolalari: ?status=kutilmoqda&object=...
+  const [form, setForm] = useState<FilterForm>(() => ({
+    status: paramOneOf<StatusFilter>(params, 'status', ['all', ...REQUEST_STATUSES], EMPTY.status) || EMPTY.status,
+    objectId: paramId(params, 'object'),
+    materialId: paramId(params, 'material'),
+  }))
   const [page, setPage] = useState(0)
   const [data, setData] = useState<{ rows: MaterialRequest[]; total: number } | null>(null)
   // obyekt → norma qatorlari (faqat so'ralgan obyektlar; yo'q bo'lsa — hali yuklanmagan)
@@ -209,7 +221,19 @@ export function RequestsPage() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
-      <h1 className="text-2xl font-bold text-brand-dark">{tp.title}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-2xl font-bold text-brand-dark">{tp.title}</h1>
+        <ExportButton
+          run={async (signal) => {
+            const rows = await listAllRequests(toFilters(form), signal)
+            await exportWorkbook({
+              fileName: exportFileName(t.excel.sections.requests),
+              sheets: [requestsSheet(rows)],
+              signal,
+            })
+          }}
+        />
+      </div>
 
       <form
         aria-label={t.ombor.filters}

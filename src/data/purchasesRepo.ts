@@ -1,4 +1,5 @@
 import { isPkeyConflict, toRepoError } from './errors'
+import { chunkOpts, fetchAll, inChunks, type ChunkOpts } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
 import type { AlertType, Purchase, PurchaseReceipt } from './types'
@@ -125,18 +126,14 @@ export async function getPurchaseById(id: string): Promise<Purchase> {
 async function attachStatus(rows: Purchase[]): Promise<Purchase[]> {
   if (rows.length === 0) return rows
   const ids = rows.map((r) => r.id)
-  const [receipts, alerts] = await Promise.all([
-    getSupabase().from('purchase_receipts').select(RECEIPT_COLUMNS).in(RECEIPT_KEY, ids),
-    getSupabase()
-      .from('alerts')
-      .select('purchase_id, type')
-      .in('purchase_id', ids)
-      .in('status', ['yangi', 'korildi'])
-      .is('deleted_at', null),
-  ])
-  if (receipts.error) throw toRepoError(receipts.error)
+  // .in() — 100 talik bo'laklar, ketma-ket (URL uzunligi)
+  const receipts = await inChunks(ids, async (chunk) => {
+    const { data, error } = await getSupabase().from('purchase_receipts').select(RECEIPT_COLUMNS).in(RECEIPT_KEY, chunk)
+    if (error) throw toRepoError(error)
+    return (data ?? []) as unknown as Record<string, unknown>[]
+  })
   const byId = new Map<string, PurchaseReceipt>()
-  for (const r of (receipts.data ?? []) as unknown as Record<string, unknown>[]) {
+  for (const r of receipts) {
     byId.set(String(r[RECEIPT_KEY]), {
       received_qty_base: String(r.received_qty_base ?? '0'),
       remaining_qty_base: String(r.remaining_qty_base ?? '0'),
@@ -146,33 +143,60 @@ async function attachStatus(rows: Purchase[]): Promise<Purchase[]> {
   }
   // Alertlar — qo'shimcha belgi: xato bo'lsa jadval baribir ko'rsatiladi
   const alertsBy = new Map<string, AlertType[]>()
-  if (!alerts.error) {
-    for (const a of (alerts.data ?? []) as { purchase_id: string; type: AlertType }[]) {
-      const list = alertsBy.get(a.purchase_id) ?? []
-      if (!list.includes(a.type)) list.push(a.type)
-      alertsBy.set(a.purchase_id, list)
-    }
+  const alerts = await inChunks(ids, async (chunk) => {
+    const { data, error } = await getSupabase()
+      .from('alerts')
+      .select('purchase_id, type')
+      .in('purchase_id', chunk)
+      .in('status', ['yangi', 'korildi'])
+      .is('deleted_at', null)
+    if (error) throw error
+    return (data ?? []) as { purchase_id: string; type: AlertType }[]
+  }).catch(() => [] as { purchase_id: string; type: AlertType }[])
+  for (const al of alerts) {
+    const list = alertsBy.get(al.purchase_id) ?? []
+    if (!list.includes(al.type)) list.push(al.type)
+    alertsBy.set(al.purchase_id, list)
   }
   return rows.map((r) => ({ ...r, receipt: byId.get(r.id) ?? null, alert_types: alertsBy.get(r.id) ?? [] }))
 }
 
 /** Xaridlar jadvali: filtrlar, `purchased_at` bo'yicha yangisi birinchi, 50 tadan sahifa (0 dan), qabul holati bilan. */
 export async function listPurchases(filters: PurchaseFilters = {}, page = 0): Promise<PurchasePage> {
-  let q = getSupabase().from('purchases').select(PURCHASE_SELECT, { count: 'exact' })
+  const start = page * PURCHASES_PAGE_SIZE
+  const r = await loadPurchases(filters, start, start + PURCHASES_PAGE_SIZE - 1)
+  return { rows: r.rows, total: r.total ?? 0 }
+}
+
+/** Eksport: joriy filtr bo'yicha barcha xaridlar qabul holati bilan (1000 tadan, ≤ 50 000). */
+export function listAllPurchases(filters: PurchaseFilters = {}, signal?: AbortSignal): Promise<Purchase[]> {
+  return fetchAll((req) => loadPurchases(filters, req.from, req.to, chunkOpts(req)), { signal })
+}
+
+async function loadPurchases(
+  filters: PurchaseFilters,
+  from: number,
+  to: number,
+  opts: ChunkOpts = { count: true },
+): Promise<{ rows: Purchase[]; total: number | null }> {
+  let q = getSupabase().from('purchases').select(PURCHASE_SELECT, opts.count ? { count: 'exact' } : undefined)
   if (!filters.includeDeleted) q = q.is('deleted_at', null)
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.materialId) q = q.eq('material_id', filters.materialId)
   if (filters.buyerId) q = q.eq('buyer_id', filters.buyerId)
   if (filters.from) q = q.gte('purchased_at', filters.from)
   if (filters.to) q = q.lt('purchased_at', filters.to)
-  const start = page * PURCHASES_PAGE_SIZE
-  const { data, error, count } = await q
+  if (opts.before) q = q.lte('created_at', opts.before)
+  let ranged = q
     .order('purchased_at', { ascending: false })
     .order('created_at', { ascending: false })
-    .range(start, start + PURCHASES_PAGE_SIZE - 1)
+    .order('id')
+    .range(from, to)
+  if (opts.signal) ranged = ranged.abortSignal(opts.signal)
+  const { data, error, count } = await ranged
   if (error) throw toRepoError(error)
   const rows = await attachStatus(((data ?? []) as unknown as RawPurchase[]).map(normalize))
-  return { rows, total: count ?? 0 }
+  return { rows, total: count ?? null }
 }
 
 /**

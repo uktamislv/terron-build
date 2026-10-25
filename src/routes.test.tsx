@@ -27,6 +27,15 @@ vi.mock('@/data/authRepo', () => ({
 
 vi.mock('@/data/profilesRepo', () => ({ listProfiles: vi.fn(async () => []), setProfileActive: vi.fn() }))
 vi.mock('@/data/objectsRepo', () => ({ listObjects: vi.fn(async () => []) }))
+vi.mock('@/data/reportsRepo', async (orig) => ({
+  ...(await orig<typeof import('@/data/reportsRepo')>()),
+  getDashboardSummary: vi.fn(async () => (await import('@/data/reportsRepo')).normalizeSummary({})),
+  getDashboardDaily: vi.fn(async () => []),
+  getSpendBreakdown: vi.fn(async () => []),
+  getNormOverview: vi.fn(async () => []),
+}))
+vi.mock('@/data/alertsRepo', () => ({ listRecentAlerts: vi.fn(async () => []) }))
+vi.mock('@/data/cashRepo', () => ({ listBalances: vi.fn(async () => []) }))
 vi.mock('@/data/objectMembersRepo', () => ({ listObjectMembers: vi.fn(async () => []) }))
 
 const repo = vi.mocked(authRepo)
@@ -71,7 +80,7 @@ describe('himoyalangan routelar', () => {
   it('kirgan foydalanuvchi /login ga kirsa — bosh sahifaga', async () => {
     signedInAs(makeProfile('admin'))
     const router = renderAt('/login')
-    expect(await screen.findByRole('heading', { name: t.web.welcome })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: t.reports.title })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
   })
 
@@ -158,7 +167,7 @@ describe('profil yuklash xatosi', () => {
     expect(repo.signOut).not.toHaveBeenCalled()
     expect(screen.queryByText(t.auth.noAccess)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: t.common.retry }))
-    expect(await screen.findByRole('heading', { name: t.web.welcome })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: t.reports.title })).toBeInTheDocument()
   })
 })
 
@@ -188,7 +197,7 @@ describe('majburiy parol o‘zgartirish', () => {
     repo.getSession.mockResolvedValue({ userId: 'u1', email: 'a@b.uz', mustChangePassword: false })
     fireEvent.click(screen.getByRole('button', { name: t.password.submit }))
     await waitFor(() => expect(repo.changePassword).toHaveBeenCalledWith('yangi-parol-1'))
-    expect(await screen.findByRole('heading', { name: t.web.welcome })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: t.reports.title })).toBeInTheDocument()
   })
 
   it('oddiy sessiyada header’da "Parolni o‘zgartirish" dialogi', async () => {

@@ -4,6 +4,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { Button, Modal, Notice, Spinner } from '@/components/ui'
 import {
   emptyBalance,
+  listAllCashHistory,
   listBalances,
   listCashHistory,
   restoreAdvance,
@@ -16,7 +17,10 @@ import { isNegative, isZero } from '@/domain/decimal'
 import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
+import { exportFileName, exportWorkbook } from '@/lib/excelExport'
 import { formatDate, formatDateTime, formatSum } from '@/lib/format'
+import { ExportButton } from '../ExportButton'
+import { cashSheets } from '../exports'
 import { IssueAdvanceDialog } from '../cash/IssueAdvanceDialog'
 import { RetryNotice, SelectField } from '../fields'
 
@@ -156,10 +160,26 @@ export function CashPage() {
 
   if (!me) return null
 
+  const runExport = async (signal: AbortSignal) => {
+    const [all, entries] = await Promise.all([
+      listBalances(),
+      listAllCashHistory({ profileId: personId || undefined, includeDeleted: canSeeDeleted && includeDeleted }, signal),
+    ])
+    const names = new Map(profiles.map((p) => [p.id, p.full_name]))
+    const named = all
+      .filter((b) => !personId || b.profile_id === personId)
+      .map((b) => ({ ...b, name: names.get(b.profile_id) ?? '—' }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    await exportWorkbook({ fileName: exportFileName(t.excel.sections.cash), sheets: cashSheets(named, entries), signal })
+  }
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-brand-dark">{tc.title}</h1>
+        <div className="ml-auto">
+          <ExportButton run={runExport} />
+        </div>
         {canIssue && (
           <Button
             onClick={() => {
