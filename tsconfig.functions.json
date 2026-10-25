@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.functions.tsbuildinfo",
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": [
+    "supabase/functions/*/logic.ts",
+    "supabase/functions/*/logic.test.ts",
+    "supabase/functions/_shared/*.ts"
+  ],
+  "exclude": [
+    "supabase/functions/*/index.ts",
+    "supabase/functions/_shared/supabaseAdmin.ts",
+    "supabase/functions/_shared/http.ts"
+  ]
+}

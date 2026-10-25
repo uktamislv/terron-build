@@ -9,6 +9,9 @@
     },
     {
       "path": "./tsconfig.sql.json"
+    },
+    {
+      "path": "./tsconfig.functions.json"
     }
   ]
 }

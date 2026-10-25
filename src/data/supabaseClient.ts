@@ -10,6 +10,11 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(url && anonKey)
 }
 
+/** Audit log uchun qurilma: Mini App (`/tg`) — `mobil`, veb panel — `veb`. */
+export function clientDevice(pathname: string = window.location.pathname): 'mobil' | 'veb' {
+  return pathname === '/tg' || pathname.startsWith('/tg/') ? 'mobil' : 'veb'
+}
+
 /** Supabase klienti. Faqat src/data/ ichidagi repository fayllari chaqiradi. */
 export function getSupabase(): SupabaseClient {
   if (!url || !anonKey) {
@@ -17,6 +22,8 @@ export function getSupabase(): SupabaseClient {
   }
   client ??= createClient(url, anonKey, {
     auth: { persistSession: true, autoRefreshToken: true },
+    // Ilova bir marta yuklanadi: /tg yoki / — sarlavha butun sessiya davomida o'zgarmaydi
+    global: { headers: { 'x-client-device': clientDevice() } },
   })
   return client
 }

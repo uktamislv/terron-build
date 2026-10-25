@@ -5,7 +5,17 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'supabase/functions'] },
+  {
+    // Deno'ga xos fayllar (Edge Function handler'lari va Deno yordamchilari) lint qilinmaydi;
+    // supabase/functions/_shared dagi sof TS esa lint qilinadi.
+    ignores: [
+      'dist',
+      'coverage',
+      'supabase/functions/*/index.ts',
+      'supabase/functions/_shared/supabaseAdmin.ts',
+      'supabase/functions/_shared/http.ts',
+    ],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],

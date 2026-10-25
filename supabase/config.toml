@@ -1,0 +1,14 @@
+# Supabase CLI konfiguratsiyasi (qo'lda, minimal). `supabase init` ishlatilmagan.
+project_id = "terron-build"
+
+[functions.tg-auth]
+# Mini App sessiyasiz chaqiradi — ishonch initData HMAC imzosida.
+verify_jwt = false
+
+[functions.tg-bot]
+# Telegram webhook — ishonch X-Telegram-Bot-Api-Secret-Token sarlavhasida.
+verify_jwt = false
+
+[functions.admin-users]
+# Funksiya chaqiruvchini o'zi auth.getUser(jwt) bilan tekshiradi (JWT signing keys bilan muammo bo'lmasin).
+verify_jwt = false

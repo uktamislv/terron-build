@@ -19,6 +19,13 @@ jobs:
       - run: npm run test
       - run: npm run test:sql
       - run: npm run build
+      # Edge Functions (Deno): index.ts va Deno'ga xos _shared fayllari tsc'da tekshirilmaydi
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Deno check (Edge Functions)
+        working-directory: supabase/functions
+        run: deno check */index.ts
 
   # Faqat main'ga push bo'lganda, tekshiruvlar o'tgandan keyin va Cloudflare sozlangan bo'lsa
   deploy:

@@ -32,6 +32,8 @@ interface TgWebApp {
   close(): void
   setHeaderColor(color: string): void
   setBackgroundColor(color: string): void
+  /** Bot API 6.9+. Kontakt bot'ga xabar sifatida yuboriladi — callback raqamni bermaydi. */
+  requestContact?(callback?: (shared: boolean) => void): void
   MainButton: TgButton
   BackButton: TgBackButton
   HapticFeedback: {
@@ -71,6 +73,35 @@ export function initTelegram(): void {
 /** Xom initData — serverga (tg-auth) yuborish uchun. */
 export function getInitData(): string {
   return getWebApp()?.initData ?? ''
+}
+
+/**
+ * Foydalanuvchidan telefon raqamini bot'ga ulashishni so'raydi.
+ * `true` — ulashdi, `false` — rad etdi yoki imkoniyat yo'q. Raqam serverda (tg-bot) tekshiriladi.
+ */
+export function requestContact(): Promise<boolean> {
+  const app = getWebApp()
+  if (!app?.requestContact) return Promise.resolve(false)
+  return new Promise((resolve) => {
+    app.requestContact?.((shared) => resolve(Boolean(shared)))
+  })
+}
+
+/**
+ * Telegram ishga tushirish parametrlarini (`#tgWebAppData=...`) URL'dan olib tashlaydi — initData
+ * tarix/skrinshot/havola orqali tarqalmasin. SDK ularni yuklanishda (index.html, ilovadan oldin)
+ * o'qib bo'lgan va sessionStorage'da saqlaydi, shuning uchun getInitData() ishlashda davom etadi.
+ */
+export function stripLaunchParamsFromUrl(): void {
+  const { hash, pathname, search } = window.location
+  if (!hash.includes('tgWebApp')) return
+  window.history.replaceState(window.history.state, '', pathname + search)
+}
+
+/** Bot havolasi — Telegram tashqarisida ochilganda ko'rsatiladi. */
+export function botLink(username: string | undefined = import.meta.env.VITE_TELEGRAM_BOT_USERNAME): string {
+  const name = (username ?? '').replace(/^@/, '').trim()
+  return name ? `https://t.me/${name}` : 'https://t.me/'
 }
 
 export const haptic = {
