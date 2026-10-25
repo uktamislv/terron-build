@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -73,6 +73,9 @@ Migratsiya egasi (`postgres`) `BYPASSRLS` bo'lishi shart (Supabase'da shunday): 
 | `movements` | firma rollari: hammasi; prorab, omborchi: a'zo obyektlar | admin; prorab, omborchi (a'zo obyekt) | admin |
 | `inventory_counts`, `inventory_count_items` | firma rollari; prorab, omborchi: a'zo obyektlar | admin, tekshiruvchi | admin, tekshiruvchi (o'zi yaratgan, `status = 'draft'`) |
 | `estimates`, `estimate_items` | firma rollari; prorab: a'zo obyektlar | admin, buxgalter | admin, buxgalter |
+| `estimate_import_templates` (Batch 7) | firma a'zolari | admin, buxgalter | admin, buxgalter |
+
+Batch 7: `estimates`, `estimate_items` — qo'shish va `is_current`/qator mazmunini o'zgartirish faqat RPC (`import_estimate`, `set_current_estimate`) orqali; to'g'ridan-to'g'ri — faqat nom/sana/fayl nomi va soft delete ("Smeta importi" bo'limi).
 | `material_requests` | firma rollari; prorab: a'zo obyektlar | admin; prorab (a'zo obyekt) | admin, taminotchi |
 | `transfers` | firma rollari; prorab, omborchi: qaysidir tomoni a'zo obyekt | admin; prorab (`from_object` a'zo) | admin |
 | `alerts` | admin, direktor, buxgalter | — (faqat tizim: trigger/Edge Function; Batch 5 qoidalari — `private.evaluate_*`) | admin — faqat `status`, `close_note` (Batch 5) |
@@ -131,7 +134,7 @@ Bu Batch 1 asosi; keyingi batch'larda (masalan creator o'z yozuvini tuzatishi) k
 - `purchases`: `buyer_id` (→ profiles), `object_id` (not null), `material_id`, `unit_id`, `supplier_id` (nullable), `qty_input`, `unit_input`, `unit_variant`, `qty_base`, `total_amount numeric(18,2)` — **haqiqat manbai** (foydalanuvchi chekdagi jami summani kiritadi), `unit_price numeric(18,2)` = `round(total_amount / qty_input, 2)` va `price_per_base numeric(18,4)` = `round(total_amount / qty_base, 4)` — ikkalasini trigger hisoblaydi (narx og'ishi qoidasi `price_per_base` ga tayanadi), `receipt_photo_path text`, `purchased_at`, `note`. `check (qty_base > 0 and total_amount >= 0)`.
 - `movements`: `type movement_type` (`kirim`,`chiqim`,`transfer_out`,`transfer_in`,`inventory_adjust`), `object_id`, `material_id`, `unit_id`, `qty_input`, `unit_input`, `unit_variant`, `qty_base`, `purchase_id` (nullable), `transfer_id` (nullable), `inventory_count_id` (nullable), `photo_path`, `occurred_at`, `note`. `qty_base > 0`, `qty_input > 0` (inventory_adjust uchun `<> 0`, ishorali). Bog'lanishlar (`movements_links_check`): `kirim` — `transfer_id`, `inventory_count_id` null (`purchase_id` ixtiyoriy); `chiqim` — uchalasi null; `transfer_in/out` — `transfer_id` majburiy, boshqalari null; `inventory_adjust` — `inventory_count_id` majburiy, boshqalari null. `purchase_id` bo'lsa (trigger): xarid shu firmada, o'chirilmagan (aks holda `23503`), `material_id` va `object_id` mos (aks holda `23514`).
 - `inventory_counts`: `object_id`, `status` (`draft`/`submitted`), `counted_at`. `inventory_count_items`: `inventory_count_id`, `material_id`, `qty_counted`, `qty_expected` (yuborish paytidagi hisob).
-- `estimates`: `object_id`, `version int`, `title`, `estimate_date date`, `source_file_name`, `is_current boolean`; unique (`object_id`,`version`) va obyektda bitta `is_current` — ikkalasi o'chirilmaganlar orasida. `estimate_items`: `estimate_id`, `item_type` (`ish`/`material`), `name`, `material_id` (nullable), `unit`, `qty`, `unit_price`, `norm_qty_base` (nullable), `sort_order int`.
+- `estimates`: `object_id`, `version int`, `title`, `estimate_date date`, `source_file_name`, `is_current boolean`; unique (`object_id`,`version`) va obyektda bitta `is_current` — ikkalasi o'chirilmaganlar orasida. `estimate_items`: `estimate_id`, `item_type` (`ish`/`material`), `name`, `material_id` (nullable), `unit`, `qty`, `unit_price`, `norm_qty_base` (nullable), `sort_order int`; Batch 7: `unit_id`, `code`, `row_number` — pastda "Smeta importi".
 - `material_requests`: `object_id`, `material_id`, `unit_id`, `qty_input`, `unit_input`, `unit_variant`, `qty_base`, `status request_status` (`kutilmoqda`,`tasdiqlandi`,`rad`,`xarid_qilindi`), `needed_by date`, `decided_by`, `decided_at`, `note`.
 - `transfers`: `from_object_id`, `to_object_id` (`check from <> to`), `material_id`, `unit_id`, `qty_input`, `unit_input`, `unit_variant`, `qty_base`, `status` (`yuborildi`/`qabul_qilindi`/`bekor`).
 - `alerts`: `type alert_type` (`xarid_qabul_farqi`, `ozi_qabul_qilgan`, `narx_ogishi`, `normadan_oshish`, `inventarizatsiya_kamomadi`, `smetadan_ortiq_sorov`), `status alert_status` (`yangi`,`korildi`,`yopildi`), `severity` (`belgi`,`ogohlantirish`,`jiddiy`), `object_id`, `material_id`, `purchase_id`, `movement_id`, `request_id`, `inventory_count_id` (5-qoida uchun), `details jsonb`, `closed_by`, `closed_at`.
@@ -164,7 +167,7 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | 5 | Materiali o'chirilgan **mavjud** operatsiya qatori "muzlatiladi": faqat `note`, `photo_path`, `receipt_photo_path` (va trigger hisoblaydigan `qty_base`, `unit_input`, `unit_variant`, `unit_price`, `price_per_base`, `qty_expected`) o'zgaradi. `deleted_at`, `qty_input`, `unit_id`, `type`, `object_id`, bog'lanishlar, status — rad (qoldiq "tirilmasin"). Material tiklansa — yana tahrirlanadi | `b_check_material` | P0001 `catalog_material_deleted` |
 | 5 | Nofaol material: yangi `purchases`, `transfers`, `material_requests`, `movements` (`kirim`/`chiqim`). Ruxsat: `transfer_in/out`, `inventory_adjust`, `inventory_count_items`, `estimate_items` | `b_check_material` | P0001 `catalog_material_inactive` |
 | 6 | Material soft delete → uning faol alias'lari ham soft delete, `deleted_at` **aynan materialniki**. Tiklashda faqat shu `deleted_at` li alias'lar tiklanadi (oldin qo'lda o'chirilganlari emas); to'qnashsa — `catalog_alias_duplicate` / `catalog_name_alias_conflict` va butun tiklash bekor | `c_aliases_cascade` (after) | — |
-| 7 | `deleted_at`: null → qiymat bo'lganda **server vaqti** `now()` (klient yuborgani e'tiborga olinmaydi); bir marta qo'yilgan qiymat o'zgarmaydi (faqat null ga — tiklash). Barcha 18 jadval | `a_before_update` | — |
+| 7 | `deleted_at`: null → qiymat bo'lganda **server vaqti** `now()` (klient yuborgani e'tiborga olinmaydi); bir marta qo'yilgan qiymat o'zgarmaydi (faqat null ga — tiklash). Barcha biznes jadvallar (Batch 7 dan 19 ta) | `a_before_update` | — |
 
 - **"O'chirilganlari ham" (1–2) — ataylab qattiqroq.** `b_compute_qty` UPDATE'da (tiklashda ham) `qty_base` ni joriy `factor` bilan qayta hisoblaydi; factor faqat o'chirilgan yozuv bo'lgani uchun o'zgarsa, tiklashda tarixiy `qty_base` jimgina o'zgarardi. Shu sabab `b_compute_qty` ning qayta hisoblashi xavfsiz qoldirildi: ishlatilgan birlikning factor'i o'zgarmas.
 - **Bitta tranzaksiyada** alias qo'lda o'chirilib, keyin material o'chirilsa — ikkalasining `deleted_at` i bir xil (`now()` — tranzaksiya boshi), material tiklanganda bu alias ham tiklanadi. Qabul qilingan cheklov.
@@ -188,7 +191,7 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 
 - `lower()` (va `norm_name`) kirill harflarini bazaning locale/collation'iga qarab kichraytiradi. PGlite'da `Ц→ц` ishlaydi; **prod Supabase'da birinchi deploy'da tekshiring:** `select private.norm_name('ЦЕМЕНТ Ё') = 'цемент е'` → `true` bo'lishi kerak. `false` bo'lsa — nom/alias unique va to'qnashuv tekshiruvlari kirillda katta-kichik harfni farqlaydi.
 
-### Xato kalitlari (`hint`) — Batch 1–5 to'liq ro'yxati
+### Xato kalitlari (`hint`) — Batch 1–7 to'liq ro'yxati
 
 | `hint` | `errcode` | Qayerda | Ma'nosi |
 |---|---|---|---|
@@ -232,6 +235,18 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `cash_amount_locked` | P0001 | `b_cash_advances_guard` (Batch 5) | Podotchet summasi / oluvchisi o'zgarmaydi |
 | `cash_recipient_role` | P0001 | `b_cash_advances_guard` (Batch 5) | Oluvchi xarid kiritadigan faol xodim emas |
 | `purchase_has_receipts` | P0001 | `b_purchases_guard` (Batch 5) | Bog'langan kirimi bor xaridni o'chirish / obyekt-materialini o'zgartirish |
+| `estimate_import_forbidden` | 42501 | `import_estimate`, `set_current_estimate` (Batch 7) | Rol admin / buxgalter / super_admin emas |
+| `estimate_invalid` | 22023 | `import_estimate` (Batch 7) | `p_id`/`p_object_id` yo'q, nom bo'sh yoki > 200, fayl nomi > 255, `p_items` massiv emas yoki bo'sh |
+| `estimate_object_not_found` | P0002 | `import_estimate` (Batch 7) | Obyekt yo'q, o'chirilgan yoki boshqa firmaniki (RLS) |
+| `estimate_id_conflict` | 23505 | `import_estimate` (Batch 7) | Shu `p_id` li smeta boshqa obyektga tegishli |
+| `estimate_too_many_rows` | 22023 | `import_estimate` (Batch 7) | Qatorlar > 5000 |
+| `estimate_item_invalid` | 22023 / 23514 | `import_estimate` (22023, `message`: `Qator <Excel qator raqami>: <sabab>`, `detail`: raqam) · `b_compute_norm` (23514) | Smeta qatori noto'g'ri |
+| `estimate_not_found` | P0002 | `set_current_estimate` (Batch 7) | Smeta yo'q, o'chirilgan yoki boshqa firmaniki |
+| `estimate_id_reused` | 23505 | `import_estimate` (Batch 7) | Shu `p_id` boshqa mazmun (hash) bilan ishlatilgan |
+| `estimate_direct_edit` | 42501 | `b_estimates_guard`, `b_compute_norm`, `estimate_alert` (Batch 7) | Smeta/qatorni RPC'siz yaratish yoki tahrirlash; obyekt/versiya o'zgarmaydi; begona firma qatori |
+| `estimate_restore_conflict` | 23505 | `b_estimates_guard` (Batch 7) | O'chirilgan joriy versiyani tiklash — obyektda boshqa joriy versiya bor |
+
+`b_compute_norm` (smeta qatori) birlik xatolarida `ops_unit_not_found` / `ops_unit_material_mismatch` (23503) ni qayta ishlatadi.
 
 Hint'siz qolganlar (foydalanuvchi ko'rmaydi): RLS rad etishi (42501, PostgreSQL xabari), CHECK/FK/unique cheklovlar (23514/23503/23505 — zaxira), `private.log_auth_event` (faqat service_role, Edge Function ichki xatosi), birinchi migratsiyadagi BYPASSRLS tekshiruvi.
 
@@ -394,6 +409,58 @@ Shartnoma va oqim: `docs/bot-design.md`. Bu yerda — baza tomoni.
 
 - `terron-dispatch` — `* * * * *` → `select private.wake_dispatch_if_due()`.
 - `terron-daily-report` — `0 15 * * *` (20:00 Toshkent) → `select private.enqueue_daily_reports()`.
+
+## Smeta importi (Batch 7 — `20261031000001_estimates.sql`)
+
+Shartnoma va oqim: `docs/estimate-design.md`. Bu yerda — baza tomoni.
+
+### `estimate_items` — yangi ustunlar va trigger
+
+- `unit_id uuid` (nullable; FK `(company_id, unit_id) → material_units (company_id, id)`), `code text` (≤ 100), `row_number integer` (> 0, Excel'dagi qator).
+- `estimate_items_kind_check`: `ish` → `material_id`, `unit_id`, `norm_qty_base` null; `material` → uchalasi majburiy. Eski qatorlar uchun `NOT VALID` qo'shilib, buzuvchi qator bo'lmasa migratsiyada `VALIDATE` qilinadi (aks holda warning, faqat yangi/o'zgargan qatorlarda tekshiriladi).
+- Trigger `b_compute_norm` (before insert or update, security definer; `b_check_material` dan keyin): `ish` — material/birlik bo'lsa `23514 estimate_item_invalid`, `norm_qty_base := null`. `material` — `materials` → `material_units` `for share` (Batch 1 `b_compute_qty` uslubi), birlik o'chirilmagan (UPDATE'da o'zgarmagan eski birlik — ruxsat) va shu materialniki (`ops_unit_not_found` / `ops_unit_material_mismatch`, 23503); `norm_qty_base := round(qty * factor, 6)` — **klient qiymati e'tiborsiz**, har UPDATE'da qayta hisoblanadi. `unit_id` berilmasa (to'g'ridan-to'g'ri INSERT qulayligi): `unit` matni norm_name bo'yicha variantsiz birlik, matn bo'lmasa — asosiy birlik. `unit` bo'sh bo'lsa — birlik nomi yoziladi (aks holda smetadagi asl matn qoladi).
+- `private.unit_is_referenced` endi `estimate_items.unit_id` ni ham hisoblaydi → smetada ishlatilgan birlikning `factor`i o'zgarmaydi (`catalog_unit_in_use`), `norm_qty_base` barqaror.
+- `qty > 0` faqat RPC'da tekshiriladi (jadvalda Batch 1 dagi `qty >= 0` qoldi).
+- Indekslar: `estimate_items (company_id, unit_id)` (yangi), `estimates (company_id, object_id, is_current)` (yangi); `estimate_items (company_id, estimate_id, sort_order)` va `(company_id, material_id)` — Batch 1 dan.
+
+### `estimate_import_templates`
+
+- Ustunlar: `name` (≤ 120), `header_signature` (≤ 4000), `mapping jsonb` (obyekt), `sheet_name` (≤ 120), `header_row int default 0` (≥ 0, 0 dan boshlanadi), `last_used_at` + standart ustunlar. Unique `(company_id, header_signature) where deleted_at is null` (`estimate_import_templates_signature_key`).
+- RLS: ko'rish — firma a'zolari (o'chirilganlarni: super_admin, admin, direktor, buxgalter); qo'shish/o'zgartirish — super_admin, admin, buxgalter. DELETE yo'q. Triggerlar: `a_block_delete`, `a_block_truncate`, `a_before_insert`, `a_before_update`, `z_audit`.
+- Upsert: unique indeks qisman (`where deleted_at is null`) — PostgREST `on_conflict` bilan ishlamaydi. Repo avval imzo bo'yicha qidiradi, keyin `update` yoki `insert` (poygada 23505 → qayta o'qish).
+
+### RPC
+
+- `public.import_estimate(p_id uuid, p_object_id uuid, p_title text, p_source_file_name text, p_estimate_date date, p_items jsonb) returns uuid` — `security invoker`, `search_path = ''`, execute — `authenticated`. Tartib: `auth_required` → rol (`estimate_import_forbidden`) → `p_id`/`p_object_id` → obyekt (RLS orqali; `estimate_object_not_found`) → `pg_advisory_xact_lock('terron.estimate_version:' || object_id)` → **idempotentlik** (shu `p_id` bor bo'lsa — o'sha id; boshqa obyektda bo'lsa `estimate_id_conflict`) → nom/fayl nomi/`p_items` → ≤ 5000 → har qator tekshiruvi (birinchi xato qator, `estimate_item_invalid`) → `version = coalesce(max(version), 0) + 1` (shu obyektdagi barcha, o'chirilganlari ham) → eski `is_current = false` → yangi smeta `is_current = true` → qatorlar (`material_id` tartibida — qulf tartibi). Hammasi bitta statement/tranzaksiya: xato bo'lsa hech narsa yozilmaydi.
+- `p_items[]`: `{item_type, name, material_id, unit, unit_id, qty, unit_price, code, row_number, sort_order}`. Raqamlar — JSON son yoki satr (`"12.5"`, nuqta bilan; vergul yo'q). Tekshiruv: obyekt; `item_type ∈ {ish, material}`; `name` bo'sh emas (trim, ≤ 1000); `0 < qty < 1e14`; `unit_price` null yoki `0 ≤ narx < 1e16`; `unit` ≤ 50; `code` ≤ 100; `row_number` butun ≥ 1 yoki null; `sort_order` butun yoki null (null → massivdagi tartib 1..n); `ish` — `material_id`, `unit_id` yo'q; `material` — `material_id` (shu firma, o'chirilmagan; nofaol — ruxsat), `unit_id` (o'chirilmagan, shu materialniki). `norm_qty_base` yuborilsa e'tiborsiz.
+- `public.set_current_estimate(p_estimate_id uuid) returns void` — invoker, super_admin/admin/buxgalter; o'chirilmagan, ko'rinadigan smeta (`estimate_not_found`); obyekt qulfi, boshqa versiyalar `is_current = false`, bu — `true`. Takror chaqiruv — o'zgarishsiz.
+- Qo'shimcha tekshiruvlar: `round(qty, 6) > 0`; material qatorida `round(qty * factor, 6) < 1e14`; `unit_price < 1e16`; `estimate_date` null yoki `2000-01-01 .. bugun (Toshkent) + 1 yil` (aks holda `estimate_invalid`).
+- **Idempotentlik (`import_hash`):** `estimates.import_hash text` (64 hex) = `sha256(jsonb_build_object('object_id', p_object_id, 'title', p_title, 'items', p_items)::text)` (`extensions.digest`; jsonb matni kanonik — kalitlar tartiblangan). Shu `p_id` + shu hash → mavjud id; boshqa hash → `23505 estimate_id_reused`; boshqa obyekt → `estimate_id_conflict`.
+
+### Smetani faqat RPC orqali o'zgartirish
+
+- Ikkala RPC ichida `set_config('terron.estimate_rpc', 'on', true)` (oxirida `'off'`); tekshiruv — `private.estimate_rpc_active()`. PostgREST ixtiyoriy SQL'ni va `pg_catalog.set_config` ni ochmaydi — klient bu GUC ni o'rnata olmaydi. `auth.uid()` yo'q (service_role, cron, migratsiya) — tizim, cheklovsiz (o'zgarmas ustunlardan tashqari).
+- `estimates` — `b_estimates_guard`: `object_id`, `version`, `import_hash` hech kim uchun o'zgarmaydi (`company_id` — `a_before_update`). Foydalanuvchi RPC'siz: INSERT yo'q; `is_current` ni o'zgartira olmaydi (istisno: tiklash bilan birga `is_current = false`). Ruxsat: `title`, `estimate_date`, `source_file_name`, soft delete (tiklash — admin). O'chirilgan `is_current` versiyani tiklash, obyektda boshqa joriy versiya bo'lsa — `23505 estimate_restore_conflict` (yechim: `deleted_at = null, is_current = false`). Eslatma: RPC'lar eski joriylikni o'chirilgan qatorlardan ham olib tashlaydi, shuning uchun to'qnashuv amalda faqat tizim yozuvlarida chiqadi.
+- `estimate_items` — `b_compute_norm` boshida: foydalanuvchi va super_admin emas, `company_id ≠ my_company_id()` → rad (RLS'dan oldin, RPC ichida ham); RPC'siz INSERT yo'q; RPC'siz UPDATE'da faqat `deleted_at` (va `updated_at`) o'zgaradi. Hammasi `42501 estimate_direct_edit`.
+- Natija (rol matritsasi): `estimates`, `estimate_items` ga to'g'ridan-to'g'ri INSERT — hech kimga (faqat RPC); UPDATE (soft delete) — admin, buxgalter.
+
+### `smeta_ozgarishi` alertlari
+
+- `alert_type` ga `smeta_ozgarishi` (faqat plpgsql ichida ishlatiladi). Firma sozlamasi `companies.estimate_increase_pct numeric(6,2) default 10` (≥ 0).
+- `private.estimate_alert(kind, estimate_id, prev_id)` — security definer; `norm_increase` va `old_version_restored` faqat RPC ichida (GUC; aks holda `estimate_direct_edit`). Execute — `authenticated` (invoker RPC chaqiradi).
+- `norm_increase` (`import_estimate`, avvalgi o'chirilmagan joriy versiya bo'lsa): material bo'yicha `before = Σ norm_qty_base` (avvalgi), `after` (yangi), o'chirilmagan qatorlar. Belgilanadi: `before = 0` (yangi material) yoki `after > before × (1 + pct/100)` (10% → 10% aynan — yo'q, 11% — bor). `consumed` — shu obyekt va materialdagi o'chirilmagan `chiqim` `qty_base` yig'indisi; `exceeded_before = consumed > before`. Har versiya uchun bitta alert, `severity` — biror material `exceeded_before` bo'lsa `jiddiy`, aks holda `ogohlantirish`. Tartib: `exceeded_before` desc, `diff_pct` desc (yangi material — birinchi), oshish hajmi desc; 20 tagacha, qolgani — `more_count`.
+- `old_version_restored` (`set_current_estimate`): yangi joriy versiya raqami avvalgi joriydan kichik bo'lsa, `ogohlantirish`.
+- `current_deleted` — trigger `zz_estimate_alerts` (after update): joriy versiya soft delete qilinsa, `ogohlantirish`.
+- `details` shakli:
+  - `{kind: 'norm_increase', estimate_id, version, prev_version, materials: [{material_id, material_name, base_unit, before, after, diff_pct (2 xona; yangi materialda null), consumed, exceeded_before}], more_count, actor_name}`
+  - `{kind: 'old_version_restored', estimate_id, version, prev_version, actor_name}`
+  - `{kind: 'current_deleted', estimate_id, version, actor_name}`
+  - `object_id` — alert ustunida, `material_id` — null.
+- Telegram: Batch 6 `zz_notify` (`severity <> 'belgi' and type <> 'ozi_qabul_qilgan'`) bu turni o'zgartirishsiz qamraydi — outbox payload `object_name` bilan, `material_name = null`. Bot matn shabloni (Edge Function) `smeta_ozgarishi` uchun qo'shilishi kerak.
+
+### `public.estimate_totals` (view, `security_invoker = true`)
+
+- `estimate_id, company_id, object_id, row_count, material_count, total_sum` (`Σ round(qty * unit_price, 2)`, narxsiz qator — 0), faqat o'chirilmagan qatorlar. Grant: `authenticated`, `service_role` — `select`.
 
 ## Qoldiq
 

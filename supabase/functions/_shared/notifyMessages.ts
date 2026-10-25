@@ -59,6 +59,10 @@ export const NOTIFY_TEXTS = {
     normadan_oshish: 'Normadan oshish',
     inventarizatsiya_kamomadi: 'Inventarizatsiya kamomadi',
     smetadan_ortiq_sorov: "Smetadan ortiq so'rov",
+    smeta_ozgarishi: "Smeta o'zgarishi",
+    smeta_norm_increase: 'Smeta normasi oshirildi',
+    smeta_old_version_restored: 'Smetaning eski versiyasi joriy qilindi',
+    smeta_current_deleted: "Joriy smeta o'chirildi",
   },
   deletedTitles: {
     purchases: "Xarid o'chirildi",
@@ -77,6 +81,7 @@ export const NOTIFY_TEXTS = {
     normadan_oshish: 'norma',
     inventarizatsiya_kamomadi: 'kamomad',
     smetadan_ortiq_sorov: 'smetadan ortiq',
+    smeta_ozgarishi: 'smeta',
   } as Record<string, string>,
   receipt: {
     purchased: 'Xarid: ',
@@ -95,6 +100,15 @@ export const NOTIFY_TEXTS = {
     avgPrice: "O'rtacha narx: ",
     avg: "o'rtacha ",
     avg90: "90 kunlik o'rtacha: ",
+  },
+  estimate: {
+    /** "v3" */
+    version: (v: string) => `v${v}`,
+    /** "⚠️ chiqim eski normadan oshgan (1 100 kg)" */
+    exceededBefore: (consumed: string | null) =>
+      `⚠️ chiqim eski normadan oshgan${consumed ? ` (${consumed})` : ''}`,
+    /** "… va yana 3 ta" */
+    more: (n: string) => `… va yana ${n} ta`,
   },
   deleted: {
     object: 'Obyekt: ',
@@ -293,8 +307,13 @@ function safeDetails(p: AlertPayload): Record<string, unknown> {
 // Ogohlantirish xabari
 // ---------------------------------------------------------------------------
 
-function alertEmoji(type: string, severity: string): string {
+function alertEmoji(type: string, severity: string, details: Record<string, unknown> = {}): string {
   if (type === 'yozuv_ochirildi') return '🗑'
+  if (type === 'smeta_ozgarishi') {
+    if (details.kind === 'old_version_restored') return '↩️'
+    if (details.kind === 'current_deleted') return '🗑'
+    return severity === 'jiddiy' ? '🔴' : '📈'
+  }
   if (type === 'ozi_qabul_qilgan') return '🔖'
   if (severity === 'jiddiy') return '🔴'
   return '⚠️'
@@ -390,6 +409,63 @@ function deletedLines(p: AlertPayload): { main: string; extra: string[] } {
   return { main: parts.filter((x) => x).join(' · '), extra }
 }
 
+/** "Obyekt A · v2 → v3 (Ali)" — smeta o'zgarishi konteksti. */
+function estimateContext(p: AlertPayload): string {
+  const d = p.details
+  const t = NOTIFY_TEXTS.estimate
+  const v = formatDecimal(d.version, 0)
+  const prev = formatDecimal(d.prev_version, 0)
+  let versions = ''
+  if (d.kind === 'current_deleted') versions = v ? t.version(v) : ''
+  else if (prev && v) versions = `${t.version(prev)} → ${t.version(v)}`
+  else if (v) versions = t.version(v)
+  const main = [nameHtml(p.object_name), versions || null].filter((x) => x).join(' · ')
+  const actor = nameHtml(d.actor_name)
+  return actor ? (main ? `${main} (${actor})` : `(${actor})`) : main
+}
+
+/** "• Sement: 1 000 → 1 250 kg (+25 %) ⚠️ chiqim eski normadan oshgan (1 100 kg)" */
+function estimateMaterialLines(p: AlertPayload): string[] {
+  const raw = p.details.materials
+  if (!Array.isArray(raw)) return []
+  const items = raw.filter((m): m is Record<string, unknown> => !!m && typeof m === 'object')
+  // exceeded_before = true — birinchi (barqaror tartib)
+  const sorted = [...items.filter((m) => m.exceeded_before === true), ...items.filter((m) => m.exceeded_before !== true)]
+  return sorted.map((m) => {
+    const unit = nameHtml(m.base_unit) ?? nameHtml(p.base_unit)
+    const before = formatDecimal(m.before, 3)
+    const after = formatDecimal(m.after, 3)
+    const name = nameHtml(m.material_name) ?? '?'
+    let qty = before !== null && after !== null ? `${before} → ${after}` : (after ?? before ?? '')
+    if (qty && unit) qty += ` ${unit}`
+    const pct = percentText(m.diff_pct)
+    let line = `• ${name}${qty ? `: ${qty}` : ''}${pct ? ` (${pct})` : ''}`
+    if (m.exceeded_before === true) {
+      const consumed = formatDecimal(m.consumed, 3)
+      line += ' ' + NOTIFY_TEXTS.estimate.exceededBefore(consumed === null ? null : unit ? `${consumed} ${unit}` : consumed)
+    }
+    return line
+  })
+}
+
+/** Smeta o'zgarishi xabari — materiallar ro'yxati 4096 ga sig'maguncha qisqartiriladi. */
+function formatEstimateMessage(p: AlertPayload, head: string, when: string | null): string {
+  const t = NOTIFY_TEXTS.estimate
+  const ctx = estimateContext(p)
+  const materials = p.details.kind === 'norm_increase' ? estimateMaterialLines(p) : []
+  const mc = formatDecimal(p.details.more_count, 0)
+  const baseMore = mc !== null && !mc.startsWith('-') ? Number(mc.replace(/ /g, '')) : 0
+  const build = (kept: string[], more: number) =>
+    [head, ctx, ...kept, more > 0 ? t.more(count(more)) : '', when ?? ''].filter((l) => l !== '').join('\n')
+  const kept = [...materials]
+  let text = build(kept, baseMore)
+  while (text.length > TELEGRAM_MAX_LENGTH && kept.length > 0) {
+    kept.pop()
+    text = build(kept, baseMore + materials.length - kept.length)
+  }
+  return text.length <= TELEGRAM_MAX_LENGTH ? text : fitLines([head, ctx, when ?? ''])
+}
+
 /** Tur sarlavhasi (escape kerak emas — bizning matnimiz). */
 function alertTitle(type: string, details: Record<string, unknown>): string {
   const titles = NOTIFY_TEXTS.alertTitles
@@ -412,6 +488,14 @@ function alertTitle(type: string, details: Record<string, unknown>): string {
       return titles.inventarizatsiya_kamomadi
     case 'smetadan_ortiq_sorov':
       return titles.smetadan_ortiq_sorov
+    case 'smeta_ozgarishi':
+      return details.kind === 'norm_increase'
+        ? titles.smeta_norm_increase
+        : details.kind === 'old_version_restored'
+          ? titles.smeta_old_version_restored
+          : details.kind === 'current_deleted'
+            ? titles.smeta_current_deleted
+            : titles.smeta_ozgarishi
     default:
       return NOTIFY_TEXTS.genericAlert
   }
@@ -423,6 +507,9 @@ export function formatAlertMessage(p: AlertPayload): string {
   const payload: AlertPayload = { ...p, details }
   const lines: string[] = []
   const ctx = contextLine(payload)
+  const head = `${alertEmoji(payload.type, payload.severity, details)} <b>${alertTitle(payload.type, details)}</b>`
+  const when = formatDateTimeTashkent(payload.created_at)
+  if (payload.type === 'smeta_ozgarishi') return formatEstimateMessage(payload, head, when)
 
   switch (payload.type) {
     case 'xarid_qabul_farqi':
@@ -443,8 +530,6 @@ export function formatAlertMessage(p: AlertPayload): string {
       lines.push(ctx)
   }
 
-  const head = `${alertEmoji(payload.type, payload.severity)} <b>${alertTitle(payload.type, details)}</b>`
-  const when = formatDateTimeTashkent(payload.created_at)
   return fitLines([head, ...lines, when ?? ''])
 }
 
@@ -459,6 +544,7 @@ const ALERT_TYPE_ORDER = [
   'normadan_oshish',
   'inventarizatsiya_kamomadi',
   'smetadan_ortiq_sorov',
+  'smeta_ozgarishi',
   'ozi_qabul_qilgan',
 ]
 
@@ -501,8 +587,10 @@ export function formatAlertDigest(payloads: AlertPayload[]): string {
         ? [nameHtml(details.material_name) ?? nameHtml(p.material_name), nameHtml(p.object_name)]
             .filter((x) => x)
             .join(' · ')
-        : contextLine(p)
-    const head = `${alertEmoji(p.type, p.severity)} ${alertTitle(p.type, details)}`
+        : p.type === 'smeta_ozgarishi'
+          ? estimateContext({ ...p, details })
+          : contextLine(p)
+    const head = `${alertEmoji(p.type, p.severity, details)} ${alertTitle(p.type, details)}`
     return ctx ? `${head}: ${ctx}` : head
   })
   const rest = payloads.length - shown.length

@@ -179,8 +179,10 @@ describe('kompozit FK: A yozuvi B materiali/obyekti/profiliga bog`lanmaydi (2350
     [
       'estimate_items → B smeta',
       () => ({
+        // Batch 7: qatorlar faqat RPC ichida (GUC) yoziladi — RPC holati taqlid qilinadi
         sql: `insert into public.estimate_items (company_id, estimate_id, item_type, name, created_by)
-              values ($1, $2, 'ish', 'x', $3)`,
+              select $1::uuid, $2::uuid, 'ish', 'x', $3::uuid
+                from (select set_config('terron.estimate_rpc', 'on', true)) g`,
         params: [F.A.id, F.B.ids.est_obj1, F.A.users.admin.profileId],
       }),
     ],

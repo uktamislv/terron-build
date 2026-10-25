@@ -178,6 +178,7 @@ export type AlertType =
   | 'inventarizatsiya_kamomadi'
   | 'smetadan_ortiq_sorov'
   | 'yozuv_ochirildi'
+  | 'smeta_ozgarishi'
 
 export const ALERT_TYPES: readonly AlertType[] = [
   'xarid_qabul_farqi',
@@ -187,6 +188,7 @@ export const ALERT_TYPES: readonly AlertType[] = [
   'inventarizatsiya_kamomadi',
   'smetadan_ortiq_sorov',
   'yozuv_ochirildi',
+  'smeta_ozgarishi',
 ]
 
 export type AlertStatus = 'yangi' | 'korildi' | 'yopildi'
@@ -291,4 +293,65 @@ export interface Alert {
   object_name: string | null
   material_name: string | null
   base_unit: string | null
+}
+
+/** `estimate_items.item_type` — bazadagi `estimate_item_type` enum. */
+export type EstimateItemType = 'ish' | 'material'
+
+/** Smeta versiyasi — qatorlar soni va jami summa bilan (klientda `Dec` bilan yig'iladi). */
+export interface Estimate {
+  id: string
+  company_id: string
+  object_id: string
+  version: number
+  title: string
+  /** `yyyy-mm-dd` yoki null. */
+  estimate_date: string | null
+  source_file_name: string | null
+  is_current: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  /** `estimate_totals` view: qatorlar va material qatorlari soni, jami summa (so'm). */
+  item_count: number
+  material_count: number
+  total_sum: Dec
+}
+
+/** Smeta qatori — material nomi va asosiy birligi bilan. Miqdor va narx — satr. */
+export interface EstimateItem {
+  id: string
+  estimate_id: string
+  item_type: EstimateItemType
+  /** Smetadagi asl nom. */
+  name: string
+  material_id: string | null
+  /** Smetadagi birlik matni. */
+  unit: string | null
+  unit_id: string | null
+  qty: Dec
+  unit_price: Dec | null
+  /** Asosiy birlikda (material bo'lsa) — bazada hisoblanadi. */
+  norm_qty_base: Dec | null
+  sort_order: number
+  code: string | null
+  row_number: number | null
+  material_name: string | null
+  base_unit: string | null
+}
+
+/** `estimate_import_templates` — firma uchun eslab qolingan ustun moslash shabloni. */
+export interface EstimateImportTemplate {
+  id: string
+  company_id: string
+  name: string
+  header_signature: string
+  /** Maydon → ustun indeksi (0 dan). */
+  mapping: Record<string, number>
+  sheet_name: string | null
+  /** Sarlavha qatori indeksi (0 dan). */
+  header_row: number | null
+  last_used_at: string | null
+  updated_at: string | null
+  created_by_name: string | null
 }

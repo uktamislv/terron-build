@@ -17,6 +17,7 @@ import { webNavItems } from '@/web/nav'
 import { AlertsPage } from '@/web/pages/AlertsPage'
 import { CashPage } from '@/web/pages/CashPage'
 import { DashboardPage } from '@/web/pages/DashboardPage'
+import { EstimatesRoute } from '@/web/pages/EstimatesRoute'
 import { LoginPage } from '@/web/pages/LoginPage'
 import { MaterialsPage } from '@/web/pages/MaterialsPage'
 import { MovementsPage } from '@/web/pages/MovementsPage'
@@ -30,6 +31,7 @@ const webPages: Partial<Record<WebNavKey, ReactNode>> = {
   movements: <MovementsPage />,
   purchases: <PurchasesPage />,
   cash: <CashPage />,
+  estimates: <EstimatesRoute />,
   alerts: <AlertsPage />,
   users: <UsersPage />,
   objects: <ObjectsPage />,

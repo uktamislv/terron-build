@@ -79,6 +79,16 @@ export const SERVER_HINTS = {
   purchase_not_open: { showServerMessage: false },
   cash_amount_locked: { showServerMessage: false },
   cash_recipient_role: { showServerMessage: false },
+  estimate_import_forbidden: { showServerMessage: false },
+  estimate_invalid: { showServerMessage: false },
+  estimate_object_not_found: { showServerMessage: false },
+  estimate_id_conflict: { showServerMessage: false },
+  estimate_not_found: { showServerMessage: false },
+  estimate_direct_edit: { showServerMessage: false },
+  estimate_id_reused: { showServerMessage: false },
+  estimate_restore_conflict: { showServerMessage: false },
+  estimate_too_many_rows: { showServerMessage: false },
+  estimate_item_invalid: { showServerMessage: true },
 } as const satisfies Record<string, { showServerMessage: boolean }>
 
 export type ServerHintCode = keyof typeof SERVER_HINTS

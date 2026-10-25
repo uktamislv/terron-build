@@ -51,6 +51,7 @@ const LABELS: Partial<Record<BusinessTable, string[]>> = {
   inventory_count_items: ['ici_obj1', 'ici_obj2'],
   estimates: ['est_obj1', 'est_obj2'],
   estimate_items: ['ei_obj1', 'ei_obj2'],
+  estimate_import_templates: ['tpl1'],
   material_requests: ['mr_obj1', 'mr_obj2'],
   movements: ['mv_obj1', 'mv_obj2'],
   alerts: ['alert1'],
@@ -99,6 +100,8 @@ const VISIBILITY: Partial<Record<BusinessTable, VisRule>> = {
   }),
   estimates: byRole('estimates', { prorab: ['est_obj1'], omborchi: [], haydovchi: [] }),
   estimate_items: byRole('estimate_items', { prorab: ['ei_obj1'], omborchi: [], haydovchi: [] }),
+  // Batch 7: shablonlarni firma a'zolari ko'radi
+  estimate_import_templates: () => all('estimate_import_templates'),
   material_requests: byRole('material_requests', { prorab: ['mr_obj1'], omborchi: [], haydovchi: [] }),
   alerts: byRole('alerts', NOTHING_FOR(['taminotchi', 'tekshiruvchi', 'prorab', 'omborchi', 'haydovchi'])),
 }
@@ -170,8 +173,10 @@ const CAN_INSERT: Record<BusinessTable, UserRole[]> = {
   inventory_counts: [...ADMINS, 'tekshiruvchi'],
   // ic_obj1 — tekshiruvchi yaratgan, draft
   inventory_count_items: [...ADMINS, 'tekshiruvchi'],
-  estimates: [...ADMINS, 'buxgalter'],
-  estimate_items: [...ADMINS, 'buxgalter'],
+  // Batch 7: smeta va qatorlar faqat RPC (import_estimate) orqali — to'g'ridan-to'g'ri INSERT hech kimga
+  estimates: [],
+  estimate_items: [],
+  estimate_import_templates: [...ADMINS, 'buxgalter'],
   material_requests: [...ADMINS, 'prorab'],
   transfers: [...ADMINS, 'prorab'],
   alerts: [],
@@ -194,6 +199,7 @@ const CAN_UPDATE: Record<BusinessTable, UserRole[]> = {
   inventory_count_items: [...ADMINS, 'tekshiruvchi'],
   estimates: [...ADMINS, 'buxgalter'],
   estimate_items: [...ADMINS, 'buxgalter'],
+  estimate_import_templates: [...ADMINS, 'buxgalter'],
   material_requests: [...ADMINS, 'taminotchi'],
   transfers: ADMINS,
   alerts: ADMINS,

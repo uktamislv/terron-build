@@ -46,6 +46,7 @@ export const BUSINESS_TABLES = [
   'inventory_count_items',
   'estimates',
   'estimate_items',
+  'estimate_import_templates',
   'material_requests',
   'movements',
   'alerts',
@@ -61,7 +62,7 @@ export const SYSTEM_TABLES = ['notification_outbox'] as const
 export type SystemTable = (typeof SYSTEM_TABLES)[number]
 
 /** Biznes jadvallari + audit_log + stock_balances view. */
-export const ALL_RELATIONS = [...BUSINESS_TABLES, 'audit_log', 'stock_balances'] as const
+export const ALL_RELATIONS = [...BUSINESS_TABLES, 'audit_log', 'stock_balances', 'estimate_totals'] as const
 export type Relation = (typeof ALL_RELATIONS)[number]
 
 /** Jadvaldagi firma ustuni (`companies` da — `id`). */
@@ -192,6 +193,13 @@ export async function buildCompany(db: Db, name: string): Promise<CompanyFixture
     })
   ids.ei_obj1 = await estItem(ids.est_obj1)
   ids.ei_obj2 = await estItem(ids.est_obj2)
+  ids.tpl1 = await ins(db, 'estimate_import_templates', {
+    company_id: c,
+    name: `${name} shablon`,
+    header_signature: 'nomi|birlik|miqdori',
+    mapping: { name: 0, unit: 1, qty: 2 },
+    header_row: 0,
+  })
 
   const request = (obj: string): Promise<string> =>
     ins(db, 'material_requests', {
@@ -330,6 +338,12 @@ export function insertCase(table: BusinessTable, co: CompanyFixture, me: string,
               values ($1, $2, 'ish', 'Ish', 1, $3)`,
         params: [c, ids.est_obj1, me],
       }
+    case 'estimate_import_templates':
+      return {
+        sql: `insert into public.estimate_import_templates (company_id, name, header_signature, mapping, created_by)
+              values ($1, 'Shablon', $2, '{"name":0}'::jsonb, $3)`,
+        params: [c, u(), me],
+      }
     case 'material_requests':
       return {
         sql: `insert into public.material_requests (company_id, object_id, material_id, qty_input, unit_input, qty_base, created_by)
@@ -367,6 +381,7 @@ export const UPDATE_TARGET: Record<BusinessTable, string> = {
   inventory_count_items: 'ici_obj1',
   estimates: 'est_obj1',
   estimate_items: 'ei_obj1',
+  estimate_import_templates: 'tpl1',
   material_requests: 'mr_obj1',
   movements: 'mv_obj1',
   alerts: 'alert1',

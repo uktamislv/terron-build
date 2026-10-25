@@ -55,6 +55,7 @@ const EXPECTED_CAN: Record<Action, Role[]> = {
   view_alerts: ['super_admin', 'admin', 'direktor', 'buxgalter'],
   manage_alerts: ['super_admin', 'admin'],
   restore_records: ['super_admin', 'admin'],
+  manage_estimates: ['super_admin', 'admin', 'buxgalter'],
 }
 
 describe('ROLES / isRole', () => {

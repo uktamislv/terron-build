@@ -51,6 +51,9 @@ async function res(tx: Queryable, sql: string, params: unknown[] = []): Promise<
 
 const asAdmin = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => asUser(db, admin, fn)
 
+/** Batch 7: smeta qatorlari faqat RPC ichida yoziladi — testda RPC holatini taqlid qilamiz. */
+const ESTIMATE_RPC = `select set_config('terron.estimate_rpc', 'on', true)`
+
 let n = 0
 /** Yangi material (admin nomidan, tx ichida); id. */
 async function newMaterial(tx: Tx, name = `Mat ${++n}`, baseUnit = 'kg'): Promise<string> {
@@ -153,6 +156,7 @@ describe('1. asosiy birlik (materials.base_unit)', () => {
       if (kind === 'movement') {
         expect(await movement(tx, m, 'kirim', 1, true)).toBe('OK:1')
       } else if (kind === 'estimate') {
+        await tx.query(ESTIMATE_RPC)
         await tx.query(
           `insert into public.estimate_items (company_id, estimate_id, item_type, name, material_id, qty, created_by)
            values ($1, $2, 'material', 'X', $3, 1, $4)`,
@@ -454,6 +458,7 @@ describe('5. materialni o`chirish / nofaol qilish', () => {
   it('nofaol material: kirim/chiqim, xarid, o`tkazma, so`rov — taqiqlangan; inventarizatsiya, smeta — ruxsat', async () => {
     const r = await asAdmin(async (tx) => {
       await tx.query(`update public.materials set is_active = false where id = $1`, [A.ids.m1])
+      await tx.query(ESTIMATE_RPC)
       const ic = await scalar<string>(
         tx,
         `insert into public.inventory_counts (company_id, object_id, created_by) values ($1, $2, $3) returning id`,
@@ -551,6 +556,7 @@ describe('5. materialni o`chirish / nofaol qilish', () => {
     const r = await asAdmin(async (tx) => {
       const m = await newMaterial(tx)
       await tx.query(`update public.materials set deleted_at = now() where id = $1`, [m])
+      await tx.query(ESTIMATE_RPC)
       return {
         estimate: await res(
           tx,

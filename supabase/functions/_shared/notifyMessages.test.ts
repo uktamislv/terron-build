@@ -538,3 +538,113 @@ describe('formatAlertDigest', () => {
     expect(msg).toMatch(/… va yana \d+ ta$/)
   })
 })
+
+describe('formatAlertMessage — smeta_ozgarishi', () => {
+  const mat = (over: Record<string, unknown> = {}) => ({
+    material_id: 'm1',
+    material_name: 'Sement',
+    base_unit: 'kg',
+    before: '1000',
+    after: 1250,
+    diff_pct: '25.00',
+    consumed: '0',
+    exceeded_before: false,
+    ...over,
+  })
+  const base = (details: Record<string, unknown>, over: Partial<AlertPayload> = {}) =>
+    alert({ type: 'smeta_ozgarishi', material_name: null, base_unit: null, details, ...over })
+
+  it('norm_increase — exceeded birinchi va belgili, more_count', () => {
+    const msg = formatAlertMessage(
+      base({
+        kind: 'norm_increase',
+        estimate_id: 'e',
+        version: 3,
+        prev_version: '2',
+        actor_name: 'Ali',
+        more_count: 2,
+        materials: [
+          mat({ material_name: 'Qum', base_unit: 'm³', before: '10', after: '12.5', diff_pct: 25 }),
+          mat({ consumed: '1100', exceeded_before: true }),
+        ],
+      }),
+    )
+    expect(msg).toBe(
+      '📈 <b>Smeta normasi oshirildi</b>\n' +
+        'Obyekt A · v2 → v3 (Ali)\n' +
+        '• Sement: 1 000 → 1 250 kg (+25 %) ⚠️ chiqim eski normadan oshgan (1 100 kg)\n' +
+        '• Qum: 10 → 12,5 m³ (+25 %)\n' +
+        '… va yana 2 ta\n' +
+        '29.10.2026 14:32',
+    )
+  })
+
+  it('norm_increase jiddiy → 🔴', () => {
+    const msg = formatAlertMessage(
+      base({ kind: 'norm_increase', version: 3, prev_version: 2, materials: [mat()] }, { severity: 'jiddiy' }),
+    )
+    expect(msg.startsWith('🔴 <b>Smeta normasi oshirildi</b>\nObyekt A · v2 → v3\n• Sement')).toBe(true)
+  })
+
+  it('norm_increase — bo‘sh materials', () => {
+    expect(
+      formatAlertMessage(base({ kind: 'norm_increase', version: 3, prev_version: 2, actor_name: 'Ali', materials: [] })),
+    ).toBe('📈 <b>Smeta normasi oshirildi</b>\nObyekt A · v2 → v3 (Ali)\n29.10.2026 14:32')
+  })
+
+  it('old_version_restored', () => {
+    expect(
+      formatAlertMessage(base({ kind: 'old_version_restored', version: 1, prev_version: 3, actor_name: 'Ali' })),
+    ).toBe('↩️ <b>Smetaning eski versiyasi joriy qilindi</b>\nObyekt A · v3 → v1 (Ali)\n29.10.2026 14:32')
+  })
+
+  it('current_deleted', () => {
+    expect(formatAlertMessage(base({ kind: 'current_deleted', version: '3', actor_name: 'Ali' }))).toBe(
+      "🗑 <b>Joriy smeta o'chirildi</b>\nObyekt A · v3 (Ali)\n29.10.2026 14:32",
+    )
+  })
+
+  it('bo‘sh details — umumiy sarlavha', () => {
+    expect(formatAlertMessage(base({}))).toBe("📈 <b>Smeta o'zgarishi</b>\nObyekt A\n29.10.2026 14:32")
+  })
+
+  it('HTML escape', () => {
+    const msg = formatAlertMessage(
+      base(
+        {
+          kind: 'norm_increase',
+          version: 2,
+          prev_version: 1,
+          actor_name: '<b>Ali</b>',
+          materials: [mat({ material_name: 'A & <i>', base_unit: '"kg"' })],
+        },
+        { object_name: '<script>' },
+      ),
+    )
+    expect(msg).toContain('&lt;script&gt; · v1 → v2 (&lt;b&gt;Ali&lt;/b&gt;)')
+    expect(msg).toContain('• A &amp; &lt;i&gt;: 1 000 → 1 250 &quot;kg&quot;')
+    expect(msg.match(/<[^>]*>/g)).toEqual(['<b>', '</b>'])
+  })
+
+  it('4096 — materiallar qisqartiriladi, "va yana" qayta hisoblanadi', () => {
+    const long = '&'.repeat(500)
+    const materials = Array.from({ length: 60 }, (_, i) => mat({ material_name: `${long}${i}` }))
+    const msg = formatAlertMessage(
+      base({ kind: 'norm_increase', version: 2, prev_version: 1, materials, more_count: 5 }),
+    )
+    expect(msg.length).toBeLessThanOrEqual(TELEGRAM_MAX_LENGTH)
+    const shown = msg.split('\n').filter((l) => l.startsWith('• ')).length
+    expect(shown).toBeGreaterThan(0)
+    expect(msg).toContain(`… va yana ${60 - shown + 5} ta`)
+    expect(msg.endsWith('29.10.2026 14:32')).toBe(true)
+  })
+
+  it('digest — qisqa nom "smeta" va qator', () => {
+    const msg = formatAlertDigest([
+      base({ kind: 'current_deleted', version: 3, actor_name: 'Ali' }),
+      alert({ type: 'narx_ogishi' }),
+    ])
+    expect(msg).toContain('narx — 1, smeta — 1')
+    expect(msg).toContain("🗑 Joriy smeta o'chirildi: Obyekt A · v3 (Ali)")
+  })
+})

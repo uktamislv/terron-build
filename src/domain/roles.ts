@@ -114,6 +114,7 @@ export type Action =
   | 'view_alerts'
   | 'manage_alerts'
   | 'restore_records'
+  | 'manage_estimates'
 
 const ADMINS: readonly Role[] = ['super_admin', 'admin']
 
@@ -132,6 +133,7 @@ const ACTIONS: Record<Action, readonly Role[]> = {
   view_alerts: [...ADMINS, 'direktor', 'buxgalter'], // alerts select
   manage_alerts: ADMINS, // alerts update (Ko'rildi / Yopish)
   restore_records: ADMINS, // deleted_at -> null (restore_admin_only)
+  manage_estimates: [...ADMINS, 'buxgalter'], // estimates, estimate_items: import va joriy qilish
 }
 
 export function can(role: Role, action: Action): boolean {
