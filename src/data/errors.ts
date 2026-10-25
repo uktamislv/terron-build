@@ -74,6 +74,11 @@ export const SERVER_HINTS = {
   inventory_already_submitted: { showServerMessage: false },
   template_super_admin_only: { showServerMessage: false },
   template_company_not_found: { showServerMessage: false },
+  supplier_duplicate: { showServerMessage: false },
+  purchase_has_receipts: { showServerMessage: false },
+  purchase_not_open: { showServerMessage: false },
+  cash_amount_locked: { showServerMessage: false },
+  cash_recipient_role: { showServerMessage: false },
 } as const satisfies Record<string, { showServerMessage: boolean }>
 
 export type ServerHintCode = keyof typeof SERVER_HINTS
@@ -150,4 +155,15 @@ export function toRepoError(
 
 export function errorCodeOf(error: unknown): RepoErrorCode {
   return error instanceof RepoError ? error.code : 'unknown'
+}
+
+/**
+ * Shu `id` bilan qator allaqachon bor (oldingi urinish saqlangan, javob yo'qolgan): 23505, hint'siz
+ * va aynan berilgan birlamchi kalit (masalan `movements_pkey`). Hint'li 23505 (masalan
+ * `ops_photo_reused`) — oddiy xato.
+ */
+export function isPkeyConflict(error: unknown, constraint: string): boolean {
+  const e = (error ?? {}) as { code?: string; hint?: string | null; message?: string; details?: string | null }
+  if (e.code !== '23505' || e.hint) return false
+  return `${e.message ?? ''} ${e.details ?? ''}`.includes(constraint)
 }

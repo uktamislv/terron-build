@@ -150,3 +150,145 @@ export interface StockBalance {
   qty_base: Dec
   last_movement_at: string | null
 }
+
+/** `suppliers` — sotuvchilar. */
+export interface Supplier {
+  id: string
+  company_id: string
+  name: string
+  phone: string | null
+  note: string | null
+  created_at: string
+  deleted_at: string | null
+}
+
+/** `purchase_receipts` view qatori — xarid qabul holati (asosiy birlikda). */
+export interface PurchaseReceipt {
+  received_qty_base: Dec
+  remaining_qty_base: Dec
+  receipt_count: number
+  last_received_at: string | null
+}
+
+export type AlertType =
+  | 'xarid_qabul_farqi'
+  | 'ozi_qabul_qilgan'
+  | 'narx_ogishi'
+  | 'normadan_oshish'
+  | 'inventarizatsiya_kamomadi'
+  | 'smetadan_ortiq_sorov'
+  | 'yozuv_ochirildi'
+
+export const ALERT_TYPES: readonly AlertType[] = [
+  'xarid_qabul_farqi',
+  'ozi_qabul_qilgan',
+  'narx_ogishi',
+  'normadan_oshish',
+  'inventarizatsiya_kamomadi',
+  'smetadan_ortiq_sorov',
+  'yozuv_ochirildi',
+]
+
+export type AlertStatus = 'yangi' | 'korildi' | 'yopildi'
+
+export const ALERT_STATUSES: readonly AlertStatus[] = ['yangi', 'korildi', 'yopildi']
+
+export type AlertSeverity = 'belgi' | 'ogohlantirish' | 'jiddiy'
+
+export const ALERT_SEVERITIES: readonly AlertSeverity[] = ['belgi', 'ogohlantirish', 'jiddiy']
+
+/** Xarid — obyekt, material, xaridor va sotuvchi nomlari, qabul holati bilan. Pul va miqdor — satr. */
+export interface Purchase {
+  id: string
+  company_id: string
+  buyer_id: string
+  object_id: string
+  material_id: string
+  supplier_id: string | null
+  unit_id: string
+  qty_input: Dec
+  unit_input: string
+  unit_variant: string | null
+  qty_base: Dec
+  total_amount: Dec
+  unit_price: Dec
+  price_per_base: Dec
+  receipt_photo_path: string | null
+  purchased_at: string
+  note: string | null
+  created_by: string | null
+  created_at: string
+  deleted_at: string | null
+  object_name: string | null
+  material_name: string | null
+  base_unit: string | null
+  buyer_name: string | null
+  supplier_name: string | null
+  /** Qabul holati (`purchase_receipts`); so'ralmagan yoki ko'rinmasa — null. */
+  receipt: PurchaseReceipt | null
+  /** Ochiq (yopilmagan) alert turlari — faqat ko'ra oladiganlar uchun to'ldiriladi. */
+  alert_types: AlertType[]
+}
+
+/** `open_purchases` RPC qatori — kirimga bog'lash uchun to'liq qabul qilinmagan xarid. */
+export interface OpenPurchase {
+  id: string
+  purchased_at: string
+  buyer_id: string | null
+  buyer_name: string | null
+  qty_base: Dec
+  received_qty_base: Dec
+  remaining_qty_base: Dec
+  unit_input: string
+  unit_variant: string | null
+  qty_input: Dec
+}
+
+/** `cash_balances` view qatori — odamning qo'lidagi pul. */
+export interface CashBalance {
+  company_id: string
+  profile_id: string
+  issued_total: Dec
+  spent_total: Dec
+  balance: Dec
+  last_issued_at: string | null
+  last_spent_at: string | null
+}
+
+/** `cash_advances` — berilgan pul (podotchet). */
+export interface CashAdvance {
+  id: string
+  company_id: string
+  recipient_id: string
+  amount: Dec
+  issued_at: string
+  note: string | null
+  created_by: string | null
+  created_at: string
+  deleted_at: string | null
+  recipient_name: string | null
+  created_by_name: string | null
+}
+
+/** Ogohlantirish — obyekt va material nomlari bilan. `details` — qoida bo'yicha JSON. */
+export interface Alert {
+  id: string
+  company_id: string
+  type: AlertType
+  status: AlertStatus
+  severity: AlertSeverity
+  object_id: string | null
+  material_id: string | null
+  purchase_id: string | null
+  movement_id: string | null
+  details: Record<string, unknown>
+  closed_by: string | null
+  closed_at: string | null
+  /** Yopishda ixtiyoriy sabab (<= 500). */
+  close_note: string | null
+  created_at: string
+  deleted_at: string | null
+  object_name: string | null
+  material_name: string | null
+  base_unit: string | null
+}

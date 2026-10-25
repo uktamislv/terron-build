@@ -279,6 +279,8 @@ describe('3. eski yozuvni yangilash (o`chirilgan birlik bilan)', () => {
     const r = await asAdmin(async (tx) => {
       await tx.query(`update public.material_units set deleted_at = now() where id = $1`, [A.ids.u1])
       const p = A.ids.p_pro_obj1
+      // Batch 5: bog'langan kirimi bor xarid o'chirilmaydi (purchase_has_receipts) — avval kirim
+      await tx.query(`update public.movements set deleted_at = now() where id = $1`, [A.ids.mv_obj1])
       const out = {
         note: await res(tx, `update public.purchases set note = 'tuzatish' where id = $1`, [p]),
         del: await res(tx, `update public.purchases set deleted_at = now() where id = $1`, [p]),
@@ -606,9 +608,12 @@ describe('6. katalog RLS (manage_catalog = admin, super_admin)', () => {
       db,
       `select tablename, cmd, coalesce(with_check, qual) as expr from pg_policies
         where schemaname = 'public' and tablename in ('materials', 'material_units', 'material_aliases', 'suppliers')
-          and cmd in ('INSERT', 'UPDATE') order by 1, 2`,
+          and cmd in ('INSERT', 'UPDATE')
+          -- Batch 5: suppliers INSERT xarid kiritadigan rollarga kengaydi (purchases_batch5 testi)
+          and not (tablename = 'suppliers' and cmd = 'INSERT')
+        order by 1, 2`,
     )
-    expect(r).toHaveLength(8)
+    expect(r).toHaveLength(7)
     for (const p of r) {
       expect(p.expr).toMatch(/has_role\(VARIADIC ARRAY\['super_admin'::user_role, 'admin'::user_role\]\)/)
     }
@@ -915,8 +920,13 @@ describe('R4. material o`chirilganda / tiklanganda alias`lar', () => {
     const y = (await insertRow<{ id: string }>(db, 'materials', { company_id: A.id, name: 'R4 material', base_unit: 'kg' })).id
     const a1 = (await insertRow<{ id: string }>(db, 'material_aliases', { company_id: A.id, material_id: y, alias: 'R4 bir' })).id
     const a2 = (await insertRow<{ id: string }>(db, 'material_aliases', { company_id: A.id, material_id: y, alias: 'R4 ikki' })).id
-    // a2 — oldin, alohida tranzaksiyada qo'lda o'chirilgan
+    // a2 — oldin, alohida tranzaksiyada qo'lda o'chirilgan. Vaqt aniq oldinroq: Windows/PGlite'da ikki
+    // tranzaksiyaning now() qiymati teng chiqib, test tasodifan yiqilardi. tg_before_update null → qiymat
+    // o'tishida now() qo'yadi, shuning uchun avval o'chirib, keyin vaqtni superuser sifatida suramiz.
     await db.query(`update public.material_aliases set deleted_at = now() where id = $1`, [a2])
+    await db.query(`alter table public.material_aliases disable trigger user`)
+    await db.query(`update public.material_aliases set deleted_at = deleted_at - interval '1 minute' where id = $1`, [a2])
+    await db.query(`alter table public.material_aliases enable trigger user`)
 
     const r = await asAdmin(async (tx) => {
       await tx.query(`update public.materials set deleted_at = now() where id = $1`, [y])
@@ -1090,7 +1100,7 @@ describe('R8. Batch 1 xabarlari: o`zbekcha, UUID`siz, hint bilan', () => {
     expect(r).toMatchObject({
       del: '42501:soft_delete_only',
       mismatch: '23514:ops_purchase_mismatch',
-      noPurchase: '23503:ops_purchase_not_found',
+      noPurchase: '23503:purchase_not_open', // Batch 5: hint ops_purchase_not_found → purchase_not_open
       unitOther: '23503:ops_unit_material_mismatch',
       immutable: '42501:immutable_column',
     })

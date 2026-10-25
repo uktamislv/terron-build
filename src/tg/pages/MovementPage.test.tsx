@@ -5,9 +5,10 @@ import { RepoError, toRepoError } from '@/data/errors'
 import * as materialsRepo from '@/data/materialsRepo'
 import * as movementsRepo from '@/data/movementsRepo'
 import * as objectsRepo from '@/data/objectsRepo'
+import * as openPurchasesRepo from '@/data/openPurchasesRepo'
 import * as photosRepo from '@/data/photosRepo'
 import * as stockRepo from '@/data/stockRepo'
-import type { Movement } from '@/data/types'
+import type { Movement, OpenPurchase } from '@/data/types'
 import { t } from '@/i18n'
 import { routes } from '@/routes'
 import { makeMaterial, makeObject, makeProfile, makeUnit } from '@/test/fixtures'
@@ -53,6 +54,8 @@ vi.mock('@/data/movementsRepo', () => ({
   listMyMovements: vi.fn(),
   MOVEMENTS_PAGE_SIZE: 50,
 }))
+vi.mock('@/data/openPurchasesRepo', () => ({ listOpenPurchases: vi.fn(async () => []) }))
+vi.mock('@/data/purchasesRepo', () => ({ listMyPurchases: vi.fn(async () => []) }))
 vi.mock('@/data/stockRepo', () => ({ getStock: vi.fn(), listStock: vi.fn() }))
 vi.mock('@/data/usageRepo', () => ({ getMyMaterialUsage: vi.fn(async () => []) }))
 vi.mock('@/data/photosRepo', async (importOriginal) => ({
@@ -439,5 +442,94 @@ describe('/tg/mine', () => {
     // Tashqi havola yo'q — rasm faqat ilova ichida
     expect(img.closest('a')).toBeNull()
     expect(photosRepo.SIGNED_URL_TTL).toBe(600)
+  })
+})
+
+describe('/tg/movement — bog‘langan xarid (kirim)', () => {
+  const tl = tm.linked
+  function openPurchase(id: string, overrides: Partial<OpenPurchase> = {}): OpenPurchase {
+    return {
+      id,
+      purchased_at: '2026-10-24T05:00:00Z',
+      buyer_id: 'p-haydovchi',
+      buyer_name: 'Ali haydovchi',
+      qty_base: '150',
+      received_qty_base: '100',
+      remaining_qty_base: '50',
+      unit_input: 'qop',
+      unit_variant: null,
+      qty_input: '3',
+      ...overrides,
+    }
+  }
+
+  it('bitta ochiq xarid — avtomatik bog‘lanmaydi: "Taklif" va bir bosishda "Bog‘lash"', async () => {
+    vi.mocked(openPurchasesRepo.listOpenPurchases).mockResolvedValue([openPurchase('pu1')])
+    open()
+    await pickMaterial('Sement')
+    const region = await screen.findByRole('region', { name: tl.title })
+    expect(openPurchasesRepo.listOpenPurchases).toHaveBeenCalledWith('o-a', 'm-sem')
+    expect(within(region).getByText(tl.remaining('50', 'kg'))).toBeInTheDocument()
+    expect(within(region).getByText(tl.suggestion)).toBeInTheDocument()
+    expect(within(region).getByTestId('open-purchase')).not.toHaveAttribute('data-linked')
+    fireEvent.click(within(region).getByRole('button', { name: tl.link }))
+    expect(within(region).getByTestId('open-purchase')).toHaveAttribute('data-linked', 'true')
+    typeQty('1')
+    save()
+    await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalled())
+    expect(vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0].purchaseId).toBe('pu1')
+  })
+
+  it('taklif bosilmasa yoki bekor qilinsa — purchaseId yuborilmaydi', async () => {
+    vi.mocked(openPurchasesRepo.listOpenPurchases).mockResolvedValue([openPurchase('pu1')])
+    open()
+    await pickMaterial('Sement')
+    const region = await screen.findByRole('region', { name: tl.title })
+    fireEvent.click(within(region).getByRole('button', { name: tl.link }))
+    fireEvent.click(within(region).getByRole('button', { name: tl.remove }))
+    expect(within(region).getByTestId('open-purchase')).not.toHaveAttribute('data-linked')
+    typeQty('1')
+    save()
+    await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalled())
+    expect(vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0]).not.toHaveProperty('purchaseId')
+  })
+
+  it('bir nechta — foydalanuvchi keraklisini bog‘laydi', async () => {
+    vi.mocked(openPurchasesRepo.listOpenPurchases).mockResolvedValue([
+      openPurchase('pu1'),
+      openPurchase('pu2', { buyer_name: 'Vali taminotchi', remaining_qty_base: '20' }),
+    ])
+    open()
+    await pickMaterial('Sement')
+    const region = await screen.findByRole('region', { name: tl.title })
+    expect(within(region).getByText(tl.choose)).toBeInTheDocument()
+    expect(within(region).queryByText(tl.suggestion)).not.toBeInTheDocument()
+    const cards = within(region).getAllByTestId('open-purchase')
+    fireEvent.click(within(cards[1] as HTMLElement).getByRole('button', { name: tl.link }))
+    typeQty('1')
+    save()
+    await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalled())
+    expect(vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0].purchaseId).toBe('pu2')
+  })
+
+  it('asosiy bo‘lmagan birlik — "= 150 kg" katta ko‘rsatiladi', async () => {
+    open()
+    await pickMaterial('Sement')
+    typeQty('3')
+    expect(screen.getByTestId('base-qty')).not.toHaveAttribute('data-emphasized')
+    fireEvent.click(within(screen.getByRole('group', { name: tm.unit })).getByRole('button', { name: 'qop' }))
+    expect(screen.getByTestId('base-qty')).toHaveAttribute('data-emphasized', 'true')
+  })
+
+  it('chiqimda bo‘lim ko‘rsatilmaydi va purchaseId yuborilmaydi', async () => {
+    vi.mocked(openPurchasesRepo.listOpenPurchases).mockResolvedValue([openPurchase('pu1')])
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: t.movements.types.chiqim }))
+    await pickMaterial('Sement')
+    typeQty('1')
+    expect(screen.queryByRole('region', { name: tl.title })).not.toBeInTheDocument()
+    save()
+    await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalled())
+    expect(vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0]).not.toHaveProperty('purchaseId')
   })
 })

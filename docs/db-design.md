@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -66,7 +66,8 @@ Migratsiya egasi (`postgres`) `BYPASSRLS` bo'lishi shart (Supabase'da shunday): 
 | `profiles` | firma a'zolari | admin | admin |
 | `objects` | firma rollari: hammasi; boshqalar: a'zo bo'lganlari | admin | admin |
 | `object_members` | firma rollari: hammasi; boshqalar: o'z qatorlari | admin | admin |
-| `materials`, `material_units`, `material_aliases`, `suppliers` | firma a'zolari | admin | admin |
+| `materials`, `material_units`, `material_aliases` | firma a'zolari | admin | admin |
+| `suppliers` | firma a'zolari | admin; taminotchi, haydovchi, prorab — faqat nom (Batch 5) | admin |
 | `cash_advances` | admin, direktor, buxgalter: hammasi; boshqalar: o'ziga berilgani | admin, buxgalter | admin, buxgalter |
 | `purchases` | admin, direktor, buxgalter, taminotchi, tekshiruvchi: hammasi; prorab: a'zo obyektlar + o'zi xarid qilgani; haydovchi: faqat o'zi xarid qilgani | admin, taminotchi; haydovchi, prorab (a'zo obyekt); `buyer_id = my_profile_id()` (admin'dan tashqari) | admin |
 | `movements` | firma rollari: hammasi; prorab, omborchi: a'zo obyektlar | admin; prorab, omborchi (a'zo obyekt) | admin |
@@ -74,7 +75,7 @@ Migratsiya egasi (`postgres`) `BYPASSRLS` bo'lishi shart (Supabase'da shunday): 
 | `estimates`, `estimate_items` | firma rollari; prorab: a'zo obyektlar | admin, buxgalter | admin, buxgalter |
 | `material_requests` | firma rollari; prorab: a'zo obyektlar | admin; prorab (a'zo obyekt) | admin, taminotchi |
 | `transfers` | firma rollari; prorab, omborchi: qaysidir tomoni a'zo obyekt | admin; prorab (`from_object` a'zo) | admin |
-| `alerts` | admin, direktor, buxgalter | — (faqat tizim: trigger/Edge Function) | admin |
+| `alerts` | admin, direktor, buxgalter | — (faqat tizim: trigger/Edge Function; Batch 5 qoidalari — `private.evaluate_*`) | admin — faqat `status`, `close_note` (Batch 5) |
 | `audit_log` | admin, direktor | — (faqat trigger) | — |
 | `company_settings` ichida | `companies` ustunlari sifatida | | |
 
@@ -97,7 +98,7 @@ Bu Batch 1 asosi; keyingi batch'larda (masalan creator o'z yozuvini tuzatishi) k
 - **purchases qo'shish:** `taminotchi` (firma bo'yicha rol) — istalgan obyektga; `prorab` va `haydovchi` — faqat a'zo obyektga (`can_access_object`); hamma admin bo'lmaganlar — `buyer_id = my_profile_id()`.
 - **material_requests:** admin/super_admin bo'lmagan (taminotchi) faqat `status` va `note` ni o'zgartiradi (`b_material_requests_guard`). O'tishlar: `kutilmoqda → tasdiqlandi | rad`, `tasdiqlandi → xarid_qilindi`; admin — istalgan. `decided_by`/`decided_at` — faqat trigger: status o'zgarganda `my_profile_id()`/`now()`, aks holda eski qiymat; INSERT'da `kutilmoqda` bo'lsa null. Natija: taminotchi so'rovni soft delete qila olmaydi (faqat admin).
 - **inventory:** `inventory_counts_insert` — `status = 'draft'`. `draft → submitted` faqat `public.submit_inventory_count(p_count_id uuid)` orqali (security definer; admin/super_admin yoki shu hisobni yaratgan tekshiruvchi; har qator `qty_expected` = `stock_balances` dagi joriy qoldiq yoki 0; status draft bo'lmasa — `55000`, topilmasa — `P0002`). `authenticated` statusni to'g'ridan-to'g'ri o'zgartirsa — 42501 (`b_inventory_counts_guard`); `qty_expected` ni yoza olmaydi (`b_inventory_items_guard`: insert'da null, update'da eski qiymat). Trigger `current_user = 'authenticated'` ga qaraydi — definer funksiya ichida `current_user` = egasi.
-- **alerts:** `closed_by`/`closed_at` — faqat trigger (`b_alerts_close`): status `yopildi` ga o'tganda `my_profile_id()`/`now()`, `yopildi` dan chiqsa null.
+- **alerts:** `closed_by`/`closed_at` — faqat trigger (`b_alerts_close`): status `yopildi` ga o'tganda `my_profile_id()`/`now()`, `yopildi` dan chiqsa null. Batch 5: `closed_by` faqat `current_user = 'authenticated'` bo'lsa (foydalanuvchi yopdi); tizim (security definer qoida funksiyasi, service_role, cron) yopsa — null.
 - **`created_by`** — oddiy FK `profiles(id)` (kompozit emas): `super_admin` o'z firmasida turib boshqa firmalarda yozuv yaratadi; kompozit FK buni buzardi. INSERT siyosati `created_by = my_profile_id()` ni talab qiladi, UPDATE trigger uni o'zgartirishni taqiqlaydi.
 - `decided_by`, `closed_by`, `buyer_id`, `recipient_id` — kompozit FK (shu firma profili). Natija: super_admin boshqa firmada so'rovni hal qilsa yoki alertni yopsa, o'zini `decided_by`/`closed_by` qilib yoza olmaydi (null qoldiradi) — sinov versiyasi uchun maqbul.
 
@@ -187,7 +188,7 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 
 - `lower()` (va `norm_name`) kirill harflarini bazaning locale/collation'iga qarab kichraytiradi. PGlite'da `Ц→ц` ishlaydi; **prod Supabase'da birinchi deploy'da tekshiring:** `select private.norm_name('ЦЕМЕНТ Ё') = 'цемент е'` → `true` bo'lishi kerak. `false` bo'lsa — nom/alias unique va to'qnashuv tekshiruvlari kirillda katta-kichik harfni farqlaydi.
 
-### Xato kalitlari (`hint`) — Batch 1–4 to'liq ro'yxati
+### Xato kalitlari (`hint`) — Batch 1–5 to'liq ro'yxati
 
 | `hint` | `errcode` | Qayerda | Ma'nosi |
 |---|---|---|---|
@@ -199,7 +200,7 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `company_status_super_admin_only` | 42501 | `b_companies_guard` | Firma `is_active`/`deleted_at` — faqat super_admin |
 | `ops_unit_not_found` | 23503 | `b_compute_qty` | Birlik topilmadi yoki o'chirilgan |
 | `ops_unit_material_mismatch` | 23503 | `b_compute_qty` | Birlik boshqa materialniki |
-| `ops_purchase_not_found` | 23503 | `b_compute_qty` (movements) | Bog'langan xarid yo'q / o'chirilgan |
+| `purchase_not_open` | 23503 | `b_compute_qty` (movements) | Bog'langan xarid yo'q / o'chirilgan (Batch 5; avval `ops_purchase_not_found`) |
 | `ops_purchase_mismatch` | 23514 | `b_compute_qty` (movements) | Xarid boshqa material/obyektga tegishli |
 | `request_fields_locked` | 42501 | `b_material_requests_guard` | Taminotchi faqat holat va izohni o'zgartiradi |
 | `request_status_transition` | 42501 | `b_material_requests_guard` | Ruxsatsiz holat o'tishi |
@@ -227,6 +228,10 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `ops_usage_days_range` | 22023 | `my_material_usage` (Batch 4) | `p_days` 1..365 dan tashqari yoki null |
 | `ops_photo_not_owned` | 42501 | `b_photo_path` (Batch 4) | Rasm yo'q, o'zi yuklamagan yoki 24 soatdan eski |
 | `ops_photo_reused` | 23505 | `b_photo_path` (Batch 4) | Rasm boshqa tirik yozuvga biriktirilgan |
+| `supplier_duplicate` | 23505 | `b_suppliers_guard` (Batch 5) | Shu nomdagi (norm_name) sotuvchi firmada bor |
+| `cash_amount_locked` | P0001 | `b_cash_advances_guard` (Batch 5) | Podotchet summasi / oluvchisi o'zgarmaydi |
+| `cash_recipient_role` | P0001 | `b_cash_advances_guard` (Batch 5) | Oluvchi xarid kiritadigan faol xodim emas |
+| `purchase_has_receipts` | P0001 | `b_purchases_guard` (Batch 5) | Bog'langan kirimi bor xaridni o'chirish / obyekt-materialini o'zgartirish |
 
 Hint'siz qolganlar (foydalanuvchi ko'rmaydi): RLS rad etishi (42501, PostgreSQL xabari), CHECK/FK/unique cheklovlar (23514/23503/23505 — zaxira), `private.log_auth_event` (faqat service_role, Edge Function ichki xatosi), birinchi migratsiyadagi BYPASSRLS tekshiruvi.
 
@@ -256,7 +261,7 @@ Shartnoma: `docs/ops-design.md`.
 - `movements.occurred_at`, `purchases.purchased_at`, `inventory_counts.counted_at`.
 - INSERT: `null` → `now()`. UPDATE: `null` → eski qiymat.
 - `auth.uid()` bor (foydalanuvchi sessiyasi) va rol `admin`/`super_admin` emas: INSERT yoki sana o'zgarganda `now() − 3 kun ≤ sana ≤ now() + 5 daqiqa` (chegaralar kiradi), aks holda `ops_occurred_at_range` (23514). `now()` — tranzaksiya boshlangan vaqt. service_role / cron / migratsiya — cheklovsiz. Domain `occurredAtAllowed` bilan bir xil qoida.
-- `cash_advances.issued_at` cheklanmagan (buxgalter/admin yozadi; Batch 5 da qaror).
+- `cash_advances.issued_at` cheklanmagan (buxgalter/admin yozadi). Batch 5: `null` → `now()` (`b_issued_at`).
 
 ### `public.my_material_usage(p_days integer default 30)`
 
@@ -269,6 +274,87 @@ Shartnoma: `docs/ops-design.md`.
 ### O'z o'chirilgan yozuvlari
 
 - Qo'shimcha SELECT siyosatlari `movements_select_own_deleted`, `purchases_select_own_deleted`: `deleted_at is not null and created_by = my_profile_id() and company_id = my_company_id()` ("Mening yozuvlarim"da "o'chirilgan" belgisi). Faqat o'chirilganlar — tirik qatorlar ko'rinishi o'zgarmaydi (`stock_balances` ga ta'sir yo'q).
+
+## Podotchet, xarid, farq qoidalari (Batch 5 — `20261029000001_purchases.sql`)
+
+Shartnoma: `docs/purchase-design.md`.
+
+### `public.cash_balances` (view, `security_invoker = true`)
+
+- Ustunlar: `company_id uuid`, `profile_id uuid`, `issued_total numeric(18,2)`, `spent_total numeric(18,2)`, `balance numeric(18,2)` (manfiy bo'lishi mumkin), `last_issued_at timestamptz` (null — pul berilmagan), `last_spent_at timestamptz` (null — xarid yo'q).
+- `issued` — o'chirilmagan `cash_advances.amount` (`recipient_id`), `spent` — o'chirilmagan `purchases.total_amount` (`buyer_id`). Qator — kamida bitta o'chirilmagan podotchet yoki xaridi bor odam uchun.
+- **Ko'rinish.** Ikki manba jadvalning RLS'i har xil (taminotchi barcha xaridlarni, lekin faqat o'z podotchetini ko'radi). Shuning uchun qator faqat `profile_id = my_profile_id()` **yoki** rol `super_admin/admin/direktor/buxgalter` (= `cash_advances_select` sharti; bu rollar purchases'ni ham to'liq ko'radi) **yoki** `current_user in ('service_role', 'postgres')` (bot, cron) bo'lsa chiqadi.
+- Grant: `authenticated`, `service_role` — `select`; `anon` — yo'q.
+
+### `cash_advances`
+
+- `b_issued_at`: INSERT'da `issued_at = null` → `now()`, UPDATE'da `null` → eski qiymat. Sana cheklanmaydi.
+- `b_cash_advances_guard` (security definer): `amount`, `recipient_id` UPDATE'da o'zgarmaydi — hamma uchun (service_role ham) — P0001 `cash_amount_locked`. INSERT va tiklashda oluvchi shu firmaning o'chirilmagan, `is_active` profili, roli `haydovchi/taminotchi/prorab/admin` — P0001 `cash_recipient_role`. Ruxsatsiz foydalanuvchi (admin/buxgalter/super_admin emas) uchun tekshiruv o'tkazib yuboriladi — RLS 42501 beradi; boshqa firma profili — kompozit FK 23503.
+
+### `suppliers`
+
+- `suppliers_insert`: `super_admin`, `admin` — istalgan maydon; `taminotchi`, `haydovchi`, `prorab` — faqat nom (`phone is null and note is null`). O'z firmasi, `created_by = my_profile_id()`. `suppliers_update` (o'zgartirish, soft delete, tiklash) — admin (o'zgarmadi).
+- `suppliers_name_length_check`: `char_length(name) between 1 and 120`.
+- Nom dublikati: firma ichida, o'chirilmaganlar orasida, `private.norm_name` bo'yicha — `b_suppliers_guard` (security definer, firma bo'yicha advisory lock) 23505 `supplier_duplicate` (INSERT, qayta nomlash, tiklash). Zaxira — `suppliers_company_name_key` unique indeks.
+
+### `purchases`
+
+- `b_purchases_guard` (before update, security definer): bog'langan, o'chirilmagan kirimi bor xaridni soft delete qilish yoki `object_id` / `material_id` ni o'zgartirish — P0001 `purchase_has_receipts` (hamma uchun). Trigger tartibi: `b_compute_qty` avval ishlaydi — boshqa materialga o'tkazishda birlik ham mos bo'lmasa avval `ops_unit_material_mismatch` chiqadi.
+- `b_compute_qty` (create or replace): bog'langan xarid topilmasa / o'chirilgan — 23503 `purchase_not_open` (avval `ops_purchase_not_found`).
+
+### Xarid qabul holati
+
+- `private.purchase_receipt_stats(p_company_id, p_purchase_id)` — `security definer`, `stable`: bog'langan `kirim`, o'chirilmagan harakatlar yig'indisi (`received_qty_base numeric(20,6)`, `receipt_count bigint`, `last_received_at`). Definer — haydovchi harakatlarni ko'rmaydi, lekin o'z xaridi qabulini ko'rishi kerak. Faqat yig'indi, faqat chaqiruvchi firmasi uchun (`auth.uid() is null or can_access_company`). Execute: `authenticated`, `service_role`.
+- View `public.purchase_receipts` (`security_invoker = true`): `purchase_id, company_id, object_id, material_id, buyer_id, purchased_at, qty_base, received_qty_base, remaining_qty_base` (= `qty_base − received`, manfiy — ortiqcha), `receipt_count bigint, last_received_at`. Faqat o'chirilmagan xaridlar.
+- `public.open_purchases(p_object_id uuid, p_material_id uuid)` — `sql stable security invoker`, `search_path = ''`; execute: `authenticated`, `service_role`. Qaytaradi: `id, purchased_at, buyer_id, buyer_name, qty_base, received_qty_base, remaining_qty_base, unit_input, unit_variant, qty_input`. Shart: `purchased_at >= now() − 14 kun`, `remaining_qty_base > 0`. Tartib: `purchased_at desc, created_at desc, id`.
+
+### alerts
+
+- Yangi enum qiymati `alert_type.yozuv_ochirildi` (`alter type ... add value if not exists`). Migratsiya tranzaksiyasida ishlatilmaydi — faqat plpgsql funksiyalar ichida runtime'da (indeks predikatlari va SQL-funksiyalarda yo'q).
+- Yangi ustun `close_note text` (≤ 500, `alerts_close_note_length_check`).
+- Ustun grant: `authenticated` — `update (status, close_note)` (jadval darajasidagi UPDATE olib tashlandi). `details`, `deleted_at`, `severity`, bog'lanishlar — 42501. RLS (`alerts_update`) — admin, super_admin.
+- `b_alerts_close`: `closed_by` faqat `current_user = 'authenticated'` (foydalanuvchi yopdi) bo'lsa `my_profile_id()`; tizim (security definer funksiya, service_role, cron) yopsa — null.
+- Zaxira indekslar: `alerts_open_receipt_key (purchase_id)` — `xarid_qabul_farqi`, ochiq; `alerts_open_price_key (purchase_id)` — `narx_ogishi`, ochiq; `alerts_self_receipt_key (purchase_id, movement_id)` — `ozi_qabul_qilgan`; hammasi `deleted_at is null`. `alerts_company_record_idx (company_id, details->>'record_id')` — o'chirish alertini tiklashda topish.
+
+### Farq qoidalari
+
+Hammasi `private`, `security definer`, `search_path = ''`, execute — hech kimga (`authenticated`, `service_role` ham; triggerlar ichida va cron — egasi `postgres`). Formulalar `src/domain/alerts/*` bilan bit-bit bir xil.
+
+| Funksiya | Nima qiladi |
+|---|---|
+| `private.evaluate_purchase_receipt(p_purchase_id uuid, p_now timestamptz default now())` | Qoida 1 |
+| `private.evaluate_due_purchases(p_now timestamptz default now()) → integer` | Soatlik: 24 soat–60 kunlik barcha xaridlar uchun qoida 1; baholanganlar sonini qaytaradi |
+| `private.evaluate_self_receipt(p_movement_id uuid)` | Qoida 2 (bog'langan va evristika) |
+| `private.reevaluate_self_for_purchase(p_purchase_id uuid)` | Xarid o'zgarganda qoida 2: bog'langan, belgisi bor va nomzod kirimlar |
+| `private.price_check(company, material, price, before_at, before_created, exclude_id) → (avg_n, diff_n, avg_90, diff_90, direction, window_size, threshold_pct)` | Qoida 3 hisobi (stable) |
+| `private.evaluate_purchase_price(p_purchase_id uuid)` | Qoida 3 |
+| `private.close_purchase_alerts(company, purchase, types alert_type[] \| null, reason text)` | Xaridning ochiq alertlarini avtomatik yopish |
+
+**Avtomatik yopish:** `status = 'yopildi'`, `closed_by = null`, `details.auto_closed = true`, `closed_reason` (`within_threshold` / `purchase_deleted` / `not_applicable` / `restored`), `closed_by_actor = my_profile_id()` (o'zgarishni qilgan foydalanuvchi; cron'da null).
+
+**Qoida 1 — `xarid_qabul_farqi`.** `diff_pct = round(abs(received − purchased) * 100 / purchased, 2)` (`numeric(20,6)`). `diff_pct <= receipt_mismatch_pct` → ok (ochiq alert yopiladi); `received > purchased` → darhol; `received < purchased` → faqat `p_now >= purchased_at + 24 soat` (aks holda "pending": yangi alert yo'q, ochig'i yangilanadi). `severity`: `diff_pct >= 3 × chegara` → `jiddiy`, aks holda `ogohlantirish`. Bitta ochiq alert; raqamlar va bog'lanishlar o'zgarmagan bo'lsa UPDATE qilinmaydi (tarix shovqini yo'q). Admin **qo'lda** yopgan alert bir xil (`purchased_qty_base`, `received_qty_base`) raqamlarda qayta yaratilmaydi. `details`: `purchased_qty_base, received_qty_base, diff_pct, threshold_pct, direction (over/under), receipt_count, evaluated_at`. Xarid qatori `FOR NO KEY UPDATE` bilan qulflanadi.
+
+**Soatlik tekshiruv (Y1).** `pg_cron` (`create extension if not exists pg_cron with schema pg_catalog`), ish `terron-evaluate-purchases`, `7 * * * *`, `select private.evaluate_due_purchases()` — idempotent (bor bo'lsa avval `cron.unschedule`). Nomzodlar: o'chirilmagan, faol (o'chirilmagan) firmadagi, `purchased_at ∈ [p_now − 60 kun, p_now − 24 soat]` xaridlar — **bog'langan kirimi yo'q** bo'lsa ham. O'tkazib yuboriladi: farq chegarada va ochiq alert yo'q; ochiq alert raqamlari o'zgarmagan; admin qo'lda yopgan alert bilan bir xil raqamlar.
+
+**Qoida 2 — `ozi_qabul_qilgan`, `severity = 'belgi'`.** (a) Bog'langan, o'chirilmagan kirim, xarid o'chirilmagan, `movements.created_by = purchases.buyer_id` → `linked = true`. (b) Bog'lanmagan kirim: kiritgan odam xaridor bo'lgan, shu obyekt + material, o'chirilmagan xarid, `|purchased_at − occurred_at| <= 48 soat` → eng yaqin xarid bilan, `linked = false`. Har (xarid, kirim) juftligi uchun bitta. Shart yo'qolsa — ochiq belgi avtomatik yopiladi (`not_applicable`); qaytsa — avtomatik yopilgani qayta `yangi` (qo'lda yopilgani — yo'q); ochiq bo'lsa `details` yangilanadi. `details`: `buyer_id, receiver_id, qty_base, linked`.
+
+**Qoida 3 — `narx_ogishi`, `severity = 'ogohlantirish'`.** "Oldingi": shu firma, shu material, o'chirilmagan, `(purchased_at, created_at)` bo'yicha qat'iy oldin. `avg_n = round(sum(total_amount) / sum(qty_base), 4)` — oxirgi `price_avg_window` tasi (< 2 → null); `avg_90` — xuddi shunday, `purchased_at >= xarid purchased_at − 90 kun` bo'lganlarning hammasi (< 2 → null). `diff_x = round((price_per_base − avg_x) * 100 / avg_x, 2)` (avg null/0 → null). `high`: `diff_n > chegara` yoki `diff_90 > chegara`; aks holda `low`: `diff_n <= −50` yoki `diff_90 <= −50`; aks holda `ok`. `details`: `avg_n, diff_n, avg_90, diff_90, price, direction, window_size, threshold_pct`. Bitta ochiq alert; `ok` bo'lsa avtomatik yopiladi.
+
+**`public.check_purchase_price(p_material_id uuid, p_price_per_base numeric) → text`** — `'ok' | 'high' | 'low'`. `plpgsql stable security definer`, `search_path = ''` (firma bo'yicha butun oyna kerak — prorab/haydovchi boshqalar xaridini ko'rmaydi). Faqat `my_company_id()` va shu firmaning o'chirilmagan materiali (aks holda `'ok'`); "oldingi" = `(purchased_at, created_at) < (now(), infinity)`; narx `round(p, 4)`. O'rtacha yoki foiz qaytarilmaydi (kalibrlashning oldini olish). Execute: faqat `authenticated`.
+
+**Triggerlar** (AFTER, `zz_*` — `z_audit` dan keyin; security definer):
+
+- `purchases.zz_alert_rules_ins` — qoida 3, qoida 2 (nomzod kirimlar).
+- `purchases.zz_alert_rules_upd` (`deleted_at`, `qty_base`, `purchased_at`, `total_amount`, `qty_input`, `unit_id`, `material_id`, `object_id`, `buyer_id`): soft delete → barcha ochiq alertlar yopiladi (`purchase_deleted`) + qoida 2; tiklash → 1, 3, 2; `qty_base`/`purchased_at` → 1; narx maydonlari/`purchased_at` → 3; `buyer_id`/`object_id`/`material_id`/`purchased_at` → 2.
+- `movements.zz_alert_rules_ins` — `kirim`: bog'langan bo'lsa qoida 1; qoida 2.
+- `movements.zz_alert_rules_upd` — eski yoki yangi tur `kirim` va `qty_base`/`purchase_id`/`deleted_at`/`type`/`object_id`/`material_id`/`occurred_at` o'zgarsa: eski va yangi xarid uchun qoida 1 (uuid tartibida), kirim uchun qoida 2.
+- `zz_deleted_alert` (`purchases`, `cash_advances`, `movements`; `deleted_at` o'zgarsa): soft delete → `yozuv_ochirildi` alert (`ogohlantirish`; `purchase_id`/`movement_id`, `object_id`, `material_id`; `details`: `table, record_id, actor_profile_id, material_id, object_id` + `amount`/`qty_base`/`recipient_id`/`buyer_id`/`movement_type`/`purchase_id`); tiklash → shu alert avtomatik yopiladi (`restored`). Nomi `zz_alert_rules_upd` dan keyin — xarid o'chirilganda eski alertlar avval yopiladi.
+
+**Aktyor va audit.** Alert `z_audit` orqali tarixga tushadi: `created_by`, `actor_profile_id` — triggerni chaqirgan foydalanuvchi (`auth.uid()` definer ichida ham chaqiruvchiniki), `device` — sarlavhadan. Cron/service_role — null / `tizim`.
+
+### Idempotentlik
+
+- `purchases` va `cash_advances` da `authenticated` jadval darajasida `insert` grantiga ega — klient `id` yuboradi; takror so'rov `23505` (`purchases_pkey` / `cash_advances_pkey`).
 
 ## Qoldiq
 

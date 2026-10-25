@@ -111,6 +111,9 @@ export type Action =
   | 'approve_request'
   | 'run_inventory'
   | 'view_audit'
+  | 'view_alerts'
+  | 'manage_alerts'
+  | 'restore_records'
 
 const ADMINS: readonly Role[] = ['super_admin', 'admin']
 
@@ -126,6 +129,9 @@ const ACTIONS: Record<Action, readonly Role[]> = {
   approve_request: [...ADMINS, 'taminotchi'], // material_requests status: kutilmoqda → tasdiqlandi | rad
   run_inventory: [...ADMINS, 'tekshiruvchi'], // inventory_counts insert
   view_audit: [...ADMINS, 'direktor'], // audit_log select
+  view_alerts: [...ADMINS, 'direktor', 'buxgalter'], // alerts select
+  manage_alerts: ADMINS, // alerts update (Ko'rildi / Yopish)
+  restore_records: ADMINS, // deleted_at -> null (restore_admin_only)
 }
 
 export function can(role: Role, action: Action): boolean {

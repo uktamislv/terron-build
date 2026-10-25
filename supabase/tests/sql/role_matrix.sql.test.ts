@@ -105,6 +105,9 @@ const VISIBILITY: Partial<Record<BusinessTable, VisRule>> = {
 
 const VIS_TABLES = Object.keys(VISIBILITY) as BusinessTable[]
 
+// Batch 5: alerts'da authenticated faqat status va close_note ni o'zgartiradi (ustun grant).
+const setClause = (t: string): string => (t === 'alerts' ? 'status = status' : 'updated_at = now()')
+
 describe('ko`rish (SELECT) — yorliqli qatorlar', () => {
   it.each(ALL)('%s', async (role) => {
     const actual = await asUser(db, A.users[role].authUid, async (tx) => {
@@ -158,7 +161,8 @@ const CAN_INSERT: Record<BusinessTable, UserRole[]> = {
   materials: ADMINS,
   material_units: ADMINS,
   material_aliases: ADMINS,
-  suppliers: ADMINS,
+  // Batch 5: xarid kiritadigan rollar yangi sotuvchi qo'shadi (o'zgartirish — admin)
+  suppliers: [...ADMINS, 'taminotchi', 'haydovchi', 'prorab'],
   cash_advances: [...ADMINS, 'buxgalter'],
   // buyer_id = o'zi, obj1 (prorab a'zo)
   purchases: [...ADMINS, 'taminotchi', 'haydovchi', 'prorab'],
@@ -218,7 +222,7 @@ describe('o`zgartirish (UPDATE) — o`z firmasidagi namunaviy qator', () => {
     const actual = await asUser(db, A.users[role].authUid, async (tx) => {
       const out: Record<string, boolean> = {}
       for (const t of BUSINESS_TABLES) {
-        const r = await tryExec(tx, `update public.${t} set updated_at = now() where id = $1`, [targetId(A, t)])
+        const r = await tryExec(tx, `update public.${t} set ${setClause(t)} where id = $1`, [targetId(A, t)])
         if (!r.ok && r.code !== '42501') throw new Error(`${role} → ${t}: kutilmagan xato ${r.code}: ${r.msg}`)
         out[t] = r.ok && r.affected === 1
       }

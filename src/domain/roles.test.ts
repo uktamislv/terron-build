@@ -52,6 +52,9 @@ const EXPECTED_CAN: Record<Action, Role[]> = {
   approve_request: ['super_admin', 'admin', 'taminotchi'],
   run_inventory: ['super_admin', 'admin', 'tekshiruvchi'],
   view_audit: ['super_admin', 'admin', 'direktor'],
+  view_alerts: ['super_admin', 'admin', 'direktor', 'buxgalter'],
+  manage_alerts: ['super_admin', 'admin'],
+  restore_records: ['super_admin', 'admin'],
 }
 
 describe('ROLES / isRole', () => {
@@ -114,7 +117,7 @@ describe('can', () => {
     })
   }
   it("direktor hech narsa yarata olmaydi (faqat ko'rish)", () => {
-    for (const action of actions.filter((a) => a !== 'view_audit')) expect(can('direktor', action)).toBe(false)
+    for (const action of actions.filter((a) => a !== 'view_audit' && a !== 'view_alerts')) expect(can('direktor', action)).toBe(false)
   })
   it("noma'lum action → false", () => {
     expect(can('admin', 'drop_db' as Action)).toBe(false)

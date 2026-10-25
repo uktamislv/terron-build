@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { MovementPhoto } from '@/components/MovementPhoto'
 import { StatusBadge } from '@/components/StatusBadge'
 import { Button, Modal, Notice, Spinner } from '@/components/ui'
@@ -8,56 +8,10 @@ import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatDateTime, formatQty } from '@/lib/format'
+import { DateField, SelectField } from '../fields'
 import { EMPTY_FILTERS, toRepoFilters, type MovementFilterForm } from './movementFilters'
 
 const to = t.ombor
-
-function SelectField({
-  label,
-  value,
-  onChange,
-  children,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  children: ReactNode
-}) {
-  const id = useId()
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-slate-700">
-        {label}
-      </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-base"
-      >
-        {children}
-      </select>
-    </div>
-  )
-}
-
-function DateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  const id = useId()
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-slate-700">
-        {label}
-      </label>
-      <input
-        id={id}
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-base"
-      />
-    </div>
-  )
-}
 
 function qtyInput(m: Movement): string {
   return `${formatQty(m.qty_input)} ${unitLabel({ unit: m.unit_input, variant: m.unit_variant })}`

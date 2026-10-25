@@ -1,4 +1,4 @@
-import { toRepoError } from './errors'
+import { isPkeyConflict, toRepoError } from './errors'
 import { softDeleteById, updateById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
 import type { Movement, MovementKind } from './types'
@@ -29,6 +29,8 @@ export interface NewMovement {
   photoPath?: string | null
   /** ISO; berilmasa — server `now()`. */
   occurredAt?: string | null
+  /** Faqat kirim: bog'langan xarid (`open_purchases` dan tanlangan). */
+  purchaseId?: string | null
 }
 
 export interface MovementFilters {
@@ -40,6 +42,8 @@ export interface MovementFilters {
   /** ISO, shu vaqtgacha (kiritilmagan) */
   to?: string
   createdBy?: string
+  /** Shu xaridga bog'langan harakatlar (xarid tafsiloti). */
+  purchaseId?: string
   /** Admin: o'chirilganlarni ham ko'rsatish (RLS boshqalarga baribir ko'rsatmaydi). */
   includeDeleted?: boolean
 }
@@ -89,25 +93,17 @@ export async function createMovement(input: NewMovement): Promise<Movement> {
     photo_path: clean(input.photoPath),
   }
   if (input.occurredAt) row.occurred_at = input.occurredAt
+  // Xarid bilan bog'lash faqat kirimda (bazadagi trigger material va obyekt mosligini tekshiradi)
+  if (input.purchaseId && input.type === 'kirim') row.purchase_id = input.purchaseId
   const { data, error } = await getSupabase().from('movements').insert(row).select(MOVEMENT_SELECT).single()
   if (error) {
-    if (isOwnPkeyConflict(error)) {
+    if (isPkeyConflict(error, 'movements_pkey')) {
       const existing = await getMovementById(input.id).catch(() => null)
       if (existing) return existing
     }
     throw toRepoError(error)
   }
   return normalize(data as unknown as RawMovement)
-}
-
-/**
- * Shu `id` bilan qator allaqachon bor (oldingi urinish saqlangan): 23505, hint'siz va aynan
- * birlamchi kalit (`movements_pkey`). Hint'li 23505 (masalan `ops_photo_reused`) — oddiy xato.
- */
-function isOwnPkeyConflict(error: unknown): boolean {
-  const e = error as { code?: string; hint?: string | null; message?: string; details?: string | null }
-  if (e.code !== '23505' || e.hint) return false
-  return `${e.message ?? ''} ${e.details ?? ''}`.includes('movements_pkey')
 }
 
 export async function getMovementById(id: string): Promise<Movement> {
@@ -124,6 +120,7 @@ export async function listMovements(filters: MovementFilters = {}, page = 0): Pr
   if (filters.materialId) q = q.eq('material_id', filters.materialId)
   if (filters.type) q = q.eq('type', filters.type)
   if (filters.createdBy) q = q.eq('created_by', filters.createdBy)
+  if (filters.purchaseId) q = q.eq('purchase_id', filters.purchaseId)
   if (filters.from) q = q.gte('occurred_at', filters.from)
   if (filters.to) q = q.lt('occurred_at', filters.to)
   const start = page * MOVEMENTS_PAGE_SIZE

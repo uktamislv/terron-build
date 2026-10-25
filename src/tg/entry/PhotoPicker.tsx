@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type ChangeEvent } from 'react'
+import { Button, Notice, Spinner } from '@/components/ui'
 import { t } from '@/i18n'
 
 const tm = t.tg.movement
@@ -101,6 +102,61 @@ export function PhotoPicker({
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Rasm bo'limi: sarlavha, tanlash, tayyorlash belgisi va ogohlantirish. */
+export function PhotoField({
+  label,
+  photo,
+  busy,
+  preparing,
+  notice,
+  onPick,
+  onRemove,
+}: {
+  label: string
+  photo: PickedPhoto | null
+  busy: boolean
+  preparing: boolean
+  notice: string | null
+  onPick: (file: File) => void
+  onRemove: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <PhotoPicker photo={photo} busy={busy} onPick={onPick} onRemove={onRemove} />
+      {preparing && <Spinner label={tm.preparingPhoto} />}
+      {notice && <Notice tone="warn">{notice}</Notice>}
+    </div>
+  )
+}
+
+/** Rasm yuklanmadi — "Qayta urinish" yoki "Rasmsiz saqlash". */
+export function PhotoErrorBox({
+  message,
+  busy,
+  onRetry,
+  onWithoutPhoto,
+}: {
+  message: string
+  busy: boolean
+  onRetry: () => void
+  onWithoutPhoto: () => void
+}) {
+  return (
+    <div role="alert" className="flex flex-col gap-2 rounded-xl border border-danger/20 bg-danger/5 p-3">
+      <p className="text-sm text-danger">{message}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="secondary" disabled={busy} onClick={onRetry}>
+          {t.common.retry}
+        </Button>
+        <Button variant="primary" disabled={busy} onClick={onWithoutPhoto}>
+          {tm.saveWithoutPhoto}
+        </Button>
+      </div>
     </div>
   )
 }

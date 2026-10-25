@@ -993,12 +993,28 @@ describe('alerts yopish', () => {
            returning closed_by, closed_at > now() - interval '1 minute' as recent`,
           [A.ids.alert1, ...params],
         )
-      const closed = await q(`status = 'yopildi', closed_by = $2, closed_at = '2000-01-01'`, [A.users.direktor.profileId])
-      const touched = await q(`details = '{"x":1}', closed_by = $2`, [A.users.direktor.profileId])
-      const reopened = await q(`status = 'korildi', closed_by = $2, closed_at = now()`, [me.profileId])
-      return { closed, touched, reopened }
+      // Batch 5: authenticated faqat status va close_note ni o'zgartiradi (ustun grant) —
+      // closed_by / closed_at / details ni yuborish — 42501.
+      const forged = await tryQuery(
+        tx,
+        `update public.alerts set status = 'yopildi', closed_by = $2, closed_at = '2000-01-01' where id = $1`,
+        [A.ids.alert1, A.users.direktor.profileId],
+      )
+      const details = await tryQuery(tx, `update public.alerts set details = '{"x":1}' where id = $1`, [A.ids.alert1])
+      const closed = await q(`status = 'yopildi'`)
+      const touched = await q(`close_note = 'tekshirildi'`)
+      const reopened = await q(`status = 'korildi'`)
+      return {
+        forged: forged.ok ? 'OK' : forged.code,
+        details: details.ok ? 'OK' : details.code,
+        closed,
+        touched,
+        reopened,
+      }
     })
     expect(r).toEqual({
+      forged: '42501',
+      details: '42501',
       closed: { closed_by: me.profileId, recent: true },
       touched: { closed_by: me.profileId, recent: true },
       reopened: { closed_by: null, recent: null },

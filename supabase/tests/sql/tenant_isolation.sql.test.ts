@@ -27,6 +27,9 @@ afterAll(async () => {
 
 const NON_SUPER = ROLES.filter((r) => r !== 'super_admin')
 
+// Batch 5: alerts'da authenticated faqat status va close_note ni o'zgartiradi (ustun grant).
+const setClause = (t: string): string => (t === 'alerts' ? 'status = status' : 'updated_at = now()')
+
 describe('A firma foydalanuvchisi B firma qatorlarini ko`rmaydi', () => {
   it.each(NON_SUPER)('%s: hech bir jadval/view da B qatori yo`q', async (role) => {
     const seen = await asUser(db, F.A.users[role].authUid, async (tx) => {
@@ -77,7 +80,7 @@ describe('A firma foydalanuvchisi B firmaga yoza olmaydi', () => {
     const res = await asUser(db, F.A.users[role].authUid, async (tx) => {
       const out: Record<string, number | string> = {}
       for (const t of BUSINESS_TABLES) {
-        const r = await tryExec(tx, `update public.${t} set updated_at = now() where id = $1`, [targetId(F.B, t)])
+        const r = await tryExec(tx, `update public.${t} set ${setClause(t)} where id = $1`, [targetId(F.B, t)])
         out[t] = r.ok ? r.affected : `err ${r.code}`
       }
       return out

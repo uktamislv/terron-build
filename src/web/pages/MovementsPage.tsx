@@ -5,6 +5,7 @@ import { listMaterials } from '@/data/materialsRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { listProfiles } from '@/data/profilesRepo'
 import type { Material, ObjectRow, Profile } from '@/data/types'
+import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { MovementsTab } from '../movements/MovementsTab'
@@ -40,7 +41,8 @@ export function MovementsPage() {
   }, [])
 
   if (!me) return null
-  const isAdmin = me.role === 'admin' || me.role === 'super_admin'
+  // O'chirish va tiklash — faqat admin (movements_update RLS)
+  const isAdmin = can(me.role, 'restore_records')
   const tabs: { key: Tab; label: string }[] = [
     { key: 'movements', label: to.tabMovements },
     { key: 'stock', label: to.tabStock },

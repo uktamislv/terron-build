@@ -4,9 +4,9 @@ import { Button, Notice, Spinner } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
 import { createMovement } from '@/data/movementsRepo'
 import { listObjects } from '@/data/objectsRepo'
-import { isPhotoError, uploadPhoto } from '@/data/photosRepo'
+import { listOpenPurchases } from '@/data/openPurchasesRepo'
 import { getStock } from '@/data/stockRepo'
-import type { Material, ObjectRow } from '@/data/types'
+import type { Material, ObjectRow, OpenPurchase } from '@/data/types'
 import { getMyMaterialUsage } from '@/data/usageRepo'
 import {
   defaultObjectId,
@@ -23,10 +23,14 @@ import { toBaseQty, unitLabel, validateQtyInput } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatQty } from '@/lib/format'
-import { preparePhoto } from '@/lib/image'
 import { uuid } from '@/lib/uuid'
-import { MaterialGrid } from '../movement/MaterialGrid'
-import { PhotoPicker, type PickedPhoto } from '../movement/PhotoPicker'
+import { BaseQtyBox } from '../entry/BaseQtyBox'
+import { MaterialGrid } from '../entry/MaterialGrid'
+import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
+import { PhotoErrorBox, PhotoField } from '../entry/PhotoPicker'
+import { UnitChips } from '../entry/UnitChips'
+import { usePhotoDraft } from '../entry/usePhotoDraft'
+import { LinkedPurchases } from '../movement/LinkedPurchases'
 import { loadEntryType, loadLastObject, saveEntryType, saveLastObject } from '../movement/prefs'
 import { getWebApp, haptic } from '../telegram'
 import { useBackButton, useMainButton } from '../useTelegramButtons'
@@ -56,11 +60,10 @@ export function MovementPage() {
   const [unitId, setUnitId] = useState<string | null>(null)
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
-  const [photo, setPhoto] = useState<PickedPhoto | null>(null)
-  const [preparingPhoto, setPreparingPhoto] = useState(false)
-  const [photoNotice, setPhotoNotice] = useState<string | null>(null)
-  // Yuklangan rasm yo'li: saqlash xato bo'lsa, qayta urinishda qayta yuklanmaydi
-  const [uploaded, setUploaded] = useState<{ blob: Blob; path: string } | null>(null)
+  // Ixtiyoriy rasm: yuklangan yo'l eslab qolinadi — qayta urinishda qayta yuklanmaydi
+  const photo = usePhotoDraft()
+  const preparingPhoto = photo.preparing
+  const clearPhotoError = photo.clearError
   const [stock, setStock] = useState<{ key: string; value: string } | null>(null)
   // Qoralama id'si — qayta urinishda ikki marta yozilmasin (baza 23505 → saqlangan qator o'qiladi)
   const [draftId, setDraftId] = useState<string>(() => uuid())
@@ -69,7 +72,6 @@ export function MovementPage() {
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [photoError, setPhotoError] = useState<string | null>(null)
   const [savedText, setSavedText] = useState<string | null>(null)
 
   useEffect(() => {
@@ -130,6 +132,35 @@ export function MovementPage() {
   }, [objectId, materialId])
   const currentStock = stock && stock.key === stockKey ? stock.value : null
 
+  // Bog'langan xarid (faqat kirim): shu obyekt va materialdagi ochiq xaridlar.
+  // Taklif qilinadi, lekin bog'lash faqat foydalanuvchi tanlovi bilan (kalit bo'yicha eslab qolinadi).
+  const linkKey = type === 'kirim' && objectId && materialId ? `${objectId}:${materialId}` : null
+  const [openPurchases, setOpenPurchases] = useState<{ key: string; rows: OpenPurchase[] } | null>(null)
+  const [linkChoice, setLinkChoice] = useState<{ key: string; id: string | null } | null>(null)
+  useEffect(() => {
+    if (!linkKey || !objectId || !materialId) return
+    let alive = true
+    listOpenPurchases(objectId, materialId)
+      .then((rows) => {
+        if (alive) setOpenPurchases({ key: linkKey, rows })
+      })
+      .catch(() => {
+        // Bog'lash ixtiyoriy — xato bo'lsa bo'lim ko'rsatilmaydi
+        if (alive) setOpenPurchases({ key: linkKey, rows: [] })
+      })
+    return () => {
+      alive = false
+    }
+  }, [linkKey, objectId, materialId])
+  const openRows = openPurchases && openPurchases.key === linkKey ? openPurchases.rows : []
+  // Hech qachon avtomatik bog'lanmaydi — faqat foydalanuvchi "Bog'lash" ni bossa
+  const linkedPurchaseId = linkChoice !== null && linkChoice.key === linkKey ? linkChoice.id : null
+  const selectLinked = (id: string | null) => {
+    if (!linkKey) return
+    haptic.select()
+    setLinkChoice({ key: linkKey, id })
+  }
+
   const parsedQty = validateQtyInput(qty)
   const qtyBase = parsedQty.ok && unit ? toBaseQty(parsedQty.value, unit.factor) : null
   const warnings =
@@ -159,34 +190,8 @@ export function MovementPage() {
     setStock(null)
     setFieldErrors({})
     setSaveError(null)
-    setPhotoError(null)
+    photo.clearError()
     setSavedText(null)
-  }
-
-  const removePhoto = () => {
-    setPhoto(null)
-    setUploaded(null)
-    setPhotoError(null)
-  }
-
-  const pickPhoto = async (file: File) => {
-    setPhotoNotice(null)
-    setPhotoError(null)
-    setPreparingPhoto(true)
-    try {
-      const result = await preparePhoto(file, { maxSide: 1600, quality: 0.8 })
-      if (result.ok) {
-        setPhoto({ blob: result.blob, name: file.name })
-        setUploaded(null)
-      } else {
-        // Ochib bo'lmaydigan yoki katta rasm — olib tashlanadi, forma saqlanadi
-        setPhoto(null)
-        setUploaded(null)
-        setPhotoNotice(t.errors[result.reason])
-      }
-    } finally {
-      setPreparingPhoto(false)
-    }
   }
 
   const resetEntry = () => {
@@ -194,10 +199,9 @@ export function MovementPage() {
     setUnitId(null)
     setQty('')
     setNote('')
-    setPhoto(null)
-    setUploaded(null)
-    setPhotoNotice(null)
+    photo.reset()
     setStock(null)
+    setLinkChoice(null)
     setFieldErrors({})
     setDraftId(uuid())
   }
@@ -217,22 +221,9 @@ export function MovementPage() {
       savingRef.current = true
       setSaving(true)
       setSaveError(null)
-      setPhotoError(null)
-      const usePhoto = opts.withoutPhoto ? null : photo
-      if (opts.withoutPhoto) {
-        setPhoto(null)
-        setUploaded(null)
-      }
+      const purchaseId = type === 'kirim' ? linkedPurchaseId : null
       try {
-        let photoPath: string | null = null
-        if (usePhoto) {
-          if (uploaded && uploaded.blob === usePhoto.blob) {
-            photoPath = uploaded.path
-          } else {
-            photoPath = await uploadPhoto(usePhoto.blob, profile.company_id)
-            setUploaded({ blob: usePhoto.blob, path: photoPath })
-          }
-        }
+        const photoPath = await photo.resolvePath(profile.company_id, opts.withoutPhoto)
         const row = await createMovement({
           id: draftId,
           companyId: profile.company_id,
@@ -243,6 +234,7 @@ export function MovementPage() {
           qtyInput: result.qtyInput,
           note,
           photoPath,
+          ...(purchaseId ? { purchaseId } : {}),
         })
         haptic.success()
         saveLastObject(objectId)
@@ -258,19 +250,16 @@ export function MovementPage() {
         resetEntry()
       } catch (err) {
         haptic.error()
-        if (isPhotoError(err)) {
-          // Rasm muammosi saqlashni to'xtatmasin: "Qayta urinish" yoki "Rasmsiz saqlash"
-          setUploaded(null)
-          setPhotoError(errorText(err))
-        } else {
-          setSaveError(errorText(err))
-        }
+        // Rasm muammosi saqlashni to'xtatmasin: "Qayta urinish" yoki "Rasmsiz saqlash"
+        if (!photo.handleSaveError(err)) setSaveError(errorText(err))
       } finally {
         savingRef.current = false
         setSaving(false)
       }
     },
-    [profile, preparingPhoto, type, objectId, materialId, unitId, qty, photo, uploaded, draftId, note, material, object],
+    // resetEntry — faqat setState va photo.reset (photo deps ichida)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [profile, preparingPhoto, type, objectId, materialId, unitId, qty, photo, linkedPurchaseId, draftId, note, material, object],
   )
 
   const onMainButton = useCallback(() => {
@@ -285,13 +274,13 @@ export function MovementPage() {
       setMaterialId(null)
       setFieldErrors({})
       setSaveError(null)
-      setPhotoError(null)
+      clearPhotoError()
     } else if (step === 'object') {
       setPickingObject(false)
     } else if (step === 'material') {
       setPickingObject(true)
     }
-  }, [step])
+  }, [step, clearPhotoError])
   const canGoBack = step === 'details' || (step === 'object' && Boolean(objectId)) || (step === 'material' && manyObjects)
 
   useBackButton(canGoBack ? onBack : null)
@@ -340,39 +329,9 @@ export function MovementPage() {
       {objects && objects.length > 0 && materials && (
         <>
           {step === 'object' ? (
-            <section className="flex flex-col gap-2" aria-label={tm.chooseObject}>
-              <h2 className="text-sm font-semibold text-slate-700">{tm.chooseObject}</h2>
-              {orderObjects(objects, loadLastObject()).map((o) => (
-                <button
-                  key={o.id}
-                  type="button"
-                  aria-pressed={o.id === objectId}
-                  onClick={() => chooseObject(o.id)}
-                  className={`min-h-14 rounded-2xl border px-4 text-left text-base font-semibold ${
-                    o.id === objectId ? 'border-brand bg-brand-light text-brand-dark' : 'border-slate-200 text-slate-900'
-                  }`}
-                >
-                  {o.name}
-                </button>
-              ))}
-            </section>
+            <ObjectChooser objects={objects} selectedId={objectId} lastUsed={loadLastObject()} onPick={chooseObject} />
           ) : (
-            object && (
-              <div className="flex min-h-11 items-center justify-between gap-2 rounded-xl bg-brand-light px-3 py-1 text-brand-dark">
-                <span className="text-sm">
-                  {tm.object}: <strong>{object.name}</strong>
-                </span>
-                {manyObjects && (
-                  <button
-                    type="button"
-                    onClick={() => setPickingObject(true)}
-                    className="min-h-11 px-2 text-sm font-medium text-brand"
-                  >
-                    {tm.change}
-                  </button>
-                )}
-              </div>
-            )
+            object && <ObjectBar object={object} onChange={manyObjects ? () => setPickingObject(true) : null} />
           )}
 
           {step === 'material' && <MaterialGrid materials={ranked} onPick={chooseMaterial} />}
@@ -411,32 +370,19 @@ export function MovementPage() {
                 {fieldErrors.qty && <p className="text-sm text-danger">{tm.errors.qty[fieldErrors.qty]}</p>}
               </div>
 
-              <div role="group" aria-label={tm.unit} className="flex flex-wrap gap-2">
-                {material.units.map((u) => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    aria-pressed={u.id === unitId}
-                    onClick={() => {
-                      haptic.select()
-                      setUnitId(u.id)
-                      setFieldErrors((er) => ({ ...er, unit: undefined }))
-                    }}
-                    className={`min-h-11 rounded-full border px-4 text-base ${
-                      u.id === unitId ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white text-slate-800'
-                    }`}
-                  >
-                    {unitLabel(u)}
-                  </button>
-                ))}
-              </div>
+              <UnitChips
+                units={material.units}
+                selectedId={unitId}
+                onPick={(id) => {
+                  haptic.select()
+                  setUnitId(id)
+                  setFieldErrors((er) => ({ ...er, unit: undefined }))
+                }}
+              />
               {fieldErrors.unit && <p className="text-sm text-danger">{tm.errors.unit}</p>}
 
               {qtyBase !== null && (
-                <div className="rounded-xl bg-slate-50 px-4 py-3">
-                  <p className="text-lg font-semibold text-slate-900">
-                    {tm.equals(formatQty(qtyBase), material.base_unit)}
-                  </p>
+                <BaseQtyBox qtyBase={qtyBase} unit={unit} baseUnit={material.base_unit}>
                   {type === 'chiqim' && currentStock !== null && (
                     <p className="text-sm text-slate-600">
                       {tm.stock(
@@ -446,21 +392,28 @@ export function MovementPage() {
                       )}
                     </p>
                   )}
-                </div>
+                </BaseQtyBox>
               )}
               {warnings[0] && <Notice tone="warn">{tm.warnings[warnings[0]]}</Notice>}
 
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-slate-700">{tm.photo}</span>
-                <PhotoPicker
-                  photo={photo}
-                  busy={preparingPhoto || saving}
-                  onPick={(f) => void pickPhoto(f)}
-                  onRemove={removePhoto}
+              {type === 'kirim' && (
+                <LinkedPurchases
+                  rows={openRows}
+                  selectedId={linkedPurchaseId}
+                  baseUnit={material.base_unit}
+                  onSelect={selectLinked}
                 />
-                {preparingPhoto && <Spinner label={tm.preparingPhoto} />}
-                {photoNotice && <Notice tone="warn">{photoNotice}</Notice>}
-              </div>
+              )}
+
+              <PhotoField
+                label={tm.photo}
+                photo={photo.photo}
+                busy={preparingPhoto || saving}
+                preparing={preparingPhoto}
+                notice={photo.notice}
+                onPick={(f) => void photo.pick(f)}
+                onRemove={photo.remove}
+              />
 
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="movement-note" className="text-sm font-medium text-slate-700">
@@ -485,18 +438,13 @@ export function MovementPage() {
                   </button>
                 </Notice>
               )}
-              {photoError && (
-                <div role="alert" className="flex flex-col gap-2 rounded-xl border border-danger/20 bg-danger/5 p-3">
-                  <p className="text-sm text-danger">{photoError}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button variant="secondary" disabled={saving} onClick={onMainButton}>
-                      {t.common.retry}
-                    </Button>
-                    <Button variant="primary" disabled={saving} onClick={saveWithoutPhoto}>
-                      {tm.saveWithoutPhoto}
-                    </Button>
-                  </div>
-                </div>
+              {photo.error && (
+                <PhotoErrorBox
+                  message={photo.error}
+                  busy={saving}
+                  onRetry={onMainButton}
+                  onWithoutPhoto={saveWithoutPhoto}
+                />
               )}
 
               {!insideTelegram && (
@@ -512,8 +460,3 @@ export function MovementPage() {
   )
 }
 
-/** Oxirgi ishlatilgan obyekt birinchi, qolganlari nom bo'yicha (listObjects tartibi). */
-function orderObjects(objects: ObjectRow[], lastUsed: string | null): ObjectRow[] {
-  const last = objects.find((o) => o.id === lastUsed)
-  return last ? [last, ...objects.filter((o) => o.id !== lastUsed)] : objects
-}

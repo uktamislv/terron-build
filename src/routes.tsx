@@ -9,21 +9,28 @@ import { RequireTgNav, TgIndex, TgLayout } from '@/tg/TgLayout'
 import { tgNavItems } from '@/tg/nav'
 import { MinePage } from '@/tg/pages/MinePage'
 import { MovementPage } from '@/tg/pages/MovementPage'
+import { PurchasePage } from '@/tg/pages/PurchasePage'
 import { TgHomePage } from '@/tg/pages/TgHomePage'
 import { WebLayout } from '@/web/WebLayout'
 import { RequireAuth, RequireNav } from '@/web/guards'
 import { webNavItems } from '@/web/nav'
+import { AlertsPage } from '@/web/pages/AlertsPage'
+import { CashPage } from '@/web/pages/CashPage'
 import { DashboardPage } from '@/web/pages/DashboardPage'
 import { LoginPage } from '@/web/pages/LoginPage'
 import { MaterialsPage } from '@/web/pages/MaterialsPage'
 import { MovementsPage } from '@/web/pages/MovementsPage'
 import { ObjectsPage } from '@/web/pages/ObjectsPage'
+import { PurchasesPage } from '@/web/pages/PurchasesPage'
 import { UsersPage } from '@/web/pages/UsersPage'
 
 // Tayyor veb sahifalar; qolganlari hozircha "Tez orada"
 const webPages: Partial<Record<WebNavKey, ReactNode>> = {
   materials: <MaterialsPage />,
   movements: <MovementsPage />,
+  purchases: <PurchasesPage />,
+  cash: <CashPage />,
+  alerts: <AlertsPage />,
   users: <UsersPage />,
   objects: <ObjectsPage />,
 }
@@ -32,6 +39,7 @@ const webSections = (Object.keys(webNavItems) as WebNavKey[]).filter((key) => ke
 // Tayyor Mini App ekranlari; qolganlari hozircha "Tez orada"
 const tgPages: Partial<Record<TgNavKey, ReactNode>> = {
   movement: <MovementPage />,
+  purchase: <PurchasePage />,
   mine: <MinePage />,
 }
 

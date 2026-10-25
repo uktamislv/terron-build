@@ -560,6 +560,8 @@ describe('o`z o`chirilgan harakat va xaridlari', () => {
 
   it('haydovchi o`z o`chirilgan xaridini ko`radi; prorabning o`chirilgan xaridini — yo`q', async () => {
     const r = await inTx(async (tx) => {
+      // Batch 5: bog'langan kirimi bor xarid o'chirilmaydi — avval kirim (mv_obj1 → p_pro_obj1)
+      await tx.query(`update public.movements set deleted_at = now() where id = $1`, [A.ids.mv_obj1])
       await tx.query(`update public.purchases set deleted_at = now() where id = any($1)`, [[A.ids.p_hay_obj2, A.ids.p_pro_obj1]])
       const labels: Record<string, string> = { [A.ids.p_hay_obj2!]: 'hay', [A.ids.p_pro_obj1!]: 'pro' }
       const see = async (u: TestUser): Promise<string[]> => {
