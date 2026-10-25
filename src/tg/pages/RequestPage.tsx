@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
 import { ArrowLeftRight, ClipboardList } from 'lucide-react'
 import { Notice, PageHeader, SegmentedControl, SkeletonRows } from '@/components/ui'
 import { listTransferTargets } from '@/data/transfersRepo'
 import { t } from '@/i18n'
 import { useEntryData } from '../entry/useEntryData'
+import { useRankedMaterials } from '../entry/useRankedMaterials'
+import { readPrefill } from '../request/prefill'
 import { MyRequests } from '../request/MyRequests'
 import { RequestForm } from '../request/RequestForm'
 import { TransferForm } from '../request/TransferForm'
@@ -17,7 +20,12 @@ type Tab = 'request' | 'transfer'
 /** Mini App: so'rov (smeta holati bilan) va obyektlar orasida o'tkazma. Pastda — mening so'rovlarim. */
 export function RequestPage() {
   const { profile } = useAuth()
-  const { objects, materials, error, reload } = useEntryData(profile?.company_id)
+  const { objects, materials: catalog, error, reload } = useEntryData(profile?.company_id)
+  // Batch 12 (L): materiallar foydalanish bo'yicha (kirim/chiqim ekranidagidek)
+  const materials = useRankedMaterials(catalog)
+  // Batch 12 (K): bosh ekrandagi "Tugayotganlar" dan to'ldirish
+  const location = useLocation()
+  const prefill = readPrefill(location.state)
   const [tab, setTab] = useState<Tab>('request')
   const [mineKey, setMineKey] = useState(0)
   const onSaved = useCallback(() => setMineKey((k) => k + 1), [])
@@ -59,10 +67,10 @@ export function RequestPage() {
       {objects && objects.length === 0 && <Notice tone="warn">{t.tg.movement.noObjects}</Notice>}
       {objects && objects.length > 0 && materials && (
         tab === 'request' ? (
-          <RequestForm key="request" profile={profile} objects={objects} materials={materials} onSaved={onSaved} />
+          <RequestForm key="request" profile={profile} objects={objects} materials={materials} prefill={prefill} onSaved={onSaved} />
         ) : (
           targets ? (
-            <TransferForm key="transfer" objects={objects} targets={targets} materials={materials} onSaved={onSaved} />
+            <TransferForm key="transfer" profileId={profile.id} objects={objects} targets={targets} materials={materials} onSaved={onSaved} />
           ) : (
             <SkeletonRows rows={2} />
           )

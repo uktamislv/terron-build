@@ -83,7 +83,7 @@ npx supabase functions deploy tg-auth tg-bot admin-users
 ## 7. Telegram webhook
 
 ```bash
-curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" -H "Content-Type: application/json" -d "{\"url\":\"https://<REF>.supabase.co/functions/v1/tg-bot\",\"secret_token\":\"<TELEGRAM_WEBHOOK_SECRET>\",\"allowed_updates\":[\"message\"],\"drop_pending_updates\":true}"
+curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" -H "Content-Type: application/json" -d "{\"url\":\"https://<REF>.supabase.co/functions/v1/tg-bot\",\"secret_token\":\"<TELEGRAM_WEBHOOK_SECRET>\",\"allowed_updates\":[\"message\",\"callback_query\"],\"drop_pending_updates\":true}"
 ```
 
 Tekshirish:

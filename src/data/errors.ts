@@ -26,6 +26,8 @@ export type RepoErrorCode =
   | 'photo_type'
   | 'photo_upload_failed'
   | 'export_too_large'
+  | 'receipt_url_invalid'
+  | 'receipt_unreadable'
   | ServerHintCode
   | 'unknown'
 
@@ -119,6 +121,16 @@ export const SERVER_HINTS = {
   restore_conflict: { showServerMessage: false },
   history_limit_invalid: { showServerMessage: false },
   inventory_apply_expired: { showServerMessage: false },
+  // Batch 12 (docs/automation-design.md). Xabarda mavjud qoldiq / kim va qachon ishlatgani bor.
+  transfer_insufficient_stock: { showServerMessage: true },
+  photo_required: { showServerMessage: false },
+  receipt_already_used: { showServerMessage: true },
+  alert_action_forbidden: { showServerMessage: false },
+  alert_not_found: { showServerMessage: false },
+  photo_sha256_invalid: { showServerMessage: false },
+  purchase_request_invalid: { showServerMessage: false },
+  supplier_tin_duplicate: { showServerMessage: false },
+  receipt_lookup_invalid: { showServerMessage: false },
 } as const satisfies Record<string, { showServerMessage: boolean }>
 
 export type ServerHintCode = keyof typeof SERVER_HINTS

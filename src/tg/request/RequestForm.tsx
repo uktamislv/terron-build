@@ -20,6 +20,9 @@ import { getWebApp, haptic } from '../telegram'
 import { SavedBanner } from '../ui'
 import { useBackButton, useMainButton } from '../useTelegramButtons'
 import { requestNormState } from '@/lib/requestNorm'
+import { initialUnitId, loadLastEntry, rememberLastEntry } from '../entry/lastEntry'
+import { LastQtyChip } from '../entry/LastQtyChip'
+import type { RequestPrefill } from './prefill'
 
 const tr = t.tg.request
 const tm = t.tg.movement
@@ -37,25 +40,38 @@ export function RequestForm({
   profile,
   objects,
   materials,
+  prefill = null,
   onSaved,
 }: {
   profile: Profile
   objects: ObjectRow[]
   materials: Material[]
+  /** Batch 12 (K): "Tugayotganlar" dan — obyekt, material, miqdor (asosiy birlikda), izoh. */
+  prefill?: RequestPrefill | null
   onSaved: () => void
 }) {
+  // Prefill faqat ko'rinadigan obyekt va faol material bo'lsa qo'llanadi
+  const [initial] = useState(() => {
+    const m = prefill ? materials.find((x) => x.id === prefill.materialId) : undefined
+    const o = prefill ? objects.find((x) => x.id === prefill.objectId) : undefined
+    return prefill && m && o ? { prefill, material: m } : null
+  })
   const [objectId, setObjectId] = useState<string | null>(() =>
-    defaultObjectId(
-      objects.map((o) => o.id),
-      loadLastObject(),
-    ),
+    initial
+      ? initial.prefill.objectId
+      : defaultObjectId(
+          objects.map((o) => o.id),
+          loadLastObject(),
+        ),
   )
   const [pickingObject, setPickingObject] = useState(false)
-  const [materialId, setMaterialId] = useState<string | null>(null)
-  const [unitId, setUnitId] = useState<string | null>(null)
-  const [qty, setQty] = useState('')
+  const [materialId, setMaterialId] = useState<string | null>(initial?.material.id ?? null)
+  // Prefill miqdori asosiy birlikda — birinchi (asosiy) birlik
+  const [unitId, setUnitId] = useState<string | null>(initial ? (initial.material.units[0]?.id ?? null) : null)
+  const [qty, setQty] = useState(initial?.prefill.qtyBase ?? '')
+  const [prefilled, setPrefilled] = useState(initial !== null)
   const [neededBy, setNeededBy] = useState<string | null>(null)
-  const [note, setNote] = useState('')
+  const [note, setNote] = useState(initial?.prefill.note ?? '')
   const [draftId, setDraftId] = useState(() => uuid())
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
@@ -94,8 +110,9 @@ export function RequestForm({
   const pickMaterial = (m: Material) => {
     haptic.tap()
     setMaterialId(m.id)
-    setUnitId(m.units[0]?.id ?? null)
+    setUnitId(initialUnitId(m.units, loadLastEntry(profile.id, m.id)))
     setQty('')
+    setPrefilled(false)
     setFieldErrors({})
     setSaveError(null)
     setSavedText(null)
@@ -125,6 +142,8 @@ export function RequestForm({
       })
       haptic.success()
       saveLastObject(objectId)
+      rememberLastEntry(profile.id, materialId, unitId, result.qtyInput)
+      setPrefilled(false)
       setSavedText(
         tr.saved(
           formatQty(row.qty_input),
@@ -147,7 +166,7 @@ export function RequestForm({
       savingRef.current = false
       setSaving(false)
     }
-  }, [objectId, materialId, unitId, qty, draftId, profile.company_id, neededBy, note, onSaved])
+  }, [objectId, materialId, unitId, qty, draftId, profile.company_id, profile.id, neededBy, note, onSaved])
 
   const onMain = useCallback(() => void save(), [save])
   const onBack = useCallback(() => {
@@ -185,6 +204,7 @@ export function RequestForm({
       {step === 'details' && material && (
         <section className="flex flex-col gap-4" aria-label={material.name}>
           <MaterialHeader name={material.name} onChange={() => setMaterialId(null)} />
+          {prefilled && <Notice tone="info">{t.tg.auto.prefilled}</Notice>}
           <QtyField
             label={tm.qty}
             value={qty}
@@ -194,6 +214,17 @@ export function RequestForm({
               setFieldErrors((e) => ({ ...e, qty: undefined }))
             }}
           />
+          {qty.trim() === '' && (
+            <LastQtyChip
+              last={loadLastEntry(profile.id, material.id)}
+              units={material.units}
+              onUse={(v, uid) => {
+                haptic.select()
+                setQty(v)
+                setUnitId(uid)
+              }}
+            />
+          )}
           <UnitChips
             units={material.units}
             selectedId={unitId}

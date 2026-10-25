@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
 import { Notice, PageHeader, SkeletonRows } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
-import { createMovement } from '@/data/movementsRepo'
+import { createMovement, listMyMovements } from '@/data/movementsRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { listOpenPurchases } from '@/data/openPurchasesRepo'
 import { getStock } from '@/data/stockRepo'
-import type { Material, ObjectRow, OpenPurchase } from '@/data/types'
+import type { Material, Movement, ObjectRow, OpenPurchase } from '@/data/types'
 import { getMyMaterialUsage } from '@/data/usageRepo'
 import {
   defaultObjectId,
@@ -19,13 +19,18 @@ import {
   type EntryType,
   type UsageStat,
 } from '@/domain/movements'
+import { findDuplicateEntry, photoRequired } from '@/domain/rules'
 import { toBaseQty, unitLabel, validateQtyInput } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatQty } from '@/lib/format'
 import { uuid } from '@/lib/uuid'
 import { MaterialGrid } from '../entry/MaterialGrid'
+import { initialUnitId, loadLastEntry, rememberLastEntry } from '../entry/lastEntry'
+import { ObjectLocationButton } from '../entry/ObjectLocationButton'
 import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
+import { useCompanySettings } from '../entry/useCompanySettings'
+import { useGeoCapture } from '../entry/useGeoCapture'
 import { usePhotoDraft } from '../entry/usePhotoDraft'
 import { IncomingTransfers } from '../movement/IncomingTransfers'
 import { EntryTypeSwitch } from '../movement/EntryTypeSwitch'
@@ -36,6 +41,8 @@ import { LoadError, SavedBanner } from '../ui'
 import { useBackButton, useMainButton } from '../useTelegramButtons'
 
 const tm = t.tg.movement
+const ta = t.tg.auto
+const RECENT_LIMIT = 30
 const USAGE_DAYS = 30
 
 type Step = 'object' | 'material' | 'details'
@@ -72,6 +79,25 @@ export function MovementPage() {
   const [savedText, setSavedText] = useState<string | null>(null)
   // Kelayotgan o'tkazmalar ro'yxati ochiq — forma yashiriladi
   const [incomingOpen, setIncomingOpen] = useState(false)
+  // Batch 12 (C): o'zimning oxirgi yozuvlarim — takroriy yozuvni saqlashdan oldin aniqlash uchun
+  const [recent, setRecent] = useState<Movement[]>([])
+  const [duplicate, setDuplicate] = useState(false)
+  const settings = useCompanySettings(companyId)
+  const profileId = profile?.id
+
+  useEffect(() => {
+    if (!profileId) return
+    let alive = true
+    Promise.resolve()
+      .then(() => listMyMovements(profileId, RECENT_LIMIT))
+      .then((rows) => {
+        if (alive && Array.isArray(rows)) setRecent(rows)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [profileId])
 
   useEffect(() => {
     if (!companyId) return
@@ -111,6 +137,10 @@ export function MovementPage() {
   const manyObjects = (objects?.length ?? 0) > 1
 
   const step: Step = (!objectId || pickingObject) && manyObjects ? 'object' : !material ? 'material' : 'details'
+  // Batch 12 (D): joylashuv ekran ochilishi bilan so'raladi, forma ochilganda eskirgan bo'lsa yangilanadi;
+  // saqlash kutmaydi (eng ko'pi 3 s)
+  const geo = useGeoCapture(step === 'details' && !incomingOpen)
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
 
   // Joriy qoldiq (chiqimda "Qoldiq: X → Y" va ogohlantirish uchun). Xato bo'lsa — ko'rsatilmaydi.
   const stockKey = objectId && materialId ? `${objectId}:${materialId}` : null
@@ -151,14 +181,38 @@ export function MovementPage() {
       alive = false
     }
   }, [linkKey, objectId, materialId])
-  const openRows = openPurchases && openPurchases.key === linkKey ? openPurchases.rows : []
-  // Hech qachon avtomatik bog'lanmaydi — faqat foydalanuvchi "Bog'lash" ni bossa
-  const linkedPurchaseId = linkChoice !== null && linkChoice.key === linkKey ? linkChoice.id : null
+  // Eng eskisi birinchi (Batch 12, A)
+  const openRows = useMemo(
+    () =>
+      openPurchases && openPurchases.key === linkKey
+        ? [...openPurchases.rows].sort((a, b) => a.purchased_at.localeCompare(b.purchased_at))
+        : [],
+    [openPurchases, linkKey],
+  )
+  // Batch 12 (A): bittagina ochiq xarid — oldindan tanlangan ("Bog'lamaslik" bilan bir bosishda
+  // olib tashlanadi); bir nechta — foydalanuvchi tanlaydi
+  const chosen = linkChoice !== null && linkChoice.key === linkKey ? linkChoice : null
+  const autoLinked = chosen === null && openRows.length === 1
+  const linkedPurchaseId = chosen ? chosen.id : autoLinked ? (openRows[0]?.id ?? null) : null
   const selectLinked = (id: string | null) => {
     if (!linkKey) return
     haptic.select()
     setLinkChoice({ key: linkKey, id })
   }
+
+  // Batch 12 (E): kirimda material "rasm majburiy" bo'lsa
+  const photoRule =
+    type === 'kirim' && material
+      ? photoRequired({
+          totalAmount: null,
+          thresholdAmount: null,
+          materialPhotoRequired: Boolean(material.photo_required),
+          qrVerified: false,
+        })
+      : null
+  const photoRequiredReason = photoRule ? ta.photoRequiredMaterial : null
+  const photoMissing = photoRequiredReason !== null && !photo.photo
+  const lastEntry = profileId && materialId ? loadLastEntry(profileId, materialId) : null
 
   const parsedQty = validateQtyInput(qty)
   const qtyBase = parsedQty.ok && unit ? toBaseQty(parsedQty.value, unit.factor) : null
@@ -184,9 +238,10 @@ export function MovementPage() {
   const chooseMaterial = (m: Material) => {
     haptic.tap()
     setMaterialId(m.id)
-    setUnitId(m.units[0]?.id ?? null)
+    setUnitId(initialUnitId(m.units, profileId ? loadLastEntry(profileId, m.id) : null))
     setQty('')
     setStock(null)
+    setDuplicate(false)
     setFieldErrors({})
     setSaveError(null)
     photo.clearError()
@@ -201,28 +256,59 @@ export function MovementPage() {
     photo.reset()
     setStock(null)
     setLinkChoice(null)
+    setDuplicate(false)
     setFieldErrors({})
     setDraftId(uuid())
+    geo.reset()
   }
 
   const save = useCallback(
-    async (opts: { withoutPhoto?: boolean } = {}) => {
+    async (opts: { withoutPhoto?: boolean; confirmDuplicate?: boolean } = {}) => {
       // Sinxron qulf: MainButton va oddiy tugma tez-tez bosilsa ham bitta so'rov
       if (savingRef.current || !profile || preparingPhoto) return
       const draft = { type, objectId, materialId, unitId, qtyInput: qty }
-      const isAdmin = profile.role === 'admin' || profile.role === 'super_admin'
-      const result = validateMovementDraft(draft, { nowIso: new Date().toISOString(), isAdmin })
+      const nowIso = new Date().toISOString()
+      const result = validateMovementDraft(draft, { nowIso, isAdmin })
       if (!result.ok || !objectId || !materialId || !unitId) {
         setFieldErrors(result.ok ? {} : result.errors)
         haptic.error()
         return
       }
+      if (photoMissing) {
+        haptic.error()
+        return
+      }
+      // Batch 12 (C): takroriy yozuv — ogohlantirish, bloklamaydi ("Baribir saqlash")
+      if (!opts.confirmDuplicate && qtyBase !== null) {
+        const prev = recent
+          .filter((m) => !m.deleted_at && m.created_by)
+          .map((m) => ({
+            id: m.id,
+            createdBy: m.created_by ?? '',
+            kind: m.type,
+            objectId: m.object_id,
+            materialId: m.material_id,
+            qtyBase: m.qty_base,
+            createdAt: m.created_at,
+          }))
+        const dup = findDuplicateEntry(
+          prev,
+          { id: draftId, createdBy: profile.id, kind: type, objectId, materialId, qtyBase, createdAt: nowIso },
+          settings.duplicateWindowMinutes,
+        )
+        if (dup) {
+          setDuplicate(true)
+          haptic.error()
+          return
+        }
+      }
+      setDuplicate(false)
       savingRef.current = true
       setSaving(true)
       setSaveError(null)
       const purchaseId = type === 'kirim' ? linkedPurchaseId : null
       try {
-        const photoPath = await photo.resolvePath(profile.company_id, opts.withoutPhoto)
+        const [photoPath, geoFix] = await Promise.all([photo.resolvePath(profile.company_id, opts.withoutPhoto), geo.get()])
         const row = await createMovement({
           id: draftId,
           companyId: profile.company_id,
@@ -233,10 +319,14 @@ export function MovementPage() {
           qtyInput: result.qtyInput,
           note,
           photoPath,
+          photoSha256: photoPath ? (photo.photo?.sha256 ?? null) : null,
+          geo: geoFix,
           ...(purchaseId ? { purchaseId } : {}),
         })
         haptic.success()
         saveLastObject(objectId)
+        rememberLastEntry(profile.id, materialId, unitId, result.qtyInput)
+        setRecent((list) => [row, ...list.filter((m) => m.id !== row.id)].slice(0, RECENT_LIMIT))
         setSavedText(
           tm.saved(
             t.movements.types[row.type === 'chiqim' ? 'chiqim' : 'kirim'],
@@ -258,11 +348,14 @@ export function MovementPage() {
     },
     // resetEntry — faqat setState va photo.reset (photo deps ichida)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [profile, preparingPhoto, type, objectId, materialId, unitId, qty, photo, linkedPurchaseId, draftId, note, material, object],
+    [profile, preparingPhoto, type, objectId, materialId, unitId, qty, photo, linkedPurchaseId, draftId, note, material, object, isAdmin, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, geo],
   )
 
   const onMainButton = useCallback(() => {
     void save()
+  }, [save])
+  const saveDuplicate = useCallback(() => {
+    void save({ confirmDuplicate: true })
   }, [save])
   const saveWithoutPhoto = () => {
     void save({ withoutPhoto: true })
@@ -283,7 +376,12 @@ export function MovementPage() {
   const canGoBack = step === 'details' || (step === 'object' && Boolean(objectId)) || (step === 'material' && manyObjects)
 
   useBackButton(canGoBack && !incomingOpen ? onBack : null)
-  useMainButton(tm.save, step === 'details' && !incomingOpen ? onMainButton : null, preparingPhoto, saving)
+  useMainButton(
+    duplicate ? ta.duplicateSave : tm.save,
+    step === 'details' && !incomingOpen ? (duplicate ? saveDuplicate : onMainButton) : null,
+    preparingPhoto || photoMissing,
+    saving,
+  )
   const insideTelegram = getWebApp() !== null
 
   if (!profile) return null
@@ -334,6 +432,27 @@ export function MovementPage() {
                   warning={warnings[0] ?? null}
                   openPurchases={openRows}
                   linkedPurchaseId={linkedPurchaseId}
+                  autoLinked={autoLinked}
+                  lastEntry={lastEntry}
+                  onUseLast={(v, uid) => {
+                    haptic.select()
+                    setQty(v)
+                    setUnitId(uid)
+                    setDuplicate(false)
+                    setFieldErrors((er) => ({ ...er, qty: undefined, unit: undefined }))
+                  }}
+                  photoRequiredReason={photoRequiredReason}
+                  duplicateMinutes={duplicate ? settings.duplicateWindowMinutes : null}
+                  onConfirmDuplicate={saveDuplicate}
+                  onCancelDuplicate={() => setDuplicate(false)}
+                  extra={
+                    isAdmin && object ? (
+                      <ObjectLocationButton
+                        object={object}
+                        onSaved={(o) => setObjects((list) => list?.map((x) => (x.id === o.id ? o : x)) ?? list)}
+                      />
+                    ) : null
+                  }
                   note={note}
                   photo={{ photo: photo.photo, notice: photo.notice, error: photo.error, preparing: preparingPhoto }}
                   saving={saving}
@@ -341,11 +460,13 @@ export function MovementPage() {
                   showSaveButton={!insideTelegram}
                   onQty={(v) => {
                     setQty(v)
+                    setDuplicate(false)
                     setFieldErrors((er) => ({ ...er, qty: undefined }))
                   }}
                   onUnit={(id) => {
                     haptic.select()
                     setUnitId(id)
+                    setDuplicate(false)
                     setFieldErrors((er) => ({ ...er, unit: undefined }))
                   }}
                   onNote={setNote}

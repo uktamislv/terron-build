@@ -157,6 +157,9 @@ describe('/tg/movement — bitta obyektli prorab', () => {
       qtyInput: '3',
       note: '',
       photoPath: null,
+      photoSha256: null,
+      // jsdom'da joylashuv yo'q — saqlash to'xtamaydi, holat `unavailable`
+      geo: { status: 'unavailable' },
     })
     expect(typeof arg?.qtyInput).toBe('string')
     expect(arg).not.toHaveProperty('qty_base')
@@ -466,16 +469,14 @@ describe('/tg/movement — bog‘langan xarid (kirim)', () => {
     }
   }
 
-  it('bitta ochiq xarid — avtomatik bog‘lanmaydi: "Taklif" va bir bosishda "Bog‘lash"', async () => {
+  it('Batch 12 (A): bitta ochiq xarid — oldindan tanlangan, qo‘shimcha bosishsiz bog‘lanadi', async () => {
     vi.mocked(openPurchasesRepo.listOpenPurchases).mockResolvedValue([openPurchase('pu1')])
     open()
     await pickMaterial('Sement')
     const region = await screen.findByRole('region', { name: tl.title })
     expect(openPurchasesRepo.listOpenPurchases).toHaveBeenCalledWith('o-a', 'm-sem')
     expect(within(region).getByText(tl.remaining('50', 'kg'))).toBeInTheDocument()
-    expect(within(region).getByText(tl.suggestion)).toBeInTheDocument()
-    expect(within(region).getByTestId('open-purchase')).not.toHaveAttribute('data-linked')
-    fireEvent.click(within(region).getByRole('button', { name: tl.link }))
+    expect(await within(region).findByText(tl.autoLinked)).toBeInTheDocument()
     expect(within(region).getByTestId('open-purchase')).toHaveAttribute('data-linked', 'true')
     typeQty('1')
     save()
@@ -483,14 +484,15 @@ describe('/tg/movement — bog‘langan xarid (kirim)', () => {
     expect(vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0].purchaseId).toBe('pu1')
   })
 
-  it('taklif bosilmasa yoki bekor qilinsa — purchaseId yuborilmaydi', async () => {
+  it('Batch 12 (A): bir bosishda olib tashlanadi — purchaseId yuborilmaydi; "Bog‘lash" bilan qaytariladi', async () => {
     vi.mocked(openPurchasesRepo.listOpenPurchases).mockResolvedValue([openPurchase('pu1')])
     open()
     await pickMaterial('Sement')
     const region = await screen.findByRole('region', { name: tl.title })
-    fireEvent.click(within(region).getByRole('button', { name: tl.link }))
-    fireEvent.click(within(region).getByRole('button', { name: tl.remove }))
+    fireEvent.click(await within(region).findByRole('button', { name: tl.remove }))
     expect(within(region).getByTestId('open-purchase')).not.toHaveAttribute('data-linked')
+    expect(within(region).getByText(tl.suggestion)).toBeInTheDocument()
+    expect(within(region).getByRole('button', { name: tl.link })).toBeInTheDocument()
     typeQty('1')
     save()
     await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalled())
@@ -507,12 +509,28 @@ describe('/tg/movement — bog‘langan xarid (kirim)', () => {
     const region = await screen.findByRole('region', { name: tl.title })
     expect(within(region).getByText(tl.choose)).toBeInTheDocument()
     expect(within(region).queryByText(tl.suggestion)).not.toBeInTheDocument()
+    // Hech biri oldindan tanlanmagan
+    expect(within(region).getAllByTestId('open-purchase').filter((c) => c.hasAttribute('data-linked'))).toHaveLength(0)
     const cards = within(region).getAllByTestId('open-purchase')
     fireEvent.click(within(cards[1] as HTMLElement).getByRole('button', { name: tl.link }))
     typeQty('1')
     save()
     await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalled())
     expect(vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0].purchaseId).toBe('pu2')
+  })
+
+  it('Batch 12 (A): bir nechta — eng eskisi birinchi', async () => {
+    vi.mocked(openPurchasesRepo.listOpenPurchases).mockResolvedValue([
+      openPurchase('pu-new', { purchased_at: '2026-10-24T05:00:00Z', buyer_name: 'Yangi' }),
+      openPurchase('pu-old', { purchased_at: '2026-10-20T05:00:00Z', buyer_name: 'Eski' }),
+    ])
+    open()
+    await pickMaterial('Sement')
+    const region = await screen.findByRole('region', { name: tl.title })
+    await waitFor(() => expect(within(region).getAllByTestId('open-purchase')).toHaveLength(2))
+    const cards = within(region).getAllByTestId('open-purchase')
+    expect(cards[0]).toHaveTextContent('Eski')
+    expect(cards[1]).toHaveTextContent('Yangi')
   })
 
   it('asosiy bo‘lmagan birlik — "= 150 kg" katta ko‘rsatiladi', async () => {

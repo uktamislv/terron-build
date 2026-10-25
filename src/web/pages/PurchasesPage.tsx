@@ -40,6 +40,7 @@ import { paramDate, paramId } from '../urlFilters'
 import { dayStartIso, nextDayStartIso } from '../movements/movementFilters'
 import { PurchaseDetailDialog } from '../purchases/PurchaseDetailDialog'
 import { ReceiptBadge } from '../purchases/ReceiptBadge'
+import { QrBadge } from '../purchases/QrBadge'
 
 const tp = t.purchases
 const to = t.ombor
@@ -274,6 +275,9 @@ export function PurchasesView({
                 <span className="flex flex-col">
                   <span className={p.deleted_at ? 'line-through' : 'font-medium text-ink'}>{p.material_name}</span>
                   {p.supplier_name && <span className="text-xs text-muted">{p.supplier_name}</span>}
+                  <span className="mt-1 empty:hidden">
+                    <QrBadge p={p} />
+                  </span>
                 </span>
               ),
             },
@@ -330,6 +334,7 @@ export function PurchasesView({
                   <span>{p.object_name}</span>
                   <span>{p.buyer_name}</span>
                   {p.supplier_name && <span>{p.supplier_name}</span>}
+                  <QrBadge p={p} />
                   <span className="tabular">{formatDateTime(p.purchased_at)}</span>
                   <span className="mt-1 flex-col !items-start">
                     <ReceiptBadge p={p} thresholdPct={thresholdPct} nowIso={nowIso} level />

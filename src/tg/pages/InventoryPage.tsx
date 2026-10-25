@@ -22,6 +22,7 @@ import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
 import { MaterialHeader, QtyField } from '../entry/QtyField'
 import { UnitChips } from '../entry/UnitChips'
 import { useEntryData } from '../entry/useEntryData'
+import { useRankedMaterials } from '../entry/useRankedMaterials'
 import { CountMaterialList } from '../inventory/CountMaterialList'
 import { getWebApp, haptic } from '../telegram'
 import { LoadError, SavedBanner } from '../ui'
@@ -303,7 +304,9 @@ type Phase = { kind: 'start' } | { kind: 'count'; count: InventoryCount } | { ki
 /** Mini App: inventarizatsiya (tekshiruvchi, admin) — obyekt → yangi sanash yoki qoralamani davom ettirish. */
 export function InventoryPage() {
   const { profile } = useAuth()
-  const { objects, materials, error, reload } = useEntryData(profile?.company_id)
+  const { objects, materials: catalog, error, reload } = useEntryData(profile?.company_id)
+  // Batch 12 (L): ko'p ishlatilganlar birinchi
+  const materials = useRankedMaterials(catalog)
   const [objectId, setObjectId] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
   const [phase, setPhase] = useState<Phase>({ kind: 'start' })

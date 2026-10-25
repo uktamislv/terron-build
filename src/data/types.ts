@@ -37,6 +37,11 @@ export interface ObjectRow {
   name: string
   address: string | null
   status: ObjectStatus
+  /** Batch 12 (D): obyekt koordinatasi `numeric(9,6)` satr sifatida; kiritilmagan — null. */
+  lat?: Dec | null
+  lng?: Dec | null
+  /** Ruxsat etilgan masofa, metr (standart 300). */
+  radius_m?: number | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -103,11 +108,34 @@ export interface Material {
   /** `numeric(6,2)` satr sifatida. */
   waste_pct: Dec
   is_active: boolean
+  /** Batch 12 (E): kirim/xaridda rasm majburiy. */
+  photo_required?: boolean
   created_by: string | null
   created_at: string
   updated_at: string
   units: MaterialUnit[]
   aliases: MaterialAlias[]
+}
+
+/** Batch 12 (D): joylashuv holati — `ok` (olindi), `denied` (ruxsat yo'q), `unavailable` (olinmadi). */
+export type GeoStatus = 'ok' | 'denied' | 'unavailable'
+
+/** Yozuv paytidagi joylashuv ustunlari (`movements`, `purchases`). Eski yozuvlar va veb — null. */
+export interface GeoColumns {
+  geo_lat?: Dec | null
+  geo_lng?: Dec | null
+  geo_accuracy_m?: number | null
+  geo_status?: GeoStatus | null
+}
+
+/** Saqlashda yuboriladigan joylashuv (Mini App). `ok` bo'lmasa — koordinatasiz. */
+export interface GeoFix {
+  status: GeoStatus
+  /** Dec satr (6 kasr xonagacha). */
+  lat?: Dec
+  lng?: Dec
+  /** Aniqlik, metr (butun). */
+  accuracyM?: number
 }
 
 /** `movements.type` — bazadagi `movement_type` enum (domain bilan bir xil). */
@@ -119,7 +147,7 @@ export const MOVEMENT_KINDS: readonly MovementKind[] = ['kirim', 'chiqim', 'tran
  * Ombor harakati — obyekt, material va kiritgan profil nomlari bilan.
  * Miqdorlar `numeric` → satr (`::text`), float'ga aylantirilmaydi.
  */
-export interface Movement {
+export interface Movement extends GeoColumns {
   id: string
   company_id: string
   type: MovementKind
@@ -132,6 +160,8 @@ export interface Movement {
   qty_base: Dec
   purchase_id: string | null
   photo_path: string | null
+  /** Batch 12 (C): rasm SHA-256 (hex), klient hisoblaydi. */
+  photo_sha256?: string | null
   occurred_at: string
   note: string | null
   created_by: string | null
@@ -159,6 +189,8 @@ export interface Supplier {
   name: string
   phone: string | null
   note: string | null
+  /** Batch 12 (G): STIR (INN) — chek QR bo'yicha topish uchun. */
+  tin?: string | null
   created_at: string
   deleted_at: string | null
 }
@@ -182,6 +214,16 @@ export type AlertType =
   | 'smeta_ozgarishi'
   | 'otkazma_farqi'
   | 'yozuv_tiklandi'
+  // Batch 12 (docs/automation-design.md)
+  | 'kirim_manbasiz'
+  | 'manfiy_qoldiq'
+  | 'takroriy_yozuv'
+  | 'joylashuv_farqi'
+  | 'smetasiz_chiqim'
+  | 'chek_farqi'
+  | 'sorovdan_ortiq_xarid'
+  | 'podotchet_muddati'
+  | 'podotchet_manfiy'
 
 export const ALERT_TYPES: readonly AlertType[] = [
   'xarid_qabul_farqi',
@@ -194,6 +236,15 @@ export const ALERT_TYPES: readonly AlertType[] = [
   'smeta_ozgarishi',
   'otkazma_farqi',
   'yozuv_tiklandi',
+  'kirim_manbasiz',
+  'manfiy_qoldiq',
+  'takroriy_yozuv',
+  'joylashuv_farqi',
+  'smetasiz_chiqim',
+  'chek_farqi',
+  'sorovdan_ortiq_xarid',
+  'podotchet_muddati',
+  'podotchet_manfiy',
 ]
 
 export type AlertStatus = 'yangi' | 'korildi' | 'yopildi'
@@ -205,7 +256,7 @@ export type AlertSeverity = 'belgi' | 'ogohlantirish' | 'jiddiy'
 export const ALERT_SEVERITIES: readonly AlertSeverity[] = ['belgi', 'ogohlantirish', 'jiddiy']
 
 /** Xarid — obyekt, material, xaridor va sotuvchi nomlari, qabul holati bilan. Pul va miqdor — satr. */
-export interface Purchase {
+export interface Purchase extends GeoColumns {
   id: string
   company_id: string
   buyer_id: string
@@ -221,6 +272,18 @@ export interface Purchase {
   unit_price: Dec
   price_per_base: Dec
   receipt_photo_path: string | null
+  /** Batch 12 (C): chek rasmi SHA-256 (hex). */
+  receipt_photo_sha256?: string | null
+  /** Batch 12 (G): chek QR — fiskal belgi, terminal, chek raqami; soliq sahifasidan tasdiqlangan. */
+  receipt_fiscal_sign?: string | null
+  receipt_terminal_id?: string | null
+  receipt_no?: string | null
+  receipt_verified?: boolean
+  /** Chekdagi jami (so'm), `numeric(18,2)` satr. */
+  receipt_total?: Dec | null
+  seller_tin?: string | null
+  /** Batch 12 (H): shu so'rov bo'yicha xarid. */
+  request_id?: string | null
   purchased_at: string
   note: string | null
   created_by: string | null
@@ -256,17 +319,25 @@ export interface CashBalance {
   company_id: string
   profile_id: string
   issued_total: Dec
+  /** Batch 12 (I): qaytarilgan pul jami (eski view'da yo'q — undefined). */
+  returned_total?: Dec
   spent_total: Dec
+  /** berildi − qaytarildi − xaridlar. */
   balance: Dec
   last_issued_at: string | null
   last_spent_at: string | null
 }
 
-/** `cash_advances` — berilgan pul (podotchet). */
+/** Batch 12 (I): `berildi` — pul berildi, `qaytarildi` — odam ortiqcha pulni qaytardi. */
+export type CashAdvanceKind = 'berildi' | 'qaytarildi'
+
+/** `cash_advances` — berilgan (yoki qaytarilgan) pul (podotchet). */
 export interface CashAdvance {
   id: string
   company_id: string
   recipient_id: string
+  /** Eski qatorlarda bo'lmasa — `berildi`. */
+  kind?: CashAdvanceKind
   amount: Dec
   issued_at: string
   note: string | null

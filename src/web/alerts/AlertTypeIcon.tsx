@@ -2,10 +2,19 @@ import {
   ArchiveRestore,
   ArrowLeftRight,
   ClipboardList,
+  CopyX,
   FileDiff,
+  FileQuestion,
   Gauge,
+  HandCoins,
+  MapPinOff,
+  MinusCircle,
+  PackageSearch,
   PackageX,
+  ReceiptText,
   Scale,
+  ShoppingBasket,
+  TimerOff,
   TrendingUp,
   Trash2,
   UserCheck,
@@ -37,5 +46,23 @@ export function AlertTypeIcon({ type }: { type: AlertType }) {
       return <ArrowLeftRight {...p} />
     case 'yozuv_tiklandi':
       return <ArchiveRestore {...p} />
+    case 'kirim_manbasiz':
+      return <PackageSearch {...p} />
+    case 'manfiy_qoldiq':
+      return <MinusCircle {...p} />
+    case 'takroriy_yozuv':
+      return <CopyX {...p} />
+    case 'joylashuv_farqi':
+      return <MapPinOff {...p} />
+    case 'smetasiz_chiqim':
+      return <FileQuestion {...p} />
+    case 'chek_farqi':
+      return <ReceiptText {...p} />
+    case 'sorovdan_ortiq_xarid':
+      return <ShoppingBasket {...p} />
+    case 'podotchet_muddati':
+      return <TimerOff {...p} />
+    case 'podotchet_manfiy':
+      return <HandCoins {...p} />
   }
 }

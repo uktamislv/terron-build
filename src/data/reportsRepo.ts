@@ -10,6 +10,8 @@ export interface DashboardSummary {
   purchases_count: number
   purchases_sum: Dec
   cash_issued_sum: Dec
+  /** Batch 12 (I): davrda qaytarilgan pul (`cash_issued_sum` — faqat berilgan). */
+  cash_returned_sum: Dec
   cash_on_hand_total: Dec
   alerts_open: number
   alerts_serious_open: number
@@ -72,7 +74,7 @@ const COUNT_KEYS = [
   'pending_requests_count',
   'objects_over_norm_count',
 ] as const
-const MONEY_KEYS = ['purchases_sum', 'cash_issued_sum', 'cash_on_hand_total'] as const
+const MONEY_KEYS = ['purchases_sum', 'cash_issued_sum', 'cash_returned_sum', 'cash_on_hand_total'] as const
 
 function int(v: unknown): number {
   const n = Number(v ?? 0)

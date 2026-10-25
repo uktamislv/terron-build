@@ -1,5 +1,5 @@
 // Xarid: balans kartasi va tanlangan material uchun forma (taqdimot — holat PurchasePage'da).
-import type { Ref } from 'react'
+import type { ReactNode, Ref } from 'react'
 import { Wallet } from 'lucide-react'
 import { Button, cx, Money, Notice } from '@/components/ui'
 import type { Material, MaterialUnit, Supplier } from '@/data/types'
@@ -7,6 +7,9 @@ import { isNegative } from '@/domain/decimal'
 import type { PriceCheck } from '@/data/purchasesRepo'
 import { t } from '@/i18n'
 import { BaseQtyBox } from '../entry/BaseQtyBox'
+import { DuplicateWarning } from '../entry/DuplicateWarning'
+import type { LastEntry } from '../entry/lastEntry'
+import { LastQtyChip } from '../entry/LastQtyChip'
 import { PhotoErrorBox, PhotoField, type PickedPhoto } from '../entry/PhotoPicker'
 import { MaterialHeader, NoteField } from '../entry/QtyField'
 import { bigInputClass } from '../entry/styles'
@@ -66,6 +69,16 @@ export interface PurchaseDetailsProps {
   saving: boolean
   saveError: string | null
   showSaveButton: boolean
+  /** Batch 12: chek kartasi, so'rov belgisi (material sarlavhasi ostida). */
+  top?: ReactNode
+  lastEntry?: LastEntry | null
+  onUseLast?: (qty: string, unitId: string) => void
+  /** Batch 12 (E): rasm majburiy bo'lsa — sabab. */
+  photoRequiredReason?: string | null
+  /** Batch 12 (C): takroriy yozuv (daqiqa) — null yo'q. */
+  duplicateMinutes?: number | null
+  onConfirmDuplicate?: () => void
+  onCancelDuplicate?: () => void
   onQty: (v: string) => void
   onUnit: (id: string) => void
   onSum: (raw: string, caret: number | null) => void
@@ -83,6 +96,7 @@ export function PurchaseDetails({ sumRef, ...p }: PurchaseDetailsProps) {
   return (
     <section className="flex flex-col gap-4" aria-label={material.name}>
       <MaterialHeader name={material.name} onChange={p.onChangeMaterial} />
+      {p.top}
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="purchase-qty" className="text-sm font-medium text-ink">
@@ -100,6 +114,7 @@ export function PurchaseDetails({ sumRef, ...p }: PurchaseDetailsProps) {
         />
         {errors.qty && <p className="text-sm text-danger">{tm.errors.qty[errors.qty]}</p>}
       </div>
+      {p.qty.trim() === '' && p.onUseLast && <LastQtyChip last={p.lastEntry ?? null} units={material.units} onUse={p.onUseLast} />}
 
       <UnitChips units={material.units} selectedId={p.unitId} onPick={p.onUnit} />
       {errors.unit && <p className="text-sm text-danger">{tm.errors.unit}</p>}
@@ -138,6 +153,7 @@ export function PurchaseDetails({ sumRef, ...p }: PurchaseDetailsProps) {
         busy={p.photo.preparing || p.saving}
         preparing={p.photo.preparing}
         notice={p.photo.notice}
+        requiredReason={p.photoRequiredReason ?? null}
         onPick={p.onPickPhoto}
         onRemove={p.onRemovePhoto}
       />
@@ -145,13 +161,26 @@ export function PurchaseDetails({ sumRef, ...p }: PurchaseDetailsProps) {
       <NoteField label={tp.note} value={p.note} placeholder={tp.notePlaceholder} onChange={p.onNote} />
 
       {errors.object && <Notice>{tm.errors.object}</Notice>}
+      {p.duplicateMinutes != null && (
+        <DuplicateWarning
+          minutes={p.duplicateMinutes}
+          busy={p.saving}
+          onConfirm={() => p.onConfirmDuplicate?.()}
+          onCancel={() => p.onCancelDuplicate?.()}
+        />
+      )}
       {p.saveError && <LoadError message={p.saveError} onRetry={p.onSave} />}
       {p.photo.error && (
-        <PhotoErrorBox message={p.photo.error} busy={p.saving} onRetry={p.onSave} onWithoutPhoto={p.onSaveWithoutPhoto} />
+        <PhotoErrorBox message={p.photo.error} busy={p.saving} onRetry={p.onSave} onWithoutPhoto={p.photoRequiredReason ? null : p.onSaveWithoutPhoto} />
       )}
 
       {p.showSaveButton && (
-        <Button size="lg" onClick={p.onSave} disabled={p.photo.preparing} loading={p.saving}>
+        <Button
+          size="lg"
+          onClick={p.onSave}
+          disabled={p.photo.preparing || Boolean(p.photoRequiredReason && !p.photo.photo)}
+          loading={p.saving}
+        >
           {p.saving ? t.common.saving : tp.save}
         </Button>
       )}

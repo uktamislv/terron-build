@@ -5,21 +5,32 @@ import { getMyBalance } from '@/data/cashRepo'
 import { errorCodeOf } from '@/data/errors'
 import { listMaterials } from '@/data/materialsRepo'
 import { listObjects } from '@/data/objectsRepo'
-import { checkPurchasePrice, createPurchase, type PriceCheck } from '@/data/purchasesRepo'
-import { createSupplier, listSuppliers, supplierKey } from '@/data/suppliersRepo'
-import type { Material, ObjectRow, Supplier } from '@/data/types'
+import { checkPurchasePrice, createPurchase, listMyPurchases, type PriceCheck, type PurchaseReceiptQr } from '@/data/purchasesRepo'
+import { receiptLookup, type ReceiptLookup } from '@/data/receiptRepo'
+import { listApprovedRequests } from '@/data/requestsRepo'
+import { createSupplier, findByTin, listSuppliers, supplierKey } from '@/data/suppliersRepo'
+import type { Material, MaterialRequest, ObjectRow, Purchase, Supplier } from '@/data/types'
 import { getMyMaterialUsage } from '@/data/usageRepo'
+import { matchMaterialByName } from '@/domain/aliases'
 import { formatSumInput, parseSumInput } from '@/domain/cash'
 import { cmp, isZero, round } from '@/domain/decimal'
 import { defaultObjectId, rankMaterials, validateMovementDraft, type UsageStat } from '@/domain/movements'
+import { parseReceiptQr, type ReceiptQr } from '@/domain/receipt'
+import { findDuplicateEntry, photoRequired } from '@/domain/rules'
 import { purchasePrices, toBaseQty, unitLabel, validateQtyInput } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatQty, formatSum } from '@/lib/format'
 import { uuid } from '@/lib/uuid'
 import { MaterialGrid } from '../entry/MaterialGrid'
+import { initialUnitId, loadLastEntry, rememberLastEntry } from '../entry/lastEntry'
 import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
+import { useCompanySettings } from '../entry/useCompanySettings'
+import { useGeoCapture } from '../entry/useGeoCapture'
 import { usePhotoDraft } from '../entry/usePhotoDraft'
+import { ApprovedRequestChips, RequestTag } from '../purchase/ApprovedRequests'
+import { ReceiptCard, ScanReceiptButton } from '../purchase/ReceiptCard'
+import { canScanQr, scanQr } from '../qrScan'
 import { loadLastObject, saveLastObject } from '../movement/prefs'
 import { loadRecentSuppliers, rememberSupplier } from '../purchase/prefs'
 import { BalanceCard, PurchaseDetails, type PurchaseFieldErrors } from '../purchase/PurchaseDetails'
@@ -30,7 +41,18 @@ import { useBackButton, useMainButton } from '../useTelegramButtons'
 
 const tm = t.tg.movement
 const tp = t.tg.purchase
+const ta = t.tg.auto
 const USAGE_DAYS = 30
+const RECENT_LIMIT = 30
+/** Chek qatori nomi katalogdagi materialga shu balldan past mos kelsa — foydalanuvchi o'zi tanlaydi. */
+const RECEIPT_MATCH_MIN_SCORE = 0.5
+
+/** Chek QR holati (G): QR maydonlari, soliq sahifasidan o'qilgan ma'lumot (bo'lsa), tanlangan qator. */
+interface ReceiptState {
+  qr: ReceiptQr
+  lookup: ReceiptLookup | null
+  lineIndex: number | null
+}
 const PRICE_CHECK_DELAY_MS = 400
 
 type Step = 'object' | 'material' | 'details'
@@ -99,6 +121,32 @@ export function PurchasePage() {
   const sumRef = useRef<HTMLInputElement>(null)
   const caretRef = useRef<number | null>(null)
 
+  // Batch 12
+  const settings = useCompanySettings(companyId)
+  const [recent, setRecent] = useState<Purchase[]>([])
+  const [duplicate, setDuplicate] = useState(false)
+  const [receipt, setReceipt] = useState<ReceiptState | null>(null)
+  const [receiptBusy, setReceiptBusy] = useState(false)
+  const [receiptNotice, setReceiptNotice] = useState<string | null>(null)
+  const [receiptUsed, setReceiptUsed] = useState(false)
+  const [approved, setApproved] = useState<{ objectId: string; rows: MaterialRequest[] } | null>(null)
+  const [request, setRequest] = useState<MaterialRequest | null>(null)
+  const scanAvailable = canScanQr()
+
+  useEffect(() => {
+    if (!profileId) return
+    let alive = true
+    Promise.resolve()
+      .then(() => listMyPurchases(profileId, RECENT_LIMIT))
+      .then((rows) => {
+        if (alive && Array.isArray(rows)) setRecent(rows)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [profileId])
+
   useEffect(() => {
     if (!companyId) return
     let alive = true
@@ -157,6 +205,30 @@ export function PurchasePage() {
   const object = objects?.find((o) => o.id === objectId) ?? null
   const manyObjects = (objects?.length ?? 0) > 1
   const step: Step = (!objectId || pickingObject) && manyObjects ? 'object' : !material ? 'material' : 'details'
+  // Batch 12 (D): xarid do'konda — joylashuv faqat saqlanadi (alert yo'q). Ekran ochilishi bilan so'raladi.
+  const geo = useGeoCapture(step === 'details')
+
+  // Batch 12 (H): obyektning tasdiqlangan so'rovlari (ko'rinmasa — chiplar yo'q)
+  useEffect(() => {
+    if (!objectId) return
+    let alive = true
+    Promise.resolve()
+      .then(() => listApprovedRequests(objectId))
+      .then((rows) => {
+        if (alive) setApproved({ objectId, rows: Array.isArray(rows) ? rows : [] })
+      })
+      .catch(() => {
+        if (alive) setApproved({ objectId, rows: [] })
+      })
+    return () => {
+      alive = false
+    }
+  }, [objectId])
+  const approvedRows = approved && approved.objectId === objectId ? approved.rows : []
+
+  const lastEntry = profileId && materialId ? loadLastEntry(profileId, materialId) : null
+  // Server bilan bir xil: 200 javob (keshda chek bor) — tasdiqlangan, maydonlarning to'liqligi shart emas
+  const qrVerified = Boolean(receipt?.lookup)
 
   // Jonli narx: "1 kg narxi: …" va oxirgi o'rtachadan og'ish (bloklamaydi)
   const parsedQty = validateQtyInput(qty)
@@ -185,8 +257,117 @@ export function PurchasePage() {
   }, [priceKey, materialId, pricePerBase])
   const priceVerdict: PriceCheck | null = priceCheck && priceCheck.key === priceKey ? priceCheck.result : null
 
+  // Batch 12 (E): summa chegarasi yoki material belgisi; QR orqali tasdiqlangan chek — rasmsiz ham
+  const photoRule = material
+    ? photoRequired({
+        totalAmount: sumDec,
+        thresholdAmount: settings.photoRequiredAmount,
+        materialPhotoRequired: Boolean(material.photo_required),
+        qrVerified,
+      })
+    : null
+  const photoRequiredReason =
+    photoRule === 'material'
+      ? ta.photoRequiredMaterial
+      : photoRule === 'amount' && settings.photoRequiredAmount !== null
+        ? ta.photoRequiredAmount(formatSum(settings.photoRequiredAmount))
+        : null
+  const photoMissing = photoRequiredReason !== null && !photo.photo
+
+  /** Chek qatorini formaga qo'yadi: material nom bo'yicha moslanadi, miqdor va summa to'ladi. */
+  const applyReceiptLine = (lookup: ReceiptLookup, index: number) => {
+    const line = lookup.items[index]
+    if (!line) return
+    const candidates = (materials ?? []).map((m) => ({ id: m.id, name: m.name, aliases: m.aliases.map((a) => a.alias) }))
+    const best = matchMaterialByName(line.name, candidates)[0]
+    const matched = best && best.score >= RECEIPT_MATCH_MIN_SCORE ? (materials ?? []).find((m) => m.id === best.id) : undefined
+    const lineSum = lookup.items.length > 1 ? line.sum : (lookup.total ?? line.sum)
+    setSum(formatSumInput(lineSum.replace('.', ',')))
+    if (matched) {
+      setMaterialId(matched.id)
+      // Chekdagi miqdor — asosiy birlikda deb olinadi (foydalanuvchi tekshiradi)
+      setUnitId(matched.units[0]?.id ?? null)
+      setQty(line.qty)
+      setReceiptNotice(null)
+    } else {
+      setReceiptNotice(ta.receiptNoMatch(line.name))
+    }
+    setFieldErrors({})
+  }
+
+  const scanReceipt = async () => {
+    if (receiptBusy) return
+    haptic.tap()
+    setReceiptNotice(null)
+    setReceiptUsed(false)
+    const text = await scanQr(ta.scanText)
+    if (text === null) return
+    const qr = parseReceiptQr(text)
+    if (!qr) {
+      haptic.error()
+      setReceiptNotice(ta.notReceiptQr)
+      return
+    }
+    setReceiptBusy(true)
+    let lookup: ReceiptLookup | null
+    try {
+      lookup = await receiptLookup(qr.url)
+    } catch (err) {
+      if (errorCodeOf(err) === 'receipt_url_invalid') {
+        haptic.error()
+        setReceiptNotice(ta.notReceiptQr)
+        setReceiptBusy(false)
+        return
+      }
+      // Sahifa ochilmadi — QR maydonlari saqlanadi, qolgani qo'lda
+      lookup = null
+    }
+    setReceiptBusy(false)
+    haptic.success()
+    const single = lookup !== null && lookup.items.length <= 1
+    setReceipt({ qr, lookup, lineIndex: single && lookup && lookup.items.length === 1 ? 0 : null })
+    if (lookup) {
+      // Sotuvchi: STIR bo'yicha mavjud, bo'lmasa nom bilan yangi (saqlashda STIR bilan yaratiladi)
+      const known = findByTin(suppliers, lookup.sellerTin)
+      if (known) setSupplier({ kind: 'existing', id: known.id })
+      else if (lookup.sellerName) setSupplier({ kind: 'new', name: lookup.sellerName })
+      if (lookup.items.length === 1) applyReceiptLine(lookup, 0)
+      else if (lookup.items.length === 0 && lookup.total) setSum(formatSumInput(lookup.total.replace('.', ',')))
+    }
+  }
+
+  const pickReceiptLine = (index: number) => {
+    if (!receipt?.lookup) return
+    haptic.select()
+    setReceipt({ ...receipt, lineIndex: index })
+    applyReceiptLine(receipt.lookup, index)
+  }
+
+  const removeReceipt = () => {
+    haptic.select()
+    setReceipt(null)
+    setReceiptNotice(null)
+    setReceiptUsed(false)
+  }
+
+  /** So'rov chipi: material, birlik va miqdor to'ladi; xarid shu so'rovga bog'lanadi. */
+  const pickRequest = (r: MaterialRequest) => {
+    const m = materials?.find((x) => x.id === r.material_id)
+    if (!m) return
+    haptic.tap()
+    setRequest(r)
+    setMaterialId(m.id)
+    setUnitId(m.units.some((u) => u.id === r.unit_id) ? r.unit_id : (m.units[0]?.id ?? null))
+    setQty(r.qty_input)
+    setFieldErrors({})
+    setSaveError(null)
+    setSavedText(null)
+  }
+
   const chooseObject = (id: string) => {
     haptic.tap()
+    // Boshqa obyekt — tanlangan so'rov chipi shu obyektniki emas
+    if (id !== objectId) setRequest(null)
     setObjectId(id)
     setPickingObject(false)
     setFieldErrors((e) => ({ ...e, object: undefined }))
@@ -195,8 +376,11 @@ export function PurchasePage() {
   const chooseMaterial = (m: Material) => {
     haptic.tap()
     setMaterialId(m.id)
-    setUnitId(m.units[0]?.id ?? null)
+    setUnitId(initialUnitId(m.units, profileId ? loadLastEntry(profileId, m.id) : null))
     setQty('')
+    setDuplicate(false)
+    // Boshqa material — so'rov bog'lanmaydi
+    if (request && request.material_id !== m.id) setRequest(null)
     setFieldErrors({})
     setSaveError(null)
     clearPhotoError()
@@ -208,6 +392,7 @@ export function PurchasePage() {
     caretRef.current = caretAfterFormat(raw, caret ?? raw.length, next)
     setSum(next)
     setFieldErrors((er) => ({ ...er, sum: undefined }))
+    setDuplicate(false)
   }
 
   const resetEntry = () => {
@@ -221,6 +406,12 @@ export function PurchasePage() {
     setFieldErrors({})
     setDraftId(uuid())
     setSupplierDraftId(uuid())
+    setReceipt(null)
+    setReceiptNotice(null)
+    setReceiptUsed(false)
+    setRequest(null)
+    setDuplicate(false)
+    geo.reset()
   }
 
   /** Sotuvchi id'si: mavjud, nomi mos keladigan mavjud yoki yangi yaratilgan (idempotent). */
@@ -230,15 +421,20 @@ export function PurchasePage() {
     const key = supplierKey(supplier.name)
     const same = suppliers.find((s) => supplierKey(s.name) === key)
     if (same) return same.id
-    const created = await createSupplier({ id: supplierDraftId, companyId, name: supplier.name })
+    const created = await createSupplier({
+      id: supplierDraftId,
+      companyId,
+      name: supplier.name,
+      tin: receipt?.lookup?.sellerTin ?? null,
+    })
     setSuppliers((list) => (list.some((s) => s.id === created.id) ? list : [...list, created]))
     // Keyingi yangi sotuvchi uchun yangi id (qayta urinishda nom bo'yicha shu topiladi)
     setSupplierDraftId(uuid())
     return created.id
-  }, [supplier, suppliers, companyId, supplierDraftId])
+  }, [supplier, suppliers, companyId, supplierDraftId, receipt])
 
   const save = useCallback(
-    async (opts: { withoutPhoto?: boolean } = {}) => {
+    async (opts: { withoutPhoto?: boolean; confirmDuplicate?: boolean } = {}) => {
       // Sinxron qulf: MainButton va oddiy tugma tez-tez bosilsa ham bitta so'rov
       if (savingRef.current || !profile || preparingPhoto) return
       const draft = { type: 'kirim' as const, objectId, materialId, unitId, qtyInput: qty }
@@ -258,12 +454,59 @@ export function PurchasePage() {
         haptic.error()
         return
       }
+      if (photoMissing) {
+        haptic.error()
+        return
+      }
+      const nowIso = new Date().toISOString()
+      // Batch 12 (C): takroriy xarid — ogohlantirish, bloklamaydi
+      if (!opts.confirmDuplicate && qtyBase !== null) {
+        const prev = recent
+          .filter((p) => !p.deleted_at && p.created_by)
+          .map((p) => ({
+            id: p.id,
+            createdBy: p.created_by ?? '',
+            kind: 'purchase',
+            objectId: p.object_id,
+            materialId: p.material_id,
+            qtyBase: p.qty_base,
+            totalAmount: p.total_amount,
+            createdAt: p.created_at,
+          }))
+        const dup = findDuplicateEntry(
+          prev,
+          { id: draftId, createdBy: profile.id, kind: 'purchase', objectId, materialId, qtyBase, totalAmount: total, createdAt: nowIso },
+          settings.duplicateWindowMinutes,
+        )
+        if (dup) {
+          setDuplicate(true)
+          haptic.error()
+          return
+        }
+      }
+      setDuplicate(false)
       savingRef.current = true
       setSaving(true)
       setSaveError(null)
+      setReceiptUsed(false)
+      const receiptQr: PurchaseReceiptQr | null = receipt
+        ? {
+            fiscalSign: receipt.qr.fiscalSign,
+            terminalId: receipt.qr.terminalId,
+            receiptNo: receipt.qr.receiptNo,
+            verified: receipt.lookup !== null,
+            // Ko'p qatorli chekda ham — butun chek jami (server chek_farqi ni bunday chekda chiqarmaydi)
+            total: receipt.lookup?.total ?? receipt.qr.total ?? null,
+            sellerTin: receipt.lookup?.sellerTin ?? null,
+          }
+        : null
+      const purchasedAt = receipt?.lookup?.datetime ?? receipt?.qr.datetime ?? null
       try {
         const supplierId = await resolveSupplier()
-        const receiptPhotoPath = await photo.resolvePath(profile.company_id, opts.withoutPhoto)
+        const [receiptPhotoPath, geoFix] = await Promise.all([
+          photo.resolvePath(profile.company_id, opts.withoutPhoto),
+          geo.get(),
+        ])
         const row = await createPurchase({
           id: draftId,
           companyId: profile.company_id,
@@ -274,11 +517,19 @@ export function PurchasePage() {
           totalAmount: total,
           supplierId,
           receiptPhotoPath,
+          receiptPhotoSha256: receiptPhotoPath ? (photo.photo?.sha256 ?? null) : null,
           note,
           buyerId: profile.id,
+          purchasedAt,
+          requestId: request && request.material_id === materialId ? request.id : null,
+          receipt: receiptQr,
+          geo: geoFix,
         })
         haptic.success()
         saveLastObject(objectId)
+        rememberLastEntry(profile.id, materialId, unitId, result.qtyInput)
+        setRecent((list) => [row, ...list.filter((p) => p.id !== row.id)].slice(0, RECENT_LIMIT))
+        if (request) setApproved((a) => (a ? { ...a, rows: a.rows.filter((r) => r.id !== request.id) } : a))
         if (supplierId) rememberSupplier(supplierId)
         setSavedText(
           tp.saved(
@@ -294,6 +545,8 @@ export function PurchasePage() {
         haptic.error()
         // Rasm muammosi saqlashni to'xtatmasin: "Qayta urinish" yoki "Rasmsiz saqlash"
         if (!photo.handleSaveError(err)) setSaveError(errorText(err))
+        // Batch 12 (G): chek boshqa xaridda — chek kartasida "olib tashlash" izohi
+        if (errorCodeOf(err) === 'receipt_already_used') setReceiptUsed(true)
         // Shu nomli sotuvchi bor — ro'yxat yangilanadi, foydalanuvchi mavjudini tanlaydi
         if (errorCodeOf(err) === 'supplier_duplicate') {
           listSuppliers()
@@ -307,11 +560,14 @@ export function PurchasePage() {
     },
     // resetEntry — faqat setState va photo.reset (photo deps ichida)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [profile, preparingPhoto, objectId, materialId, unitId, qty, sum, supplier, resolveSupplier, photo, draftId, note, material],
+    [profile, preparingPhoto, objectId, materialId, unitId, qty, sum, supplier, resolveSupplier, photo, draftId, note, material, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, receipt, request, geo],
   )
 
   const onMainButton = useCallback(() => {
     void save()
+  }, [save])
+  const saveDuplicate = useCallback(() => {
+    void save({ confirmDuplicate: true })
   }, [save])
   const saveWithoutPhoto = () => {
     void save({ withoutPhoto: true })
@@ -332,7 +588,32 @@ export function PurchasePage() {
   const canGoBack = step === 'details' || (step === 'object' && Boolean(objectId)) || (step === 'material' && manyObjects)
 
   useBackButton(canGoBack ? onBack : null)
-  useMainButton(tp.save, step === 'details' ? onMainButton : null, preparingPhoto, saving)
+  useMainButton(
+    duplicate ? ta.duplicateSave : tp.save,
+    step === 'details' ? (duplicate ? saveDuplicate : onMainButton) : null,
+    preparingPhoto || photoMissing,
+    saving,
+  )
+  const receiptView = receipt
+    ? {
+        receiptNo: receipt.qr.receiptNo,
+        verified: receipt.lookup !== null,
+        total: receipt.lookup?.total ?? null,
+        sellerName: receipt.lookup?.sellerName ?? null,
+        datetime: receipt.lookup?.datetime ?? receipt.qr.datetime,
+        items: receipt.lookup?.items ?? [],
+        lineIndex: receipt.lineIndex,
+      }
+    : null
+  const receiptBlock = (
+    <>
+      {receiptView && (
+        <ReceiptCard receipt={receiptView} usedError={receiptUsed} onRemove={removeReceipt} onPickLine={pickReceiptLine} />
+      )}
+      {!receiptView && scanAvailable && <ScanReceiptButton busy={receiptBusy} onScan={() => void scanReceipt()} />}
+      {receiptNotice && <Notice tone="warn">{receiptNotice}</Notice>}
+    </>
+  )
   const insideTelegram = getWebApp() !== null
 
   if (!profile) return null
@@ -356,7 +637,13 @@ export function PurchasePage() {
             object && <ObjectBar object={object} onChange={manyObjects ? () => setPickingObject(true) : null} />
           )}
 
-          {step === 'material' && <MaterialGrid materials={ranked} onPick={chooseMaterial} />}
+          {step === 'material' && (
+            <>
+              {receiptBlock}
+              <ApprovedRequestChips requests={approvedRows} onPick={pickRequest} />
+              <MaterialGrid materials={ranked} onPick={chooseMaterial} />
+            </>
+          )}
 
           {step === 'details' && material && (
             <PurchaseDetails
@@ -379,6 +666,7 @@ export function PurchasePage() {
               showSaveButton={!insideTelegram}
               onQty={(v) => {
                 setQty(v)
+                setDuplicate(false)
                 setFieldErrors((er) => ({ ...er, qty: undefined }))
               }}
               onUnit={(id) => {
@@ -398,6 +686,32 @@ export function PurchasePage() {
               }}
               onNote={setNote}
               onChangeMaterial={() => setMaterialId(null)}
+              top={
+                <>
+                  {request && request.material_id === material.id && (
+                    <RequestTag
+                      request={request}
+                      onClear={() => {
+                        haptic.select()
+                        setRequest(null)
+                      }}
+                    />
+                  )}
+                  {receiptBlock}
+                </>
+              }
+              lastEntry={lastEntry}
+              onUseLast={(v, uid) => {
+                haptic.select()
+                setQty(v)
+                setUnitId(uid)
+                setDuplicate(false)
+                setFieldErrors((er) => ({ ...er, qty: undefined, unit: undefined }))
+              }}
+              photoRequiredReason={photoRequiredReason}
+              duplicateMinutes={duplicate ? settings.duplicateWindowMinutes : null}
+              onConfirmDuplicate={saveDuplicate}
+              onCancelDuplicate={() => setDuplicate(false)}
               onPickPhoto={(f) => void photo.pick(f)}
               onRemovePhoto={photo.remove}
               onSave={onMainButton}

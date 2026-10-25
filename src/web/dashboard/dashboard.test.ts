@@ -50,6 +50,7 @@ const summary = normalizeSummary({
   purchases_count: 4,
   purchases_sum: '1250000.50',
   cash_issued_sum: '500000',
+  cash_returned_sum: '0',
   cash_on_hand_total: '-1000',
   alerts_open: 5,
   alerts_serious_open: 2,

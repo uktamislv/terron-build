@@ -2,13 +2,13 @@ import { isPkeyConflict, toRepoError } from './errors'
 import { EXPORT_MAX_ROWS, fetchAll } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
-import type { CashAdvance, CashBalance } from './types'
+import type { CashAdvance, CashAdvanceKind, CashBalance } from './types'
 
 const BALANCE_COLUMNS =
-  'company_id, profile_id, issued_total::text, spent_total::text, balance::text, last_issued_at, last_spent_at'
+  'company_id, profile_id, issued_total::text, returned_total::text, spent_total::text, balance::text, last_issued_at, last_spent_at'
 
 const ADVANCE_SELECT =
-  'id, company_id, recipient_id, amount::text, issued_at, note, created_by, created_at, deleted_at, ' +
+  'id, company_id, recipient_id, kind, amount::text, issued_at, note, created_by, created_at, deleted_at, ' +
   'recipient:profiles!cash_advances_recipient_fkey(full_name), ' +
   'creator:profiles!cash_advances_created_by_fkey(full_name)'
 
@@ -26,6 +26,7 @@ export function emptyBalance(companyId: string, profileId: string): CashBalance 
     company_id: companyId,
     profile_id: profileId,
     issued_total: '0',
+    returned_total: '0',
     spent_total: '0',
     balance: '0',
     last_issued_at: null,
@@ -61,6 +62,8 @@ export interface NewAdvance {
   /** ISO; berilmasa — server `now()`. */
   issuedAt?: string | null
   note?: string | null
+  /** Batch 12 (I): `qaytarildi` — odam pulni qaytardi (balansdan ayriladi). Standart — `berildi`. */
+  kind?: CashAdvanceKind
 }
 
 type RawAdvance = Omit<CashAdvance, 'recipient_name' | 'created_by_name'> & {
@@ -83,6 +86,7 @@ export async function issueAdvance(input: NewAdvance): Promise<CashAdvance> {
     amount: input.amount,
     note: note ? note : null,
   }
+  if (input.kind === 'qaytarildi') row.kind = 'qaytarildi'
   if (input.issuedAt) row.issued_at = input.issuedAt
   const { data, error } = await getSupabase().from('cash_advances').insert(row).select(ADVANCE_SELECT).single()
   if (error) {
@@ -99,10 +103,10 @@ export async function issueAdvance(input: NewAdvance): Promise<CashAdvance> {
   return normalizeAdvance(data as unknown as RawAdvance)
 }
 
-/** Tarix yozuvi: berilgan pul yoki xaridga sarflangan pul. */
+/** Tarix yozuvi: berilgan pul, qaytarilgan pul yoki xaridga sarflangan pul. */
 export type CashHistoryEntry =
   | {
-      kind: 'issued'
+      kind: 'issued' | 'returned'
       id: string
       profileId: string
       profileName: string | null
@@ -172,7 +176,7 @@ function mergeHistory(issued: RawAdvance[], spent: RawSpent[]): CashHistoryEntry
   const entries: CashHistoryEntry[] = [
     ...issued.map(normalizeAdvance).map(
       (a): CashHistoryEntry => ({
-        kind: 'issued',
+        kind: a.kind === 'qaytarildi' ? 'returned' : 'issued',
         id: a.id,
         profileId: a.recipient_id,
         profileName: a.recipient_name,

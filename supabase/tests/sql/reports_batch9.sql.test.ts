@@ -299,6 +299,7 @@ const ZERO_SUMMARY = {
   purchases_count: 0,
   purchases_sum: '0.00',
   cash_issued_sum: '0.00',
+  cash_returned_sum: '0.00', // Batch 12
   cash_on_hand_total: '0.00',
   alerts_open: 0,
   alerts_serious_open: 0,
@@ -319,6 +320,7 @@ describe('dashboard_summary', () => {
     purchases_count: 3,
     purchases_sum: '950000.50',
     cash_issued_sum: '1000000.00',
+    cash_returned_sum: '0.00', // Batch 12
     // haydovchi 1 000 000 − 600 000; prorab 300 000 − 100 000; taminotchi −250 000.50 − 999
     cash_on_hand_total: '349000.50',
     alerts_open: 2,
@@ -391,6 +393,7 @@ describe('dashboard_summary', () => {
       purchases_count: 0,
       purchases_sum: '0.00',
       cash_issued_sum: '0.00',
+      cash_returned_sum: '0.00', // Batch 12
       cash_on_hand_total: '0.00',
       alerts_open: 0,
       alerts_new_in_period: 0,
@@ -406,6 +409,7 @@ describe('dashboard_summary', () => {
       purchases_count: 1,
       purchases_sum: '600000.00',
       cash_issued_sum: '1000000.00',
+      cash_returned_sum: '0.00', // Batch 12
       cash_on_hand_total: '400000.00',
       alerts_open: 0,
       // harakatlarni ko'rmasa ham: 2 kunlik — qabul qilinmagan, 3 kunlik — qabul qilingan

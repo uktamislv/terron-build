@@ -37,9 +37,11 @@ const deps: DispatchDeps = {
     if (error) throw new Error(`svc_claim_notifications: ${error.message}`)
     return (data ?? []) as OutboxRow[]
   },
-  recipients: async (companyId) => {
-    const { data, error } = await getAdminClient().rpc('svc_notification_recipients', { p_company_id: companyId })
-    if (error) throw new Error(`svc_notification_recipients: ${error.message}`)
+  // Batch 12: qabul qiluvchilar kind'ga qarab (alert/eslatma/hisobot — direktor+admin, o'tkazma
+  // qabul qilinmadi — + prorablar, request_overdue — taminotchi+admin, cash_statement — pul egasi).
+  recipients: async (row) => {
+    const { data, error } = await getAdminClient().rpc('svc_outbox_recipients', { p_outbox_id: row.id })
+    if (error) throw new Error(`svc_outbox_recipients: ${error.message}`)
     return ((data ?? []) as { profile_id: string; chat_id: number | string; role: string }[]).map(
       (r): Recipient => ({ profile_id: r.profile_id, chat_id: Number(r.chat_id), role: r.role }),
     )

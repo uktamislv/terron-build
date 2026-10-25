@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { Building2, CalendarDays, MapPin, Pencil, Plus, UserPlus, Users } from 'lucide-react'
+import { Building2, CalendarDays, LocateFixed, MapPin, Pencil, Plus, UserPlus, Users } from 'lucide-react'
 import { Badge, Button, EmptyState, Modal, Notice, PageHeader, RetryNotice, SkeletonRows, TextField } from '@/components/ui'
 import { addObjectMember, listObjectMembers, removeObjectMember } from '@/data/objectMembersRepo'
 import { createObject, listObjects, updateObject } from '@/data/objectsRepo'
@@ -10,6 +10,7 @@ import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatDate } from '@/lib/format'
+import { DEFAULT_RADIUS_M, parseGeoForm, splitCoordPair, type GeoFormErrors } from '../objects/objectGeo'
 
 interface Data {
   objects: ObjectRow[]
@@ -39,22 +40,30 @@ function ObjectFormDialog({
   const [name, setName] = useState(object?.name ?? '')
   const [address, setAddress] = useState(object?.address ?? '')
   const [status, setStatus] = useState<ObjectStatus>(object?.status ?? 'faol')
+  const [lat, setLat] = useState(object?.lat ?? '')
+  const [lng, setLng] = useState(object?.lng ?? '')
+  const [radius, setRadius] = useState(String(object?.radius_m ?? DEFAULT_RADIUS_M))
+  const [geoErrors, setGeoErrors] = useState<GeoFormErrors>({})
   const [nameError, setNameError] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
+    const geo = parseGeoForm(lat, lng, radius)
+    setGeoErrors(geo.ok ? {} : geo.errors)
     if (!name.trim()) {
       setNameError(true)
       return
     }
     setNameError(false)
+    if (!geo.ok) return
+    const geoPatch = { lat: geo.value.lat, lng: geo.value.lng, radiusM: geo.value.radiusM }
     setSaving(true)
     setSaveError(null)
     try {
-      if (object) await updateObject(object.id, { name, address, status })
-      else await createObject({ companyId, name, address, status })
+      if (object) await updateObject(object.id, { name, address, status, ...geoPatch })
+      else await createObject({ companyId, name, address, status, ...geoPatch })
       onSaved()
     } catch (err) {
       setSaveError(errorText(err))
@@ -74,6 +83,50 @@ function ObjectFormDialog({
           error={nameError ? t.objects.errName : null}
         />
         <TextField label={t.objects.address} value={address} onChange={(e) => setAddress(e.target.value)} />
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1.5 text-sm font-medium text-muted">{t.objectGeo.title}</legend>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <TextField
+              label={t.objectGeo.lat}
+              value={lat}
+              inputMode="decimal"
+              autoComplete="off"
+              error={geoErrors.lat ? t.objectGeo.errLat : geoErrors.pair ? t.objectGeo.errPair : null}
+              onChange={(e) => {
+                // Xaritadan juftlik qo'yilsa — ikkala maydon to'ladi
+                const pair = splitCoordPair(e.target.value)
+                if (pair) {
+                  setLat(pair.lat)
+                  setLng(pair.lng)
+                } else setLat(e.target.value)
+                setGeoErrors({})
+              }}
+            />
+            <TextField
+              label={t.objectGeo.lng}
+              value={lng}
+              inputMode="decimal"
+              autoComplete="off"
+              error={geoErrors.lng ? t.objectGeo.errLng : null}
+              onChange={(e) => {
+                setLng(e.target.value)
+                setGeoErrors({})
+              }}
+            />
+            <TextField
+              label={t.objectGeo.radius}
+              value={radius}
+              inputMode="numeric"
+              autoComplete="off"
+              error={geoErrors.radius ? t.objectGeo.errRadius : null}
+              onChange={(e) => {
+                setRadius(e.target.value)
+                setGeoErrors({})
+              }}
+            />
+          </div>
+          <p className="text-xs text-muted">{t.objectGeo.hint}</p>
+        </fieldset>
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1.5 text-sm font-medium text-muted">{t.objects.status}</legend>
           <div className="grid grid-cols-3 gap-2">
@@ -274,6 +327,10 @@ export function ObjectsPage() {
                   <span className="inline-flex items-center gap-1.5">
                     <Users aria-hidden className="size-4" strokeWidth={1.75} />
                     {t.objects.members}: <span className="tabular font-semibold text-ink">{count}</span>
+                  </span>
+                  <span data-testid="object-geo" className="inline-flex items-center gap-1.5">
+                    <LocateFixed aria-hidden className="size-4" strokeWidth={1.75} />
+                    {o.lat && o.lng ? t.objectGeo.set(String(o.radius_m ?? DEFAULT_RADIUS_M)) : t.objectGeo.notSet}
                   </span>
                   <span className="tabular inline-flex items-center gap-1.5">
                     <CalendarDays aria-hidden className="size-4" strokeWidth={1.75} />

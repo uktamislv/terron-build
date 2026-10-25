@@ -39,6 +39,7 @@ function allowedKinds(sqlType: string): FieldKind[] {
   if (sqlType === 'numeric(18,2)' || sqlType === 'numeric(18,4)') return ['money']
   if (sqlType === 'numeric(20,6)' || sqlType === 'numeric(20,10)') return ['qty']
   if (sqlType === 'numeric(6,2)') return ['pct']
+  if (sqlType === 'numeric(9,6)') return ['text'] // koordinatalar
   if (sqlType === 'timestamptz') return ['datetime']
   if (sqlType === 'date') return ['date']
   if (sqlType === 'boolean') return ['bool']

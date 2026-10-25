@@ -181,8 +181,13 @@ describe('/tg/purchase — haydovchi, bitta obyekt', () => {
       totalAmount: '1250000',
       supplierId: null,
       receiptPhotoPath: null,
+      receiptPhotoSha256: null,
       note: '',
       buyerId: 'p-haydovchi',
+      purchasedAt: null,
+      requestId: null,
+      receipt: null,
+      geo: { status: 'unavailable' },
     })
     expect(await screen.findByText(/Xarid saqlandi: 3 qop Sement · 1 250 000 so‘m/)).toBeInTheDocument()
     await waitFor(() => expect(screen.getByTestId('cash-balance')).toHaveTextContent('Qo‘limda: 750 000 so‘m'))
@@ -288,6 +293,7 @@ describe('/tg/purchase — haydovchi, bitta obyekt', () => {
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       companyId: COMPANY_ID,
       name: '  Yangi Baza ',
+      tin: null,
     })
     fireEvent.click(screen.getByRole('button', { name: t.common.retry }))
     expect(await screen.findByText(/Xarid saqlandi/)).toBeInTheDocument()

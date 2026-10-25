@@ -12,14 +12,21 @@
 
 import { timingSafeEqual } from '../_shared/telegramAuth.ts'
 import {
+  alertKeyboard,
   formatAlertDigest,
   formatAlertMessage,
+  formatAlertReminder,
+  formatCashStatement,
   formatDailyReport,
+  formatRequestOverdue,
   miniAppKeyboard,
   type AlertPayload,
+  type AlertReminderPayload,
+  type CashStatementPayload,
   type DailyReportPayload,
+  type RequestOverduePayload,
 } from '../_shared/notifyMessages.ts'
-import { errMessage, isRecord, respond, type HandlerResult, type LogFn } from '../_shared/handler.ts'
+import { errMessage, isRecord, isUuid, respond, type HandlerResult, type LogFn } from '../_shared/handler.ts'
 import { DEFAULT_MINI_APP_URL } from '../tg-bot/logic.ts'
 
 /** Bitta chaqiruvda navbatdan olinadigan qatorlar soni. */
@@ -38,8 +45,10 @@ export const BUDGET_RETRY_SEC = 1
 export interface OutboxRow {
   id: string
   company_id: string
-  kind: 'alert' | 'daily_report' | string
+  kind: 'alert' | 'daily_report' | 'alert_reminder' | 'request_overdue' | 'cash_statement' | string
   payload: unknown
+  /** Faqat `cash_statement`: xabar egasi. */
+  profile_id?: string | null
   attempts: number
   /** Oldingi urinishlarda yetkazilgan chatlar. */
   delivered_chat_ids?: (number | string)[] | null
@@ -81,8 +90,11 @@ export interface DispatchDeps {
   getDispatchSecret: (refresh: boolean) => Promise<string | null>
   /** `svc_claim_notifications(limit)` */
   claim: (limit: number) => Promise<OutboxRow[]>
-  /** `svc_notification_recipients(company_id)` */
-  recipients: (companyId: string) => Promise<Recipient[]>
+  /**
+   * `svc_outbox_recipients(outbox_id)` — kind'ga qarab (docs/automation-design.md,
+   * "Bildirishnoma payloadlari"). Digest'da birinchi qator bo'yicha (guruh bir xil qabul qiluvchili).
+   */
+  recipients: (row: OutboxRow) => Promise<Recipient[]>
   sendMessage: (chatId: number, text: string, replyMarkup: unknown) => Promise<SendResult>
   /** `svc_complete_notification(...)` */
   complete: (id: string, args: CompleteArgs) => Promise<void>
@@ -152,10 +164,52 @@ export function resolveMiniAppUrl(url: string | undefined): string {
 /** Navbat qatoridan xabar matni. Yaroqsiz payload / noma'lum kind — xato (doimiy). */
 export function buildMessage(row: OutboxRow): string {
   if (!isRecord(row.payload)) throw new Error('payload yaroqsiz')
-  if (row.kind === 'alert') return formatAlertMessage(row.payload as unknown as AlertPayload)
-  if (row.kind === 'daily_report') return formatDailyReport(row.payload as unknown as DailyReportPayload)
-  throw new Error(`noma'lum kind: ${String(row.kind).slice(0, 40)}`)
+  switch (row.kind) {
+    case 'alert':
+      return formatAlertMessage(row.payload as unknown as AlertPayload)
+    case 'alert_reminder':
+      return formatAlertReminder(row.payload as unknown as AlertReminderPayload)
+    case 'daily_report':
+      return formatDailyReport(row.payload as unknown as DailyReportPayload)
+    case 'request_overdue':
+      return formatRequestOverdue(row.payload as unknown as RequestOverduePayload)
+    case 'cash_statement':
+      return formatCashStatement(row.payload as unknown as CashStatementPayload)
+    default:
+      throw new Error(`noma'lum kind: ${String(row.kind).slice(0, 40)}`)
+  }
 }
+
+/** Bitta alert / eslatma qatorining alert id'si (tugmalar uchun), aks holda null. */
+export function rowAlertId(row: OutboxRow): string | null {
+  if (row.kind !== 'alert' && row.kind !== 'alert_reminder') return null
+  if (!isRecord(row.payload)) return null
+  return isUuid(row.payload.alert_id) ? row.payload.alert_id.toLowerCase() : null
+}
+
+/**
+ * Qo'shimcha qabul qiluvchili alert (o'tkazma qabul qilinmadi — prorablarga ham boradi):
+ * digest'ga qo'shilmaydi, aks holda prorab boshqa obyektlar alertlarini ko'rib qoladi.
+ */
+function hasExtraRecipients(row: OutboxRow): boolean {
+  if (!isRecord(row.payload)) return false
+  const d = isRecord(row.payload.details) ? row.payload.details : {}
+  return row.payload.type === 'otkazma_farqi' && d.direction === 'not_received'
+}
+
+/** Digest'ga guruhlanadigan qator: alert yoki eslatma (qo'shimcha qabul qiluvchisiz). */
+function digestible(row: OutboxRow): boolean {
+  return (row.kind === 'alert' || row.kind === 'alert_reminder') && isRecord(row.payload) && !hasExtraRecipients(row)
+}
+
+/** Faqat admin / super_admin "Ko'rildi" bosa oladi (`svc_mark_alert_seen`). */
+export const SEEN_ROLES: readonly string[] = ['admin', 'super_admin']
+
+/**
+ * Alertlarni RLS bo'yicha o'qiy oladigan rollar — "Ochish" `?alert=<id>` bilan. Qolganlar
+ * (masalan prorab — o'tkazma qabul qilinmadi xabari) oddiy Mini App havolasini oladi.
+ */
+export const ALERT_READER_ROLES: readonly string[] = ['admin', 'super_admin', 'direktor']
 
 function deliveredSet(row: OutboxRow): Set<number> {
   const out = new Set<number>()
@@ -171,6 +225,8 @@ interface Unit {
   rows: OutboxRow[]
   companyId: string
   text: string
+  /** Bitta alert / eslatma bo'lsa — "Ko'rildi" / "Ochish" tugmalari uchun. */
+  alertId: string | null
 }
 
 /**
@@ -180,12 +236,13 @@ interface Unit {
  */
 export function planUnits(rows: OutboxRow[]): { units: Unit[]; invalid: { row: OutboxRow; error: string }[] } {
   const invalid: { row: OutboxRow; error: string }[] = []
-  const alertsByCompany = new Map<string, OutboxRow[]>()
+  const groupKey = (row: OutboxRow) => `${row.company_id}|${row.kind}`
+  const groups = new Map<string, OutboxRow[]>()
   for (const row of rows) {
-    if (row.kind === 'alert' && isRecord(row.payload)) {
-      const list = alertsByCompany.get(row.company_id) ?? []
+    if (digestible(row)) {
+      const list = groups.get(groupKey(row)) ?? []
       list.push(row)
-      alertsByCompany.set(row.company_id, list)
+      groups.set(groupKey(row), list)
     }
   }
 
@@ -193,14 +250,18 @@ export function planUnits(rows: OutboxRow[]): { units: Unit[]; invalid: { row: O
   const digested = new Set<string>()
   for (const row of rows) {
     if (digested.has(row.id)) continue
-    const group = row.kind === 'alert' ? alertsByCompany.get(row.company_id) : undefined
+    const group = digestible(row) ? groups.get(groupKey(row)) : undefined
     if (group !== undefined && group.length > DIGEST_THRESHOLD) {
       for (const r of group) digested.add(r.id)
       try {
         units.push({
           rows: group,
           companyId: row.company_id,
-          text: formatAlertDigest(group.map((r) => r.payload as unknown as AlertPayload)),
+          text: formatAlertDigest(
+            group.map((r) => r.payload as unknown as AlertPayload),
+            { reminder: row.kind === 'alert_reminder' },
+          ),
+          alertId: null,
         })
       } catch (e) {
         for (const r of group) invalid.push({ row: r, error: `digest: ${errMessage(e)}` })
@@ -208,7 +269,7 @@ export function planUnits(rows: OutboxRow[]): { units: Unit[]; invalid: { row: O
       continue
     }
     try {
-      units.push({ rows: [row], companyId: row.company_id, text: buildMessage(row) })
+      units.push({ rows: [row], companyId: row.company_id, text: buildMessage(row), alertId: rowAlertId(row) })
     } catch (e) {
       invalid.push({ row, error: errMessage(e) })
     }
@@ -265,7 +326,12 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
   }
 
   const startedAt = deps.now()
-  const keyboard = miniAppKeyboard(resolveMiniAppUrl(deps.env.miniAppUrl))
+  const appUrl = resolveMiniAppUrl(deps.env.miniAppUrl)
+  const keyboard = miniAppKeyboard(appUrl)
+  const keyboardFor = (unit: Unit, r: Recipient): unknown =>
+    unit.alertId === null
+      ? keyboard
+      : alertKeyboard(appUrl, unit.alertId, SEEN_ROLES.includes(r.role), ALERT_READER_ROLES.includes(r.role))
   const summary: DispatchSummary = { processed: rows.length, sent: 0, failed: 0 }
   const lastSentAt = new Map<number, number>()
   let stop: Stop | null = null
@@ -310,7 +376,7 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
 
     let recipients: Recipient[]
     try {
-      recipients = await deps.recipients(unit.companyId)
+      recipients = await deps.recipients(unit.rows[0] as OutboxRow)
     } catch (e) {
       deps.log('error', 'tg-dispatch: qabul qiluvchilar o\'qilmadi', { company_id: unit.companyId, error: clean(e) })
       for (const row of unit.rows) await finish(row, { ok: false, delivered: [], error: clean(e) })
@@ -332,7 +398,7 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
       }
       let res: SendResult
       try {
-        res = await deps.sendMessage(r.chat_id, unit.text, keyboard)
+        res = await deps.sendMessage(r.chat_id, unit.text, keyboardFor(unit, r))
       } catch (e) {
         res = { ok: false, kind: 'error', error: clean(e) }
       }

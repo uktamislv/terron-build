@@ -1,7 +1,7 @@
 import { useId, useState, type FormEvent } from 'react'
 import { Button, Modal, Notice, TextField } from '@/components/ui'
 import { issueAdvance } from '@/data/cashRepo'
-import type { CashAdvance, Profile } from '@/data/types'
+import type { CashAdvance, CashAdvanceKind, Profile } from '@/data/types'
 import { formatSumInput, parseSumInput } from '@/domain/cash'
 import { cmp } from '@/domain/decimal'
 import { t } from '@/i18n'
@@ -18,6 +18,7 @@ export function IssueAdvanceDialog({
   companyId,
   recipients,
   initial,
+  kind = 'berildi',
   onClose,
   onIssued,
   onStale,
@@ -26,6 +27,8 @@ export function IssueAdvanceDialog({
   recipients: Profile[]
   /** "O'chirish va qayta berish" — oldingi yozuv qiymatlari bilan. */
   initial?: { recipientId: string; amount: string; note?: string | null }
+  /** Batch 12 (I): `qaytarildi` — odam ortiqcha pulni qaytardi ("Qaytarish"). */
+  kind?: CashAdvanceKind
   onClose: () => void
   onIssued: (advance: CashAdvance) => void
   /** Avvalgi urinish boshqa qiymatlar bilan saqlangan — ro'yxatni yangilash uchun. */
@@ -45,6 +48,7 @@ export function IssueAdvanceDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const noteId = useId()
+  const giveBack = kind === 'qaytarildi'
 
   const submit = async (e: FormEvent | null, attemptId: string = id) => {
     e?.preventDefault()
@@ -62,7 +66,7 @@ export function IssueAdvanceDialog({
     setBusy(true)
     setError(null)
     try {
-      const saved = await issueAdvance({ id: attemptId, companyId, recipientId, amount: value, issuedAt, note })
+      const saved = await issueAdvance({ id: attemptId, companyId, recipientId, amount: value, issuedAt, note, kind })
       // 23505 (shu id avval saqlangan) — qaytgan qator kiritilganidan farq qilishi mumkin
       if (saved.recipient_id !== recipientId || cmp(saved.amount, value) !== 0) {
         setMismatch(saved)
@@ -78,10 +82,11 @@ export function IssueAdvanceDialog({
   }
 
   return (
-    <Modal title={tc.issueTitle} onClose={onClose}>
+    <Modal title={giveBack ? tc.giveBackTitle : tc.issueTitle} onClose={onClose}>
       <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)} noValidate>
         <div className="flex flex-col gap-1">
-          <SelectField label={tc.recipient} value={recipientId} onChange={setRecipientId}>
+          {giveBack && <p className="mb-1 text-sm text-muted">{tc.giveBackHint}</p>}
+          <SelectField label={giveBack ? tc.giveBackFrom : tc.recipient} value={recipientId} onChange={setRecipientId}>
             <option value="">{tc.chooseRecipient}</option>
             {recipients.map((p) => (
               <option key={p.id} value={p.id}>
@@ -89,7 +94,7 @@ export function IssueAdvanceDialog({
               </option>
             ))}
           </SelectField>
-          {errors.recipient && <p className="text-xs text-danger">{tc.errRecipient}</p>}
+          {errors.recipient && <p className="text-xs text-danger">{giveBack ? tc.errGiveBackFrom : tc.errRecipient}</p>}
         </div>
         <TextField
           label={tc.amount}
@@ -144,7 +149,7 @@ export function IssueAdvanceDialog({
             {t.common.cancel}
           </Button>
           <Button type="submit" disabled={busy}>
-            {busy ? t.common.saving : tc.issue}
+            {busy ? t.common.saving : giveBack ? tc.giveBack : tc.issue}
           </Button>
         </div>
       </form>

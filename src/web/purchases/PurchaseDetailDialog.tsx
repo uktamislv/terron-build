@@ -11,6 +11,8 @@ import { errorText } from '@/i18n/errorText'
 import { formatDateTime } from '@/lib/format'
 import { alertDetailText } from '../alerts/alertDetails'
 import { SEVERITY_TONE, STATUS_TONE } from '../alerts/alertTones'
+import { PurchaseGeo, PurchaseQr } from './PurchaseAutomationInfo'
+import { QrBadge } from './QrBadge'
 import { ReceiptBadge } from './ReceiptBadge'
 
 const tp = t.purchases
@@ -82,7 +84,10 @@ export function PurchaseDetailDialog({
               </span>
             )}
           </div>
-          <Money value={purchase.total_amount} size="hero" />
+          <span className="flex flex-col items-end gap-1.5">
+            <Money value={purchase.total_amount} size="hero" />
+            <QrBadge p={purchase} />
+          </span>
         </div>
 
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
@@ -92,6 +97,7 @@ export function PurchaseDetailDialog({
           {row(tp.perBase(base), <Money value={round(purchase.price_per_base, 2)} size="sm" />)}
           {row(tp.colSupplier, purchase.supplier_name ?? '—')}
           {row(tp.colStatus, <ReceiptBadge p={purchase} thresholdPct={thresholdPct} nowIso={nowIso} level />)}
+          {purchase.request_id && row(tp.byRequest, <span className="font-mono text-xs">{purchase.request_id.slice(0, 8)}</span>)}
           {purchase.note && row(t.movements.note, <span className="whitespace-pre-wrap">{purchase.note}</span>)}
         </dl>
 
@@ -101,6 +107,16 @@ export function PurchaseDetailDialog({
           ) : (
             <p className="text-sm text-muted">{tp.noReceipt}</p>
           )}
+        </Section>
+
+        {purchase.receipt_fiscal_sign && (
+          <Section title={tp.qrTitle} label={tp.qrTitle}>
+            <PurchaseQr p={purchase} />
+          </Section>
+        )}
+
+        <Section title={tp.geoTitle} label={tp.geoTitle}>
+          <PurchaseGeo p={purchase} />
         </Section>
 
         <Section title={tp.linkedMovements} label={tp.linkedMovements}>

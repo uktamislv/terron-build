@@ -128,6 +128,7 @@ describe('materialsRepo yozish', () => {
       base_unit: 'kg',
       category: null,
       waste_pct: '1.5',
+      photo_required: false,
     })
   })
 

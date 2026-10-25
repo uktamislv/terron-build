@@ -122,6 +122,7 @@ export function cashSheets(
       columns: [
         { header: c.person, key: 'name', type: 'text' },
         { header: c.issued, key: 'issued_total', type: 'money' },
+        { header: c.returned, key: 'returned_total', type: 'money' },
         { header: c.spent, key: 'spent_total', type: 'money' },
         { header: c.balance, key: 'balance', type: 'money' },
       ],

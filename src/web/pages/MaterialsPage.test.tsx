@@ -326,6 +326,7 @@ describe('/materials — katalog himoyalari (hint kalitlari)', () => {
         baseUnit: 't',
         category: 'Bog‘lovchi',
         wastePct: '0',
+        photoRequired: false,
       }),
     )
     await waitFor(() => expect(materialsRepo.listMaterials).toHaveBeenCalledTimes(2))
@@ -404,6 +405,7 @@ describe('/materials — yangi material', () => {
         baseUnit: 'qop',
         category: '',
         wastePct: '1.5',
+        photoRequired: false,
       }),
     )
   })

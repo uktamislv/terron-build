@@ -1306,7 +1306,12 @@ describe('xavfsizlik', () => {
   })
 
   it('fixture: oddiy xarid/kirimlar alert yaratmagan (B firma — faqat fixture alerti)', async () => {
-    const n = await scalar<number>(db, `select count(*)::int from public.alerts where company_id = $1`, [B.id])
+    // Batch 12: fixture'dagi bog'lanmagan kirim (mv_obj2, ochiq xarid bor) — kirim_manbasiz belgisi
+    const n = await scalar<number>(
+      db,
+      `select count(*)::int from public.alerts where company_id = $1 and type::text <> 'kirim_manbasiz'`,
+      [B.id],
+    )
     expect(n).toBe(1)
   })
 })

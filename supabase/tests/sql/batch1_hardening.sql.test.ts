@@ -235,7 +235,8 @@ describe('sxema invariantlari', () => {
     ).then((r) => r.map((x) => x.t))
 
   it('jadval ro`yxati fixture`dagi bilan mos (yangi jadval qo`shilsa — testlarni yangilang)', async () => {
-    expect(await publicTables()).toEqual([...BUSINESS_TABLES, ...SYSTEM_TABLES, 'audit_log'].sort())
+    // receipt_lookups (Batch 12) — chek keshi: audit + soft delete bor, yozish faqat service RPC orqali
+    expect(await publicTables()).toEqual([...BUSINESS_TABLES, ...SYSTEM_TABLES, 'audit_log', 'receipt_lookups'].sort())
   })
 
   it('har public jadvalda RLS yoqilgan va majburiy (force)', async () => {

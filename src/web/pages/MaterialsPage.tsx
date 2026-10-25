@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Layers, Package, Percent, Plus, Ruler, SearchX } from 'lucide-react'
+import { Camera, Layers, Package, Percent, Plus, Ruler, SearchX } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { Badge, Button, EmptyState, FilterBar, PageHeader, RetryNotice, SegmentedControl, SkeletonRows } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
@@ -141,7 +141,14 @@ export function MaterialsPage() {
                       <span className="block font-semibold text-ink">{m.name}</span>
                       <span className="block text-sm text-muted">{m.category ?? tm.noCategory}</span>
                     </span>
-                    <Badge tone={m.is_active ? 'ok' : 'warn'}>{m.is_active ? tm.active : tm.inactive}</Badge>
+                    <span className="flex flex-wrap justify-end gap-1.5">
+                      {m.photo_required && (
+                        <Badge tone="info" icon={<Camera aria-hidden className="size-3.5" strokeWidth={2} />}>
+                          {tm.photoRequired}
+                        </Badge>
+                      )}
+                      <Badge tone={m.is_active ? 'ok' : 'warn'}>{m.is_active ? tm.active : tm.inactive}</Badge>
+                    </span>
                   </span>
                   <span className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
                     <span className="inline-flex items-center gap-1.5">

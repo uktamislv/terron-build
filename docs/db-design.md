@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9, 10)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9, 10, 12)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -267,6 +267,15 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `report_group_invalid` | 22023 | `spend_breakdown` (Batch 9) | `p_group` — `material` / `object` / `buyer` / `supplier` emas (null ham) |
 | `estimate_materials_forbidden` | 42501 | `estimate_create_materials` (20261104000001) | Rol admin / super_admin emas |
 | `estimate_materials_invalid` | 22023 | `estimate_create_materials` (20261104000001) | `p_items` massiv emas, bo'sh, > 2000 yoki qator xatosi (`message`: `Qator <n>: <sabab>`, n — massivdagi o'rni 1 dan; `detail`: n) |
+| `transfer_insufficient_stock` | 22023 | `create_transfer` (Batch 12) | Manba obyektda qoldiq yetarli emas (xabarda mavjud qoldiq) |
+| `photo_required` | 23514 | `c_purchases_auto`, `c_movements_auto` (Batch 12) | Chek/kirim rasmi majburiy (summa chegarasi yoki material bayrog'i; QR tasdiqlangan xarid — istisno) |
+| `photo_sha256_invalid` | 23514 | `c_purchases_auto`, `c_movements_auto` (Batch 12) | Rasm xeshi SHA-256 hex emas |
+| `receipt_already_used` | 23505 | `c_purchases_auto` (Batch 12) | Shu fiskal belgili chek firmada boshqa tirik xaridda (kim, qachon) |
+| `purchase_request_invalid` | 23503 / 23514 | `c_purchases_auto` (Batch 12) | So'rov yo'q / o'chirilgan / boshqa firma (23503); boshqa obyekt-material yoki tasdiqlanmagan (23514) |
+| `supplier_tin_duplicate` | 23505 | `c_suppliers_tin_guard` (Batch 12) | Shu STIR li sotuvchi firmada bor |
+| `receipt_lookup_invalid` | 22023 | `svc_upsert_receipt_lookup` (Batch 12) | Firma yoki fiskal belgi yo'q |
+| `alert_action_forbidden` | 42501 | `svc_mark_alert_seen` (Batch 12) | Telegram profili yo'q/nofaol, admin emas yoki boshqa firma |
+| `alert_not_found` | P0002 | `svc_mark_alert_seen` (Batch 12) | Alert yo'q yoki o'chirilgan |
 | `estimate_aliases_invalid` | 22023 | `remember_estimate_aliases(p_estimate_id, p_items)` (20261105000001) | Smeta chaqiruvchi yuklamagan (buxgalter; admin/super_admin — istalgani) yoki 24 soatdan eski; `p_items` massiv emas / > 5000; qator xatosi (material yo'q / o'chirilgan / boshqa firmaniki / smetada yo'q, `code` yoki `name` smetadagi shu material qatoriga mos emas); qator xatosida `message` = `Qator <n>: <sabab>`, `detail` = n |
 
 `remember_estimate_aliases` qayta ishlatadi: `auth_required`, `estimate_import_forbidden` (rol admin / buxgalter / super_admin emas), `estimate_not_found` (P0002 — smeta yo'q, o'chirilgan yoki boshqa firmaniki). `estimate_create_materials` — `auth_required`. `import_estimate` ning `line_sum` xatolari — `estimate_item_invalid`. 20261104000001 dagi 1-argumentli `remember_estimate_aliases(jsonb)` 20261105000001 da o'chirilgan.
@@ -622,6 +631,50 @@ To'liq shartnoma va yorliq formatlari: `docs/history-design.md` → "Baza".
 - Yangi hint'lar: `history_limit_invalid` (22023), `restore_table_invalid` (22023), `restore_not_found` (P0002), `restore_not_deleted` (55000), `restore_transfer_movement` (55000), `restore_conflict` (23505, hint'siz unique to'qnashuv), `inventory_apply_expired` (55000). `restore_admin_only` (42501) — mavjud kalit, RPC ham beradi.
 - **Review tuzatishlari (shu migratsiyada, `create or replace`):** `tg_compute_qty` va `tg_material_requests_guard` — tiklashda bog'langan xarid tekshiriladi (`purchase_not_open`); `tg_soft_delete_alert` — tiklash → `yozuv_tiklandi` alerti (details va severity — `docs/history-design.md`); `b_profiles_restore_unlink` — profil tiklanganda bog'lanishlar null, `login_kind = 'none'`, `is_active = false`; `restore_record('estimates', …)` — boshqa joriy versiya bo'lsa `is_current = false` bilan tiklaydi; `inventory_counts.submitted_at` + `b_inventory_submitted_at`; `apply_inventory_adjustments` — `inventory_apply_expired` (> 7 kun); `daily_report_stats` — `restored_count`. `audit_feed` — dinamik SQL, aniq firma sharti (oraliq ko'rinishida — tartib kaliti saqlanadi).
 - **Maxfiy ustunlar `audit_log` da (P8).** `old_data`/`new_data` — qatorning to'liq nusxasi (`to_jsonb`), jumladan authenticated'ga ustun grantlari bilan yopilgan yoki ichki maydonlar: `profiles.auth_user_id`, `telegram_user_id`, `telegram_chat_id`, `login_kind`; `inventory_count_items.qty_expected`, `price_per_base` (Y1/O5 — tekshiruvchidan yashirilgan); `auth` hodisalari `details`. Hozir `audit_log` ni faqat admin, direktor, super_admin o'qiydi — ular uchun bu ochiq bo'lishi qabul qilingan. **`audit_log_select` RLS'i boshqa rollarga kengaytirilsa** (masalan "Mening yozuvlarim" tarixi) yoki `audit_feed` boshqa rollarga ochilsa — `old_data`/`new_data` dan shu kalitlarni olib tashlaydigan redaksiya (view yoki RPC ichida `- 'key'`) majburiy.
+
+## Avtomatlashtirish (Batch 12 — `20261106000001_automation.sql`)
+
+Shartnoma: `docs/automation-design.md`; outbox payloadlari va alert `details` shakllari — o'sha faylda, "Bildirishnoma payloadlari (DB → tg-dispatch)".
+
+**Enum.** `alert_type` ga 9 qiymat: `kirim_manbasiz`, `manfiy_qoldiq`, `takroriy_yozuv`, `joylashuv_farqi`, `smetasiz_chiqim`, `chek_farqi`, `sorovdan_ortiq_xarid`, `podotchet_muddati`, `podotchet_manfiy`. `ADD VALUE` bilan bir tranzaksiyada qo'shilgani uchun yangi qiymatlar indeks predikatlarida ishlatilmaydi — "bitta ochiq alert" kafolati `private.alert_lock(key)` (advisory xact lock) + tekshiruv bilan.
+
+**Yangi ustunlar.**
+- `companies`: `photo_required_amount numeric(18,2) null (> 0)`, `cash_max_days int 14 (1..365)`, `duplicate_window_minutes int 10 (0..1440; 0 — o'chiq)`, `request_overbuy_pct numeric(6,2) 20 (0..1000)`, `alert_remind_hours int 48 (1..720)`, `forecast_days_warn int 3 (1..60)`. Admin o'zgartiradi (`companies_update`, ustun grant cheklovi yo'q).
+- `objects`: `lat numeric(9,6)`, `lng numeric(9,6)` (ikkalasi yoki hech biri), `radius_m int not null default 300 (10..50000)`.
+- `materials.photo_required boolean not null default false`.
+- `movements`: `photo_sha256 text (^[0-9a-f]{64}$)`, `geo_lat`, `geo_lng numeric(9,6)`, `geo_accuracy_m int (0..100000)`, `geo_status text ('ok','denied','unavailable')`; `*_geo_check`: koordinatalar faqat `ok` da va juft.
+- `purchases`: `receipt_photo_sha256`, geo ustunlari (yuqoridagidek), `receipt_fiscal_sign text (^[0-9A-Za-z]{1,64}$)`, `receipt_terminal_id`, `receipt_no` (1..64), `receipt_verified boolean not null default false`, `receipt_total numeric(18,2) (>= 0)`, `seller_tin text (^[0-9]{9,14}$)`, `request_id uuid` — FK `(company_id, request_id) → material_requests`.
+- `suppliers.tin text (^[0-9]{9,14}$)`; unique `(company_id, tin) where tin is not null and deleted_at is null`.
+- `cash_advances.kind text not null default 'berildi' check in ('berildi','qaytarildi')` — o'zgarmaydi (`cash_amount_locked`).
+- `notification_outbox.profile_id uuid` (FK `(company_id, profile_id)`), `kind` ∪ `alert_reminder`, `request_overdue`, `cash_statement`.
+
+**`public.receipt_lookups`** (biznes jadvali: audit, soft delete, `a_*` triggerlar, RLS enable + force): `id`, `company_id`, `fiscal_sign`, `terminal_id`, `receipt_no`, `payload jsonb (object)`, `total numeric(18,2)`, `seller_tin`, `seller_name (≤ 300)`, `receipt_at`, `fetched_at`, `created_by`, `created_at`, `updated_at`, `deleted_at`; unique `(company_id, fiscal_sign) where deleted_at is null`. SELECT — o'z firmasi (o'chirilganlar — admin/direktor/super_admin). INSERT/UPDATE grant — **hech kimga**; yozish faqat `public.svc_upsert_receipt_lookup(...)` (security definer, execute — service_role; receipt-lookup Edge Function). Tiklash oq ro'yxatiga kirmaydi (kesh).
+
+**Indekslar.** `purchases_receipt_fiscal_sign_key` (unique, `(company_id, receipt_fiscal_sign) where not null and deleted_at is null`), `purchases_company_request_idx`, `purchases_receipt_sha_idx`, `movements_photo_sha_idx`, `movements_unlinked_kirim_idx (company_id, object_id, material_id, occurred_at) where kirim and purchase_id is null`, `alerts_company_profile_idx (company_id, details->>'profile_id')`, outbox: `notification_outbox_alert_key (alert_id, escalation) where kind = 'alert'` (qayta yaratildi), `_reminder_key (alert_id)`, `_overdue_key (company_id, report_date)`, `_cash_key (profile_id, report_date)`.
+
+**Guardlar (BEFORE, `c_*` — `b_*` dan keyin).**
+- `c_movements_auto`: rasm yo'li null → xesh null; xesh normallashtiriladi (`lower(btrim)`), format; kirimda `materials.photo_required` → `photo_path` majburiy.
+- `c_purchases_auto`: xesh (rasm yo'li null → xesh null); chek maydonlari trim; foydalanuvchi sessiyasida (har INSERT/UPDATE) `receipt_verified` = shu firma keshida fiskal belgi bormi (`FOUND`), kesh bo'lsa `receipt_total` := kesh.total (null bo'lmasa), `seller_tin` := coalesce(kesh, klient); belgi yo'q → `receipt_total`, `seller_tin` null; service_role — bo'sh qiymatlar keshdan; fiskal belgi bitta tirik xaridda (advisory lock + tekshiruv, zaxira — unique indeks; tiklashda ham); rasm majburiy (`receipt_verified` → shart emas; material bayrog'i; `total_amount >= photo_required_amount`); `request_id` tekshiruvi.
+- `c_suppliers_tin_guard`: STIR dublikati.
+
+**Qoidalar** (`private.*`, security definer, execute — hech kimga; AFTER triggerlar `zz_automation_ins/upd` — `movements`, `purchases`; `material_requests` — o'chirish/miqdor):
+- A: `evaluate_kirim_source(movement)`, `mark_kirim_candidate(movement, purchase)`; `evaluate_purchase_receipt` (create or replace) — nomzodlar (`purchased_at ≤ occurred_at ≤ purchased_at + 72 soat`, bog'lanmagan), qamrov `round(abs(received + Σ nomzod − purchased) * 100 / purchased, 2) <= chegara` → `covered` (alert yo'q, ochig'i `covered_by_unlinked` bilan yopiladi).
+- B: `evaluate_negative_stock(company, object, material, movement)` — faqat tirik chiqim/transfer_out yoki ochiq alert bo'lsa hisoblaydi; `stock_restored` yopilgandan 24 soat ichida yangisi yaratilmaydi (yopilganining details'i yangilanadi); `private.object_stock(...)`. `create_transfer` (create or replace) — `transfer_insufficient_stock`.
+- C: `evaluate_duplicate(table, id)` (oyna `0 ≤ Δcreated_at ≤ window`, chegaralar kiradi; `first_id` — eng eski, teng bo'lsa kichik id), `evaluate_duplicate_photo(table, id)`.
+- D: `evaluate_geo(movement)`, `private.geo_distance_m(lat1, lng1, lat2, lng2) → int` (haversine, R = 6 371 000; trigonometriya double precision da, natija numeric → int; hech narsa float saqlanmaydi). Ichkarida: `d <= radius + least(accuracy, radius)` (manfiy/null → 0).
+- F: `evaluate_no_estimate_chiqim(company, object, movement)` — obyekt bo'yicha bitta ochiq alert joriy smeta paydo bo'lguncha; `estimates` AFTER triggeri `zz_automation` (`private.tg_estimates_no_estimate_close`) joriy smeta paydo bo'lganda yopadi (`estimate_added`).
+- G: `evaluate_receipt_total(purchase)` — `abs(receipt_total − total_amount) > 1`; keshdagi chek ko'p qatorli (`payload.items` > 1) — taqqoslanmaydi (`multi_line_receipt`).
+- H: `sync_request_purchase(company, request)` (holat / `purchase_id` — mavjud `b_material_requests_guard` orqali), `evaluate_request_overbuy(request)` — `Σ xarid * 100 > so'rov * (100 + pct)`.
+- I: `private.cash_position(company, profile)` → `issued_total, returned_total, spent_total, balance, oldest_open_at` (FIFO). Yosh = Toshkent sanalari farqi (`issued_at`); muddati o'tgan — `balance > 0 and yosh > cash_max_days`.
+- K: `public.stock_forecast(p_object_id uuid)` (sql, security invoker, execute — authenticated) → `material_id, material_name, base_unit, stock_qty_base, avg_daily_qty_base, days_left, other_objects_qty_base, estimate_remaining_qty_base`. `avg_daily = round(Σ chiqim [Toshkent bugun − 13 .. bugun] / 14, 6)`; `days_left`: avg ≤ 0 → null, stock ≤ 0 → 0, aks holda `round(stock / avg, 1)`. `private.low_stock_count(company)` — xuddi shu formula (definer, faol obyektlar), `days_left <= forecast_days_warn`.
+
+**Cron** (`private.*`, postgres nomidan): `enqueue_alert_reminders(p_now)` — `terron-alert-reminders` `27 * * * *`; `enqueue_request_overdue(p_date)` — `terron-request-overdue` `0 4 * * *` (09:00 Toshkent); `evaluate_cash_advances(p_now)` — `terron-cash-check` `10 4 * * *`; `enqueue_cash_statements(p_date)` — `terron-cash-statement` `0 4 * * 1` (dushanba 09:00).
+
+**Service RPC** (execute — faqat service_role): `svc_outbox_recipients(p_outbox_id uuid) → (profile_id, chat_id, role)`; `svc_mark_alert_seen(p_telegram_user_id bigint, p_alert_id uuid) → text`; `svc_upsert_receipt_lookup(p_company_id uuid, p_created_by uuid, p_fiscal_sign text, p_terminal_id text, p_receipt_no text, p_payload jsonb, p_total numeric, p_seller_tin text, p_seller_name text, p_receipt_at timestamptz) → uuid`.
+
+**O'zgargan (create or replace):** `tg_alerts_notify`, `enqueue_alert_escalation` (conflict maqsadi `kind = 'alert'`), `tg_cash_advances_guard` (+ kind; oluvchi roli/faolligi faqat `berildi` da tekshiriladi — qaytarish nofaol odamdan ham), `evaluate_purchase_receipt`, `create_transfer`, `cash_balances` (`returned_total` oxirida; `balance = berildi − qaytarildi − xaridlar`; `issued_total`, `last_issued_at` — faqat berildi), `dashboard_summary` (`cash_issued_sum` — faqat berildi, yangi `cash_returned_sum`), `daily_report_stats` (`low_stock_count`, `geo_denied_count`, `geo_unavailable_count`). Meta kalitlar (`reminded_at`, `seen_*`) — `private.alert_meta_keys()` / `private.alert_meta(details)`: qayta baholashda saqlanadi, solishtirishga kirmaydi.
+
+**Yangi hint'lar:** `transfer_insufficient_stock` (22023, `create_transfer`; xabarda mavjud qoldiq, `detail` — raqam), `photo_required` (23514, `c_purchases_auto`, `c_movements_auto`), `photo_sha256_invalid` (23514, o'sha), `receipt_already_used` (23505, `c_purchases_auto` — insert, belgi o'zgarishi, tiklash; xabarda xaridor ismi va `dd.mm.yyyy HH:MI` Toshkent), `purchase_request_invalid` (23503 — so'rov yo'q/o'chirilgan/boshqa firma; 23514 — boshqa obyekt/material yoki holat tasdiqlandi/xarid_qilindi emas), `supplier_tin_duplicate` (23505, `c_suppliers_tin_guard`), `receipt_lookup_invalid` (22023, `svc_upsert_receipt_lookup`), `alert_action_forbidden` (42501, `svc_mark_alert_seen`), `alert_not_found` (P0002, o'sha). `cash_amount_locked` — endi `kind` o'zgarishida ham.
 
 ## Qoldiq
 

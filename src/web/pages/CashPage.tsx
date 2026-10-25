@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { HandCoins, History, Plus, RotateCcw, Trash2, UserRound, Wallet } from 'lucide-react'
+import { HandCoins, History, Plus, RotateCcw, Trash2, Undo2, UserRound, Wallet } from 'lucide-react'
 import { Badge, Button, DataTable, DetailRows, DetailSheet, EmptyState, EntryRow, FilterBar, Modal, Money, Notice, PageHeader, RetryNotice, Spinner } from '@/components/ui'
 import {
   emptyBalance,
@@ -41,6 +41,7 @@ function lastActivity(b: CashBalance): string | null {
 
 type Dialog =
   | { kind: 'issue'; initial?: { recipientId: string; amount: string; note: string | null } }
+  | { kind: 'giveBack' }
   | { kind: 'delete'; entry: CashHistoryEntry }
   | { kind: 'detail'; entry: CashHistoryEntry }
   | null
@@ -195,6 +196,18 @@ export function CashPage() {
                 {tc.issue}
               </Button>
             )}
+            {canIssue && (
+              <Button
+                variant="secondary"
+                icon={<Undo2 aria-hidden className="size-5" strokeWidth={1.75} />}
+                onClick={() => {
+                  setDone(null)
+                  setDialog({ kind: 'giveBack' })
+                }}
+              >
+                {tc.giveBack}
+              </Button>
+            )}
           </>
         }
       />
@@ -215,6 +228,7 @@ export function CashPage() {
               { key: 'person', header: tc.colPerson, cell: ({ profile }) => <span className="font-medium text-ink">{profile.full_name}</span> },
               { key: 'role', header: tc.colRole, cell: ({ profile }) => <span className="text-muted">{t.roles[profile.role]}</span> },
               { key: 'issued', header: tc.colIssued, align: 'right', cell: ({ balance }) => <Money value={balance.issued_total} size="sm" /> },
+              { key: 'returned', header: tc.colReturned, align: 'right', cell: ({ balance }) => <Money value={balance.returned_total ?? '0'} size="sm" /> },
               { key: 'spent', header: tc.colSpent, align: 'right', cell: ({ balance }) => <Money value={balance.spent_total} size="sm" /> },
               { key: 'balance', header: tc.colBalance, align: 'right', cell: ({ balance }) => balanceMoney(balance.balance, 'sm') },
               {
@@ -288,13 +302,19 @@ export function CashPage() {
                 key={`${h.kind}:${h.id}`}
                 as="li"
                 testId="cash-history-row"
-                kind={h.kind === 'issued' ? 'ok' : 'xarid'}
-                icon={h.kind === 'issued' ? <HandCoins className="size-[18px]" strokeWidth={1.75} /> : undefined}
+                kind={h.kind === 'issued' ? 'ok' : h.kind === 'returned' ? 'neutral' : 'xarid'}
+                icon={
+                  h.kind === 'issued' ? (
+                    <HandCoins className="size-[18px]" strokeWidth={1.75} />
+                  ) : h.kind === 'returned' ? (
+                    <Undo2 className="size-[18px]" strokeWidth={1.75} />
+                  ) : undefined
+                }
                 deleted={Boolean(h.deletedAt)}
                 title={h.profileName}
                 badge={
                   <>
-                    <Badge tone={h.kind === 'issued' ? 'ok' : 'info'}>{tc.kinds[h.kind]}</Badge>
+                    <Badge tone={h.kind === 'issued' ? 'ok' : h.kind === 'returned' ? 'neutral' : 'info'}>{tc.kinds[h.kind]}</Badge>
                     {h.deletedAt && <Badge tone="danger">{t.movements.deleted}</Badge>}
                   </>
                 }
@@ -304,7 +324,7 @@ export function CashPage() {
                     {h.kind === 'spent' && (h.materialName || h.objectName) && (
                       <span>{[h.materialName, h.objectName].filter(Boolean).join(', ')}</span>
                     )}
-                    {h.kind === 'issued' && h.createdByName && <span>{h.createdByName}</span>}
+                    {h.kind !== 'spent' && h.createdByName && <span>{h.createdByName}</span>}
                     {h.note && <span className="text-ink/80">{h.note}</span>}
                   </>
                 }
@@ -335,12 +355,26 @@ export function CashPage() {
           }}
         />
       )}
+      {dialog?.kind === 'giveBack' && (
+        <IssueAdvanceDialog
+          companyId={me.company_id}
+          recipients={recipients}
+          kind="qaytarildi"
+          onClose={closeDialog}
+          onStale={reload}
+          onIssued={(a) => {
+            setDialog(null)
+            setDone(tc.returnedDone(formatSum(a.amount), a.recipient_name ?? ''))
+            reload()
+          }}
+        />
+      )}
       {dialog?.kind === 'detail' && (
         <DetailSheet
           title={dialog.entry.profileName ?? t.ui.details}
           onClose={closeDialog}
           footer={
-            dialog.entry.kind === 'issued' &&
+            dialog.entry.kind !== 'spent' &&
             (canIssue && !dialog.entry.deletedAt ? (
               <Button
                 variant="danger"
@@ -377,7 +411,7 @@ export function CashPage() {
                 { label: t.ombor.colDate, value: <span className="tabular">{formatDateTime(dialog.entry.at)}</span> },
                 dialog.entry.kind === 'spent' && dialog.entry.materialName ? { label: t.ombor.colMaterial, value: dialog.entry.materialName } : null,
                 dialog.entry.kind === 'spent' && dialog.entry.objectName ? { label: t.ombor.colObject, value: dialog.entry.objectName } : null,
-                dialog.entry.kind === 'issued' && dialog.entry.createdByName ? { label: t.ombor.colUser, value: dialog.entry.createdByName } : null,
+                dialog.entry.kind !== 'spent' && dialog.entry.createdByName ? { label: t.ombor.colUser, value: dialog.entry.createdByName } : null,
                 dialog.entry.note ? { label: t.ombor.colNote, value: dialog.entry.note } : null,
               ]}
             />
@@ -397,9 +431,11 @@ export function CashPage() {
               <Button variant="danger" disabled={busy} onClick={() => void run(() => softDeleteAdvance(dialog.entry.id))}>
                 {tc.deleteOnly}
               </Button>
-              <Button disabled={busy} onClick={() => void deleteAndReissue(dialog.entry)}>
-                {tc.deleteAndReissue}
-              </Button>
+              {dialog.entry.kind === 'issued' && (
+                <Button disabled={busy} onClick={() => void deleteAndReissue(dialog.entry)}>
+                  {tc.deleteAndReissue}
+                </Button>
+              )}
             </>
           }
         >

@@ -1,14 +1,18 @@
 import { isPkeyConflict, toRepoError } from './errors'
 import { chunkOpts, fetchAll, inChunks, type ChunkOpts } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
+import { cleanSha256, geoColumns, GEO_SELECT } from './geo'
+import { cleanTin } from './suppliersRepo'
 import { getSupabase } from './supabaseClient'
-import type { AlertType, Purchase, PurchaseReceipt } from './types'
+import type { AlertType, GeoFix, Purchase, PurchaseReceipt } from './types'
 
 // numeric ustunlar `::text` — aniqlik yo'qolmasin. Embed'lar FK nomi bilan (kompozit FK'lar).
 const PURCHASE_COLUMNS =
   'id, company_id, buyer_id, object_id, material_id, supplier_id, unit_id, qty_input::text, unit_input, unit_variant, ' +
   'qty_base::text, total_amount::text, unit_price::text, price_per_base::text, receipt_photo_path, purchased_at, note, ' +
-  'created_by, created_at, deleted_at'
+  'created_by, created_at, deleted_at, receipt_photo_sha256, receipt_fiscal_sign, receipt_terminal_id, receipt_no, ' +
+  'receipt_verified, receipt_total::text, seller_tin, request_id, ' +
+  GEO_SELECT
 const PURCHASE_SELECT =
   `${PURCHASE_COLUMNS}, ` +
   'object:objects!purchases_object_fkey(name), ' +
@@ -38,6 +42,27 @@ export interface NewPurchase {
   note?: string | null
   /** Xaridor; berilmasa — joriy foydalanuvchi (sahifa doim o'z profilini yuboradi). Admin boshqa nomidan. */
   buyerId?: string | null
+  /** ISO; berilmasa — server `now()`. Chek QR'dan olingan sana. */
+  purchasedAt?: string | null
+  /** Batch 12 (H): tasdiqlangan so'rov bo'yicha xarid — trigger so'rovni `xarid_qilindi` qiladi. */
+  requestId?: string | null
+  /** Batch 12 (G): chek QR maydonlari. */
+  receipt?: PurchaseReceiptQr | null
+  /** Batch 12 (C): chek rasmi SHA-256 (hex). */
+  receiptPhotoSha256?: string | null
+  /** Batch 12 (D): Mini App joylashuvi. */
+  geo?: GeoFix | null
+}
+
+/** Chek QR'dan olingan maydonlar. `verified` — soliq sahifasidan o'qildi (receipt-lookup). */
+export interface PurchaseReceiptQr {
+  fiscalSign: string
+  terminalId: string
+  receiptNo: string
+  verified: boolean
+  /** Chekdagi jami, Dec satr; noma'lum — null. */
+  total: string | null
+  sellerTin: string | null
 }
 
 export interface PurchaseFilters {
@@ -104,6 +129,19 @@ export async function createPurchase(input: NewPurchase): Promise<Purchase> {
     note: clean(input.note),
   }
   if (input.buyerId) row.buyer_id = input.buyerId
+  if (input.purchasedAt) row.purchased_at = input.purchasedAt
+  if (input.requestId) row.request_id = input.requestId
+  Object.assign(row, geoColumns(input.geo))
+  const sha = row.receipt_photo_path ? cleanSha256(input.receiptPhotoSha256) : null
+  if (sha) row.receipt_photo_sha256 = sha
+  if (input.receipt) {
+    row.receipt_fiscal_sign = input.receipt.fiscalSign
+    row.receipt_terminal_id = input.receipt.terminalId
+    row.receipt_no = input.receipt.receiptNo
+    row.receipt_verified = input.receipt.verified
+    row.receipt_total = input.receipt.total
+    row.seller_tin = cleanTin(input.receipt.sellerTin)
+  }
   const { data, error } = await getSupabase().from('purchases').insert(row).select(PURCHASE_SELECT).single()
   if (error) {
     if (isPkeyConflict(error, 'purchases_pkey')) {

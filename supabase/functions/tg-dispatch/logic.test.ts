@@ -22,6 +22,10 @@ import {
   formatAlertDigest,
   formatAlertMessage,
   formatDailyReport,
+  alertKeyboard,
+  formatAlertReminder,
+  formatCashStatement,
+  formatRequestOverdue,
   miniAppKeyboard,
   type AlertPayload,
 } from '../_shared/notifyMessages.ts'
@@ -103,6 +107,7 @@ function fake(opts: {
   const claims: number[] = []
   const secretCalls: boolean[] = []
   const sleeps: number[] = []
+  const recipientCalls: string[] = []
   const deps: DispatchDeps = {
     env: { miniAppUrl: opts.miniAppUrl },
     getDispatchSecret: async (refresh) => {
@@ -115,9 +120,10 @@ function fake(opts: {
       if (opts.claimThrows) throw new Error(`db down https://api.telegram.org/bot${BOT_TOKEN}/x`)
       return opts.rows ?? []
     },
-    recipients: async (companyId) => {
+    recipients: async (r) => {
       if (opts.recipientsThrow) throw new Error('recipients down')
-      return opts.recipients?.[companyId] ?? []
+      recipientCalls.push(r.id)
+      return opts.recipients?.[r.company_id] ?? []
     },
     sendMessage: async (chatId, text, markup) => {
       sent.push({ chatId, text, markup, at: clock })
@@ -135,7 +141,7 @@ function fake(opts: {
     },
     log: (level, message, extra) => logs.push({ level, message, ...(extra ? { extra } : {}) }),
   }
-  return { deps, sent, completed, logs, claims, secretCalls, sleeps }
+  return { deps, sent, completed, logs, claims, secretCalls, sleeps, recipientCalls }
 }
 
 const done = (id: string, delivered: number[]) => ({ id, ok: true, delivered, error: null })
@@ -190,7 +196,7 @@ describe('handleDispatch — yuborish', () => {
     expect(CLAIM_LIMIT).toBe(20)
   })
 
-  it('alert va hisobot: shablon matni, Mini App tugmasi, har qabul qiluvchiga; sent + delivered', async () => {
+  it('alert va hisobot: shablon matni, tugmalar (admin — Ko\x27rildi + Ochish), har qabul qiluvchiga', async () => {
     const a = row('alert', { id: 'a1', company: 'c1' })
     const d = row('daily_report', { id: 'd1', company: 'c2' })
     const f = fake({
@@ -201,9 +207,10 @@ describe('handleDispatch — yuborish', () => {
     const r = await handleDispatch(SECRET, f.deps)
     expect(r).toEqual({ status: 200, body: { processed: 2, sent: 2, failed: 0 } })
     const kb = miniAppKeyboard('https://app.example.uz/tg')
+    const id = (a.payload as AlertPayload).alert_id
     expect(f.sent.map(({ chatId, text, markup }) => ({ chatId, text, markup }))).toEqual([
-      { chatId: 1, text: formatAlertMessage(a.payload as AlertPayload), markup: kb },
-      { chatId: 2, text: formatAlertMessage(a.payload as AlertPayload), markup: kb },
+      { chatId: 1, text: formatAlertMessage(a.payload as AlertPayload), markup: alertKeyboard('https://app.example.uz/tg', id, false) },
+      { chatId: 2, text: formatAlertMessage(a.payload as AlertPayload), markup: alertKeyboard('https://app.example.uz/tg', id, true) },
       { chatId: 3, text: formatDailyReport(REPORT_PAYLOAD), markup: kb },
     ])
     expect(f.completed).toEqual([done('a1', [1, 2]), done('d1', [3])])
@@ -214,7 +221,8 @@ describe('handleDispatch — yuborish', () => {
     expect(resolveMiniAppUrl('http://insecure/tg')).toBe(DEFAULT_MINI_APP_URL)
     const f = fake({ rows: [row('alert')], recipients: { c1: [R(1)] } })
     await handleDispatch(SECRET, f.deps)
-    expect(f.sent[0]?.markup).toEqual(miniAppKeyboard(DEFAULT_MINI_APP_URL))
+    const p = f.sent[0]?.markup as { inline_keyboard: { web_app?: { url: string } }[][] }
+    expect(p.inline_keyboard[0]?.[0]?.web_app?.url.startsWith(DEFAULT_MINI_APP_URL + '?alert=')).toBe(true)
   })
 
   it('qabul qiluvchi yo`q → sent (0), Telegram chaqirilmaydi', async () => {
@@ -463,5 +471,116 @@ describe('sanitizeError', () => {
     expect(sanitizeError(`x ${SECRET} y`, [SECRET])).toBe('x *** y')
     expect(sanitizeError('Forbidden: bot was blocked by the user')).toBe('Forbidden: bot was blocked by the user')
     expect(sanitizeError('z'.repeat(1000))).toHaveLength(300)
+  })
+})
+
+describe('Batch 12 — yangi kind\'lar, qabul qiluvchilar, tugmalar', () => {
+  const REMINDER = { ...alertPayload(1), status: 'yangi', reminded_at: '2026-10-31T10:00:00Z', hours_open: 49 }
+  const OVERDUE = {
+    date: '2026-11-06',
+    company_name: 'Firma',
+    count: 1,
+    requests: [
+      {
+        request_id: 'q1', object_name: 'Obyekt A', material_name: 'Sement', qty_input: 2.5, unit_input: 'qop',
+        qty_base: 125, base_unit: 'kg', needed_by: '2026-11-04', days_overdue: 2, created_by_name: 'Ali',
+      },
+    ],
+  }
+  const CASH = {
+    date: '2026-11-09', period_start: '2026-11-02', period_end: '2026-11-08', company_name: 'Firma',
+    profile_id: 'p9', profile_name: 'Vali', issued_week: '1000000.00', spent_week: '350000.00', returned_week: '0.00',
+    balance: '650000.00', oldest_open_date: '2026-10-20', days_open: 20,
+  }
+  const k = (kind: string, id: string, payload: unknown, company = 'c1'): OutboxRow => ({
+    id, company_id: company, kind, payload, attempts: 1, delivered_chat_ids: [],
+  })
+
+  it('alert_reminder / request_overdue / cash_statement — shablon, Ochish tugmasi; qabul qiluvchilar qator bo\'yicha', async () => {
+    const rows = [k('alert_reminder', 'm1', REMINDER), k('request_overdue', 'o1', OVERDUE), k('cash_statement', 's1', CASH)]
+    const f = fake({ rows, recipients: { c1: [R(1, 'admin')] }, miniAppUrl: 'https://app.example.uz/tg' })
+    const r = await handleDispatch(SECRET, f.deps)
+    expect(r.body).toEqual({ processed: 3, sent: 3, failed: 0 })
+    expect(f.recipientCalls).toEqual(['m1', 'o1', 's1'])
+    expect(f.sent.map((s) => s.text)).toEqual([
+      formatAlertReminder(REMINDER),
+      formatRequestOverdue(OVERDUE),
+      formatCashStatement(CASH),
+    ])
+    expect(f.sent[0]?.markup).toEqual(alertKeyboard('https://app.example.uz/tg', REMINDER.alert_id, true))
+    expect(f.sent[1]?.markup).toEqual(miniAppKeyboard('https://app.example.uz/tg'))
+    expect(f.sent[2]?.markup).toEqual(miniAppKeyboard('https://app.example.uz/tg'))
+  })
+
+  it('"Ko\'rildi" faqat admin/super_admin ga; direktor va prorab — faqat Ochish', async () => {
+    const a = row('alert', { id: 'a1' })
+    const f = fake({ rows: [a], recipients: { c1: [R(1, 'direktor'), R(2, 'super_admin'), R(3, 'prorab')] } })
+    await handleDispatch(SECRET, f.deps)
+    const id = (a.payload as AlertPayload).alert_id
+    expect(f.sent.map((s) => s.markup)).toEqual([
+      alertKeyboard(DEFAULT_MINI_APP_URL, id, false),
+      alertKeyboard(DEFAULT_MINI_APP_URL, id, true),
+      // prorab alertlarni RLS bo'yicha o'qiy olmaydi — "Ochish" ?alert= siz
+      { inline_keyboard: [[{ text: 'Ochish', web_app: { url: DEFAULT_MINI_APP_URL } }]] },
+    ])
+    const kb = alertKeyboard(DEFAULT_MINI_APP_URL, id, true).inline_keyboard[0]
+    expect(kb?.[0]).toEqual({ text: "✓ Ko'rildi", callback_data: `al:seen:${id}` })
+  })
+
+  it('o\'tkazma qabul qilinmadi: admin/direktor — ?alert=<id>, prorab — oddiy Mini App havolasi', async () => {
+    const nr = row('alert', {
+      id: 'nr',
+      payload: { ...alertPayload(7), type: 'otkazma_farqi', details: { direction: 'not_received', hours: 52 } },
+    })
+    const url = 'https://app.example.uz/tg'
+    const f = fake({ rows: [nr], recipients: { c1: [R(1, 'admin'), R(2, 'direktor'), R(3, 'prorab'), R(4, 'prorab')] }, miniAppUrl: url })
+    await handleDispatch(SECRET, f.deps)
+    const id = (nr.payload as AlertPayload).alert_id
+    const urls = f.sent.map((s) => {
+      const kb = s.markup as { inline_keyboard: { web_app?: { url: string } }[][] }
+      return kb.inline_keyboard[0]?.find((b) => b.web_app)?.web_app?.url
+    })
+    expect(urls).toEqual([`${url}?alert=${id}`, `${url}?alert=${id}`, url, url])
+    expect(f.sent[2]?.markup).toEqual(alertKeyboard(url, id, false, false))
+  })
+
+  it('alert_id uuid bo\'lmasa — tugmasiz alert emas, oddiy Mini App tugmasi', async () => {
+    const f = fake({ rows: [row('alert', { payload: { ...alertPayload(1), alert_id: 'x' } })], recipients: { c1: [R(1, 'admin')] } })
+    await handleDispatch(SECRET, f.deps)
+    expect(f.sent[0]?.markup).toEqual(miniAppKeyboard(DEFAULT_MINI_APP_URL))
+  })
+
+  it('eslatmalar ko\'p bo\'lsa — alohida "eslatma" digest; alertlar bilan aralashmaydi', async () => {
+    const reminders = Array.from({ length: DIGEST_THRESHOLD + 1 }, (_, i) =>
+      k('alert_reminder', `m${i}`, { ...alertPayload(i + 1), hours_open: 50 }),
+    )
+    const alert = row('alert', { id: 'a1' })
+    const f = fake({ rows: [...reminders, alert], recipients: { c1: [R(1, 'admin')] } })
+    await handleDispatch(SECRET, f.deps)
+    expect(f.sent).toHaveLength(2)
+    expect(f.sent[0]?.text).toBe(formatAlertDigest(reminders.map((r) => r.payload as AlertPayload), { reminder: true }))
+    expect(f.sent[0]?.text).toContain('eslatma')
+    expect(f.sent[0]?.markup).toEqual(miniAppKeyboard(DEFAULT_MINI_APP_URL))
+    expect(f.sent[1]?.text).toBe(formatAlertMessage(alert.payload as AlertPayload))
+  })
+
+  it('o\'tkazma qabul qilinmadi (prorablarga ham) digest\'ga qo\'shilmaydi', async () => {
+    const notReceived = row('alert', {
+      id: 'nr',
+      payload: { ...alertPayload(99), type: 'otkazma_farqi', details: { direction: 'not_received', hours: 52 } },
+    })
+    const alerts = Array.from({ length: DIGEST_THRESHOLD + 1 }, (_, i) => row('alert', { id: `a${i}` }))
+    const f = fake({ rows: [notReceived, ...alerts], recipients: { c1: [R(1, 'admin')] } })
+    await handleDispatch(SECRET, f.deps)
+    expect(f.sent).toHaveLength(2)
+    expect(f.sent[0]?.text).toBe(formatAlertMessage(notReceived.payload as AlertPayload))
+    expect(f.recipientCalls[0]).toBe('nr')
+  })
+
+  it('noma\'lum kind → darhol failed', async () => {
+    const f = fake({ rows: [k('mystery', 'x1', {})], recipients: { c1: [R(1)] } })
+    await handleDispatch(SECRET, f.deps)
+    expect(f.completed[0]).toMatchObject({ id: 'x1', ok: false, final: true })
+    expect(f.sent).toEqual([])
   })
 })

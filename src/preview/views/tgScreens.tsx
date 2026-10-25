@@ -71,6 +71,7 @@ const summary: DashboardSummary = {
   purchases_count: 6,
   purchases_sum: '48250000',
   cash_issued_sum: '60000000',
+  cash_returned_sum: '0',
   cash_on_hand_total: '11750000',
   alerts_open: 5,
   alerts_serious_open: 2,

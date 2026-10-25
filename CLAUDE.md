@@ -128,7 +128,7 @@ Har bir qoida alohida, sof (pure) funksiya va unit testlar bilan.
 - Tugmalar va bosiladigan joylar kamida 44 px balandlikda
 - Material tanlash — matn yozish emas, tugmalar orqali
 - Kirim/chiqim formasi telefonda 3–4 bosishda tugashi kerak
-- Rasm har doim ixtiyoriy
+- Rasm odatda ixtiyoriy. Istisno: firma belgilagan summadan katta xarid va "rasm majburiy" deb belgilangan materiallar (Batch 12)
 
 ## Sub-agentlar
 
@@ -156,6 +156,7 @@ Har bir batch oxirida: testlar o'tadi, typecheck toza, qisqa hisobot yoziladi. *
 - **Batch 9 — Hisobotlar.** Veb bosh sahifa: raqamli kartochkalar, diagrammalar (smeta va haqiqiy, sarf, xarajat taqsimoti, podotchet), ogohlantirishlar, Excel eksport. Mini App: direktor bosh ekrani.
 - **Batch 10 — Tarix.** O'zgarishlar tarixi sahifasi, filtrlar, o'chirilgan yozuvni tiklash.
 - **Batch 11 — Topshirish.** To'liq sinov ma'lumotlari, quruvchi uchun qisqa qo'llanma (har bir rol uchun 1 sahifa), Mini App ichida "xatolik haqida xabar berish" tugmasi.
+- **Batch 12 — Avtomatlashtirish.** Kirimni xaridga avtomatik bog'lash, manfiy qoldiq, takroriy yozuv, joylashuv (GPS) belgisi, chegaradan katta xaridda rasm majburiy, smetasiz chiqim, chek QR (soliq.uz), so'rov → xarid zanjiri, podotchet qaytarish va muddat, eslatmalar va Telegram tugmalari, material tugash prognozi. Dizayn: `docs/automation-design.md`. Batch 11 dan oldin bajariladi.
 
 ## Sinov versiyasiga KIRMAYDI (keyingi bosqich)
 

@@ -54,6 +54,12 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
       price_avg_window: 'qty',
       estimate_increase_pct: 'pct',
       transfer_receive_hours: 'qty',
+      photo_required_amount: 'money',
+      cash_max_days: 'qty',
+      duplicate_window_minutes: 'qty',
+      request_overbuy_pct: 'pct',
+      alert_remind_hours: 'qty',
+      forecast_days_warn: 'qty',
       timezone: 'text',
       is_active: 'bool',
     },
@@ -73,7 +79,7 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
   },
   objects: {
     primary: ['name', 'address', 'status'],
-    columns: { name: 'text', address: 'text', status: 'enum' },
+    columns: { name: 'text', address: 'text', status: 'enum', lat: 'text', lng: 'text', radius_m: 'qty' },
   },
   object_members: {
     primary: ['object_id', 'profile_id'],
@@ -87,6 +93,7 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
       waste_pct: 'pct',
       category: 'text',
       is_active: 'bool',
+      photo_required: 'bool',
     },
   },
   material_units: {
@@ -99,11 +106,11 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
   },
   suppliers: {
     primary: ['name', 'phone'],
-    columns: { name: 'text', phone: 'text', note: 'text' },
+    columns: { name: 'text', phone: 'text', note: 'text', tin: 'text' },
   },
   cash_advances: {
     primary: ['recipient_id', 'amount', 'issued_at'],
-    columns: { recipient_id: 'ref_profile', amount: 'money', issued_at: 'datetime', note: 'text' },
+    columns: { recipient_id: 'ref_profile', amount: 'money', issued_at: 'datetime', note: 'text', kind: 'enum' },
   },
   purchases: {
     primary: [
@@ -130,6 +137,18 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
       receipt_photo_path: 'text',
       purchased_at: 'datetime',
       note: 'text',
+      request_id: 'text',
+      receipt_fiscal_sign: 'text',
+      receipt_terminal_id: 'text',
+      receipt_no: 'text',
+      receipt_verified: 'bool',
+      receipt_total: 'money',
+      seller_tin: 'text',
+      receipt_photo_sha256: 'text',
+      geo_lat: 'text',
+      geo_lng: 'text',
+      geo_accuracy_m: 'qty',
+      geo_status: 'enum',
     },
   },
   transfers: {
@@ -236,6 +255,11 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
       photo_path: 'text',
       occurred_at: 'datetime',
       note: 'text',
+      photo_sha256: 'text',
+      geo_lat: 'text',
+      geo_lng: 'text',
+      geo_accuracy_m: 'qty',
+      geo_status: 'enum',
     },
   },
   alerts: {

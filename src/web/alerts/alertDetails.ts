@@ -50,6 +50,8 @@ export function alertDetailText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>
   if (a.type === 'smetadan_ortiq_sorov') return requestText(d, a.base_unit)
   if (a.type === 'inventarizatsiya_kamomadi') return inventoryText(d)
   if (a.type === 'otkazma_farqi') return transferText(d, a.base_unit)
+  const batch12 = automationText(a)
+  if (batch12 !== null) return batch12
   if (a.type === 'narx_ogishi') {
     const avg = dec(d, 'avg')
     if (avg !== null && pct !== null) {
@@ -257,4 +259,92 @@ function transferText(d: Record<string, unknown>, baseUnit: string | null): stri
     return td.transferNotReceived(show(sent), hours !== null ? formatQty(hours, 0) : '')
   }
   return td.transferDiff(str(d, 'from_object_name') || '?', str(d, 'to_object_name') || '?', show(sent), show(received), show(diff))
+}
+
+
+// ---------------------------------------------------------------------------
+// Batch 12 — `details` kalitlari docs/automation-design.md "Bildirishnoma payloadlari" bo'yicha:
+//  kirim_manbasiz: reason (open_purchase | no_source | unlinked_candidate), qty_base, base_unit,
+//    occurred_at, open_purchase_ids[], candidate_purchase_id
+//  manfiy_qoldiq: stock_after, qty_base, unit, movement_type
+//  takroriy_yozuv: kind (record | photo), table (movements | purchases), record_id, first_id;
+//    record: window_minutes, qty_base, total_amount, movement_type; photo: first_table, sha256
+//  joylashuv_farqi: distance_m, radius_m, accuracy_m, geo_lat, geo_lng, object_lat, object_lng, movement_type
+//  smetasiz_chiqim: day, count, materials[{ material_id, material_name, qty_base, base_unit }]
+//  chek_farqi: receipt_total, total_amount, diff, receipt_fiscal_sign, receipt_verified
+//  sorovdan_ortiq_xarid: request_qty_base, purchased_qty_base, over_pct, threshold_pct, base_unit, purchase_count
+//  podotchet_muddati: profile_id, profile_name, balance, oldest_open_at, days_open, max_days
+//  podotchet_manfiy: profile_id, profile_name, balance
+// ---------------------------------------------------------------------------
+
+function automationText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): string | null {
+  const d = a.details
+  const unit = unitOf(d, a.base_unit)
+  const show = (v: string | null) => (v !== null ? qty(v, unit) : '?')
+  switch (a.type) {
+    case 'kirim_manbasiz': {
+      const q = show(dec(d, 'qty_base'))
+      if (d.reason === 'no_source') return td.unsourcedNoSource(q)
+      if (d.reason === 'unlinked_candidate') return td.unsourcedCandidate(q)
+      return td.unsourcedOpenPurchase(q)
+    }
+    case 'manfiy_qoldiq': {
+      const u = str(d, 'unit') || a.base_unit
+      const after = dec(d, 'stock_after')
+      const q = dec(d, 'qty_base')
+      return td.negativeStock(after !== null ? qty(after, u) : '?', q !== null ? qty(q, u) : '')
+    }
+    case 'takroriy_yozuv': {
+      const table = str(d, 'table')
+      const what = td.duplicateKinds[table] ?? td.duplicateKinds.other ?? ''
+      if (d.kind === 'photo') return td.duplicatePhoto(what)
+      const minutes = dec(d, 'window_minutes')
+      return minutes !== null ? td.duplicateEntryWindow(what, formatQty(minutes, 0)) : td.duplicateEntry(what)
+    }
+    case 'joylashuv_farqi': {
+      const distance = dec(d, 'distance_m')
+      const radius = dec(d, 'radius_m')
+      if (distance === null || radius === null) return td.locationFarShort
+      const accuracy = dec(d, 'accuracy_m')
+      const base = td.locationFar(formatQty(distance, 0), formatQty(radius, 0))
+      return accuracy !== null ? `${base}${td.locationAccuracy(formatQty(accuracy, 0))}` : base
+    }
+    case 'smetasiz_chiqim': {
+      const materials = (Array.isArray(d.materials) ? (d.materials as unknown[]) : []).filter(
+        (m): m is Record<string, unknown> => typeof m === 'object' && m !== null,
+      )
+      const names = materials.map((m) => {
+        const q = dec(m, 'qty_base')
+        const name = str(m, 'material_name')
+        return q !== null ? `${name} ${qty(q, str(m, 'base_unit') || null)}` : name
+      })
+      const count = dec(d, 'count')
+      const list = names.slice(0, SHOWN_MATERIALS).join(', ') + (names.length > SHOWN_MATERIALS ? '…' : '')
+      return td.noEstimateOut(count !== null ? Number(count) : materials.length, list)
+    }
+    case 'chek_farqi': {
+      const receipt = dec(d, 'receipt_total')
+      const entered = dec(d, 'total_amount')
+      return td.receiptTotal(receipt !== null ? formatSum(receipt) : '?', entered !== null ? formatSum(entered) : '?')
+    }
+    case 'sorovdan_ortiq_xarid': {
+      const pct = dec(d, 'over_pct')
+      return td.requestOverbuy(
+        show(dec(d, 'request_qty_base')),
+        show(dec(d, 'purchased_qty_base')),
+        pct !== null ? formatQty(pct, 2) : '',
+      )
+    }
+    case 'podotchet_muddati': {
+      const balance = dec(d, 'balance')
+      const days = dec(d, 'days_open')
+      return td.cashOverdue(str(d, 'profile_name'), balance !== null ? formatSum(balance) : '?', days !== null ? formatQty(days, 0) : '')
+    }
+    case 'podotchet_manfiy': {
+      const balance = dec(d, 'balance')
+      return td.cashNegative(str(d, 'profile_name'), balance !== null ? formatSum(balance) : '?')
+    }
+    default:
+      return null
+  }
 }

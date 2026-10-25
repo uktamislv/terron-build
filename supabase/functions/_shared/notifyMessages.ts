@@ -36,6 +36,60 @@ export interface DailyReportPayload {
   failed_count: number
   transfers_pending_count: number
   chiqim_without_estimate_count: number
+  /** Batch 12: tugayotgan (obyekt, material) juftliklari. */
+  low_stock_count?: number | null
+  /** Batch 12: joylashuvga ruxsat berilmagan yozuvlar (`geo_status = 'denied'`). */
+  geo_denied_count?: number | null
+  /** Batch 12: joylashuv aniqlanmagan yozuvlar (`geo_status = 'unavailable'`). */
+  geo_unavailable_count?: number | null
+}
+
+/** Batch 12 (J): `alert_remind_hours` dan beri ko'rilmagan alert — eslatma. */
+export interface AlertReminderPayload extends AlertPayload {
+  status?: string | null
+  reminded_at?: string | null
+  hours_open?: number | string | null
+}
+
+export interface OverdueRequestItem {
+  request_id: string
+  object_id?: string | null
+  object_name: string | null
+  material_name: string | null
+  qty_input: number | string | null
+  unit_input: string | null
+  qty_base: number | string | null
+  base_unit: string | null
+  needed_by: string | null
+  days_overdue: number | string | null
+  created_by_name: string | null
+}
+
+/** Batch 12 (H): muddati o'tgan tasdiqlangan so'rovlar (taminotchi, admin). */
+export interface RequestOverduePayload {
+  date: string
+  company_name: string | null
+  count: number | string
+  requests: OverdueRequestItem[]
+}
+
+/** Batch 12 (I): haftalik podotchet xabari (pul egasiga). */
+export interface CashStatementPayload {
+  date: string
+  period_start: string
+  period_end: string
+  company_name: string | null
+  profile_id: string
+  profile_name: string | null
+  issued_week: string | null
+  spent_week: string | null
+  returned_week: string | null
+  issued_total?: string | null
+  returned_total?: string | null
+  spent_total?: string | null
+  balance: string | null
+  oldest_open_date: string | null
+  days_open: number | string | null
 }
 
 /** Telegram xabar matni chegarasi (belgilar). */
@@ -71,6 +125,16 @@ export const NOTIFY_TEXTS = {
     smeta_norm_increase: 'Smeta normasi oshirildi',
     smeta_old_version_restored: 'Smetaning eski versiyasi joriy qilindi',
     smeta_current_deleted: "Joriy smeta o'chirildi",
+    kirim_manbasiz: 'Kirim manbasiz',
+    manfiy_qoldiq: 'Manfiy qoldiq',
+    takroriy_yozuv: 'Takroriy yozuv',
+    takroriy_rasm: 'Bir xil rasm qayta ishlatildi',
+    joylashuv_farqi: 'Joylashuv farqi',
+    smetasiz_chiqim: 'Smetasiz chiqim',
+    chek_farqi: 'Chek summasi farq qiladi',
+    sorovdan_ortiq_xarid: "So'rovdan ortiq xarid",
+    podotchet_muddati: "Podotchet muddati o'tdi",
+    podotchet_manfiy: 'Podotchet manfiy',
   },
   deletedTitles: {
     purchases: "Xarid o'chirildi",
@@ -107,7 +171,103 @@ export const NOTIFY_TEXTS = {
     smetadan_ortiq_sorov: 'smetadan ortiq',
     otkazma_farqi: "o'tkazma",
     smeta_ozgarishi: 'smeta',
+    kirim_manbasiz: 'manbasiz kirim',
+    manfiy_qoldiq: 'manfiy qoldiq',
+    takroriy_yozuv: 'takroriy',
+    joylashuv_farqi: 'joylashuv',
+    smetasiz_chiqim: 'smetasiz chiqim',
+    chek_farqi: 'chek',
+    sorovdan_ortiq_xarid: "so'rovdan ortiq",
+    podotchet_muddati: 'podotchet muddati',
+    podotchet_manfiy: 'podotchet manfiy',
   } as Record<string, string>,
+  noSource: {
+    open_purchase: "Ochiq xarid bor edi, lekin kirim unga bog'lanmagan",
+    no_source: "Oxirgi 7 kunda bu material uchun xarid yoki o'tkazma yo'q",
+    unlinked_candidate: "Kirim xaridga bog'lanmagan (xarid/qabul farqini yopadi)",
+    qty: 'Miqdor: ',
+    date: 'Sana: ',
+  } as Record<string, string>,
+  negativeStock: {
+    stock: 'Qoldiq: ',
+    lastChiqim: 'Oxirgi chiqim: ',
+    lastTransfer: "Oxirgi o'tkazma: ",
+  },
+  duplicate: {
+    /** "10 daqiqa ichida xuddi shunday yozuv kiritildi" */
+    record: (min: string) => `${min} daqiqa ichida xuddi shunday yozuv kiritildi`,
+    recordNoWindow: 'Qisqa vaqt ichida xuddi shunday yozuv kiritildi',
+    photo: 'Bu rasm boshqa yozuvda ham ishlatilgan',
+    qty: 'Miqdor: ',
+    amount: 'Summa: ',
+    tables: { purchases: 'Xarid', movements: 'Ombor harakati' } as Record<string, string>,
+  },
+  geo: {
+    /** "Obyektdan 850 m uzoqda" */
+    distance: (m: string) => `Obyektdan ${m} m uzoqda`,
+    /** "ruxsat 300 m" */
+    radius: (m: string) => `ruxsat ${m} m`,
+    /** "aniqlik ±25 m" */
+    accuracy: (m: string) => `aniqlik ±${m} m`,
+    types: { kirim: 'Kirim', chiqim: 'Chiqim', transfer_out: "O'tkazma", transfer_in: "O'tkazma qabuli" } as Record<
+      string,
+      string
+    >,
+  },
+  noEstimate: {
+    /** "3 ta chiqim, obyektda joriy smeta yo'q" */
+    count: (n: string) => `${n} ta chiqim, obyektda joriy smeta yo'q`,
+    date: 'Sana: ',
+  },
+  receiptDiff: {
+    receipt: 'Chek: ',
+    entered: 'kiritilgan: ',
+    fiscal: 'Fiskal belgi: ',
+  },
+  overbuy: {
+    requested: "So'raldi: ",
+    purchased: 'xarid: ',
+    threshold: 'Chegara: ',
+    /** "2 ta xarid" */
+    purchases: (n: string) => `${n} ta xarid`,
+  },
+  cash: {
+    holder: 'Kimda: ',
+    balance: "Qo'lida: ",
+    /** "20 kundan beri (chegara 14 kun)" */
+    daysOpen: (d: string, max: string | null) => `${d} kundan beri${max ? ` (chegara ${max} kun)` : ''}`,
+    since: 'Eng eski qoldiq: ',
+    negative: 'Balans: ',
+    negativeHint: "Sarf berilgan puldan ko'p — pul berish kiritilmagan bo'lishi mumkin",
+  },
+  reminder: {
+    /** "Eslatma · 49 soatdan beri ko'rilmagan" */
+    head: (h: string | null) => (h ? `Eslatma · ${h} soatdan beri ko'rilmagan` : "Eslatma · hali ko'rilmagan"),
+    /** "5 ta ko'rilmagan ogohlantirish (eslatma)" */
+    digestTitle: (n: string) => `${n} ta ko'rilmagan ogohlantirish (eslatma)`,
+  },
+  overdue: {
+    title: "Muddati o'tgan so'rovlar",
+    /** "3 ta tasdiqlangan so'rov hali xarid qilinmagan:" */
+    intro: (n: string) => `${n} ta tasdiqlangan so'rov hali xarid qilinmagan:`,
+    /** "muddat 04.11.2026 (2 kun o'tdi)" */
+    due: (date: string, days: string | null) => `muddat ${date}${days ? ` (${days} kun o'tdi)` : ''}`,
+  },
+  cashStatement: {
+    title: 'Podotchet hisoboti',
+    week: 'Shu hafta:',
+    issued: 'Berildi: ',
+    spent: 'Sarflandi: ',
+    returned: 'Qaytarildi: ',
+    balance: "Qo'lingizda: ",
+    overspent: "Ortiqcha sarf (sizga qaytarilishi kerak): ",
+    /** "Eng eski qoldiq: 20.10.2026 (20 kun)" */
+    oldest: (date: string, days: string | null) => `Eng eski qoldiq: ${date}${days ? ` (${days} kun)` : ''}`,
+  },
+  buttons: {
+    seen: "✓ Ko'rildi",
+    open: 'Ochish',
+  },
   receipt: {
     purchased: 'Xarid: ',
     received: 'qabul: ',
@@ -184,6 +344,9 @@ export const NOTIFY_TEXTS = {
     failed: 'Yuborilmagan xabarlar: ',
     transfersPending: "Qabul qilinmagan o'tkazmalar: ",
     chiqimWithoutEstimate: 'Smetasiz obyektlarda chiqim: ',
+    lowStock: 'Tugayotgan materiallar: ',
+    geoDenied: 'Joylashuvga ruxsat berilmagan: ',
+    geoUnavailable: 'Joylashuvsiz yozuvlar: ',
   },
   digest: {
     /** "12 ta yangi ogohlantirish" */
@@ -378,6 +541,14 @@ function alertEmoji(type: string, severity: string, details: Record<string, unkn
   if (type === 'ozi_qabul_qilgan') return '🔖'
   if (type === 'otkazma_farqi' && details.direction === 'not_received') return '⏳'
   if (severity === 'jiddiy') return '🔴'
+  if (type === 'kirim_manbasiz') return '❓'
+  if (type === 'manfiy_qoldiq') return '➖'
+  if (type === 'takroriy_yozuv') return details.kind === 'photo' ? '🖼' : '🔁'
+  if (type === 'joylashuv_farqi') return '📍'
+  if (type === 'smetasiz_chiqim') return '📋'
+  if (type === 'chek_farqi') return '🧾'
+  if (type === 'sorovdan_ortiq_xarid') return '🛒'
+  if (type === 'podotchet_muddati' || type === 'podotchet_manfiy') return '💵'
   if (type === 'normadan_oshish') return '📉'
   if (type === 'smetadan_ortiq_sorov') return '📝'
   if (type === 'otkazma_farqi') return '🔄'
@@ -767,6 +938,153 @@ function formatInventoryMessage(p: AlertPayload, head: string, when: string | nu
   return text.length <= TELEGRAM_MAX_LENGTH ? text : fitLines([head, contextLine(p), when ?? ''])
 }
 
+// ---------------------------------------------------------------------------
+// Batch 12 — yangi alert turlari
+// ---------------------------------------------------------------------------
+
+/** Ishorali summa: "−50 000 so‘m" / "+50 000 so‘m" (`sign` = true bo'lsa musbatga ham "+"). */
+function signedMoney(v: unknown, sign = false): string | null {
+  const n = formatDecimal(v, 2)
+  if (n === null) return null
+  if (n.startsWith('-')) return `${MINUS}${n.slice(1)} ${NOTIFY_TEXTS.currency}`
+  return `${sign && n !== '0' ? '+' : ''}${n} ${NOTIFY_TEXTS.currency}`
+}
+
+/** Ishorali miqdor: "−50 kg". */
+function signedQty(v: unknown, unit: string | null): string | null {
+  const q = qtyText(v, unit)
+  return q === null ? null : q.startsWith('-') ? MINUS + q.slice(1) : q
+}
+
+/** Manfiy bo'lmagan butun son satri yoki null. */
+function nonNegInt(v: unknown): string | null {
+  const n = formatDecimal(v, 0)
+  return n !== null && !n.startsWith('-') ? n : null
+}
+
+/** A: "Ochiq xarid bor edi…", "Miqdor: 100 kg", "Sana: 29.10.2026 14:32". */
+function noSourceLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.noSource
+  const d = p.details
+  const reason = typeof d.reason === 'string' ? t[d.reason] : undefined
+  const qty = qtyText(d.qty_base, unitOf(p))
+  const at = typeof d.occurred_at === 'string' ? formatDateTimeTashkent(d.occurred_at) : null
+  return [reason ?? '', qty ? t.qty + qty : '', at ? t.date + at : '']
+}
+
+/** B: "Qoldiq: −50 kg", "Oxirgi chiqim: 100 kg". */
+function negativeStockLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.negativeStock
+  const d = p.details
+  const unit = typeof d.unit === 'string' && d.unit.trim() !== '' ? d.unit : unitOf(p)
+  const stock = signedQty(d.stock_after, unit)
+  const last = qtyText(d.qty_base, unit)
+  const label = d.movement_type === 'transfer_out' ? t.lastTransfer : t.lastChiqim
+  return [stock ? t.stock + stock : '', last ? label + last : '']
+}
+
+/** C: takroriy yozuv yoki rasm. */
+function duplicateLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.duplicate
+  const d = p.details
+  const table = typeof d.table === 'string' ? t.tables[d.table] : undefined
+  if (d.kind === 'photo') {
+    const first = typeof d.first_table === 'string' ? t.tables[d.first_table] : undefined
+    return [t.photo + (table && first ? ` (${table} → ${first})` : '')]
+  }
+  const min = nonNegInt(d.window_minutes)
+  const qty = qtyText(d.qty_base, unitOf(p))
+  const amount = moneyText(d.total_amount)
+  return [
+    (min ? t.record(min) : t.recordNoWindow) + (table ? ` (${table})` : ''),
+    [qty ? t.qty + qty : null, amount ? t.amount + amount : null].filter((x) => x).join(' · '),
+  ]
+}
+
+/** D: "Kirim · Obyektdan 850 m uzoqda (ruxsat 300 m, aniqlik ±25 m)". */
+function geoLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.geo
+  const d = p.details
+  const dist = nonNegInt(d.distance_m)
+  if (dist === null) return []
+  const extra = [nonNegInt(d.radius_m), nonNegInt(d.accuracy_m)]
+  const parts = [extra[0] ? t.radius(extra[0]) : null, extra[1] ? t.accuracy(extra[1]) : null].filter((x) => x)
+  const type = typeof d.movement_type === 'string' ? t.types[d.movement_type] : undefined
+  return [`${type ? `${type} · ` : ''}${t.distance(dist)}${parts.length ? ` (${parts.join(', ')})` : ''}`]
+}
+
+/** F: obyekt, "3 ta chiqim, obyektda joriy smeta yo'q", sana, materiallar. */
+function noEstimateMessage(p: AlertPayload, head: string, when: string | null): string {
+  const t = NOTIFY_TEXTS.noEstimate
+  const d = p.details
+  const n = nonNegInt(d.count)
+  const day = typeof d.day === 'string' ? dateOnly(d.day) : null
+  const raw = Array.isArray(d.materials) ? d.materials : []
+  const items = raw
+    .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object')
+    .map((m) => {
+      const q = qtyText(m.qty_base, typeof m.base_unit === 'string' ? m.base_unit : null)
+      return `• ${nameHtml(m.material_name) ?? '?'}${q ? `: ${q}` : ''}`
+    })
+  const shown = items.slice(0, DIGEST_MAX_ITEMS)
+  return fitWithList(
+    [head, nameHtml(p.object_name) ?? '', n ? t.count(n) : '', day ? t.date + day : ''],
+    shown,
+    items.length - shown.length,
+    [when ?? ''],
+  )
+}
+
+/** G: "Chek: 1 450 000 so‘m, kiritilgan: 1 500 000 so‘m (+50 000 so‘m)", fiskal belgi. */
+function receiptDiffLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.receiptDiff
+  const d = p.details
+  const receipt = moneyText(d.receipt_total)
+  const entered = moneyText(d.total_amount)
+  const diff = signedMoney(d.diff, true)
+  const main = [receipt ? t.receipt + receipt : null, entered ? t.entered + entered : null].filter((x) => x).join(', ')
+  const fiscal = nameHtml(d.receipt_fiscal_sign)
+  return [main ? main + (diff ? ` (${diff})` : '') : '', fiscal ? t.fiscal + fiscal : '']
+}
+
+/** H: "So'raldi: 100 kg, xarid: 130 kg (+30 %) · 2 ta xarid", "Chegara: 20 %". */
+function overbuyLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.overbuy
+  const d = p.details
+  const unit = unitOf(p)
+  const req = qtyText(d.request_qty_base, unit)
+  const bought = qtyText(d.purchased_qty_base, unit)
+  const pct = percentText(d.over_pct, '+')
+  const cnt = nonNegInt(d.purchase_count)
+  const main = [req ? t.requested + req : null, bought ? t.purchased + bought : null].filter((x) => x).join(', ')
+  const thr = formatDecimal(d.threshold_pct, 2)
+  return [
+    main ? `${main}${pct ? ` (${pct})` : ''}${cnt && cnt !== '1' && cnt !== '0' ? ` · ${t.purchases(cnt)}` : ''}` : '',
+    thr !== null ? `${t.threshold}${thr} ${NOTIFY_TEXTS.percent}` : '',
+  ]
+}
+
+/** I: podotchet muddati / manfiy balans. */
+function cashAlertLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.cash
+  const d = p.details
+  const who = nameHtml(d.profile_name)
+  if (p.type === 'podotchet_manfiy') {
+    const bal = signedMoney(d.balance)
+    return [who ? t.holder + who : '', bal ? t.negative + bal : '', t.negativeHint]
+  }
+  const bal = moneyText(d.balance)
+  const days = nonNegInt(d.days_open)
+  const max = nonNegInt(d.max_days)
+  const since = typeof d.oldest_open_at === 'string' ? dateOnly(d.oldest_open_at) : null
+  return [
+    who ? t.holder + who : '',
+    bal ? t.balance + bal : '',
+    days ? t.daysOpen(days, max) : '',
+    since ? t.since + since : '',
+  ]
+}
+
 /** Tur sarlavhasi (escape kerak emas — bizning matnimiz). */
 function alertTitle(type: string, details: Record<string, unknown>): string {
   const titles = NOTIFY_TEXTS.alertTitles
@@ -802,6 +1120,24 @@ function alertTitle(type: string, details: Record<string, unknown>): string {
           : details.kind === 'current_deleted'
             ? titles.smeta_current_deleted
             : titles.smeta_ozgarishi
+    case 'kirim_manbasiz':
+      return titles.kirim_manbasiz
+    case 'manfiy_qoldiq':
+      return titles.manfiy_qoldiq
+    case 'takroriy_yozuv':
+      return details.kind === 'photo' ? titles.takroriy_rasm : titles.takroriy_yozuv
+    case 'joylashuv_farqi':
+      return titles.joylashuv_farqi
+    case 'smetasiz_chiqim':
+      return titles.smetasiz_chiqim
+    case 'chek_farqi':
+      return titles.chek_farqi
+    case 'sorovdan_ortiq_xarid':
+      return titles.sorovdan_ortiq_xarid
+    case 'podotchet_muddati':
+      return titles.podotchet_muddati
+    case 'podotchet_manfiy':
+      return titles.podotchet_manfiy
     default:
       return NOTIFY_TEXTS.genericAlert
   }
@@ -824,6 +1160,7 @@ export function formatAlertMessage(p: AlertPayload): string {
   const when = formatDateTimeTashkent(payload.created_at)
   if (payload.type === 'smeta_ozgarishi') return formatEstimateMessage(payload, head, when)
   if (payload.type === 'inventarizatsiya_kamomadi') return formatInventoryMessage(payload, head, when)
+  if (payload.type === 'smetasiz_chiqim') return noEstimateMessage(payload, head, when)
 
   switch (payload.type) {
     case 'normadan_oshish':
@@ -852,6 +1189,28 @@ export function formatAlertMessage(p: AlertPayload): string {
       lines.push(main, ...extra)
       break
     }
+    case 'kirim_manbasiz':
+      lines.push(ctx, ...noSourceLines(payload))
+      break
+    case 'manfiy_qoldiq':
+      lines.push(ctx, ...negativeStockLines(payload))
+      break
+    case 'takroriy_yozuv':
+      lines.push(ctx, ...duplicateLines(payload))
+      break
+    case 'joylashuv_farqi':
+      lines.push(ctx, ...geoLines(payload))
+      break
+    case 'chek_farqi':
+      lines.push(ctx, ...receiptDiffLines(payload))
+      break
+    case 'sorovdan_ortiq_xarid':
+      lines.push(ctx, ...overbuyLines(payload))
+      break
+    case 'podotchet_muddati':
+    case 'podotchet_manfiy':
+      lines.push(...cashAlertLines(payload))
+      break
     default:
       lines.push(ctx)
   }
@@ -873,6 +1232,15 @@ const ALERT_TYPE_ORDER = [
   'smetadan_ortiq_sorov',
   'otkazma_farqi',
   'smeta_ozgarishi',
+  'manfiy_qoldiq',
+  'chek_farqi',
+  'smetasiz_chiqim',
+  'podotchet_muddati',
+  'takroriy_yozuv',
+  'kirim_manbasiz',
+  'joylashuv_farqi',
+  'sorovdan_ortiq_xarid',
+  'podotchet_manfiy',
   'ozi_qabul_qilgan',
 ]
 
@@ -902,8 +1270,10 @@ function typeBreakdown(byType: Record<string, unknown>): string {
  * eng ko'pi 10 tasining bir qatorlik tavsifi, qolgani "… va yana N ta". ≤ 4096 belgi.
  * Bo'sh massiv — xato (chaqiruvchi bunday holatda xabar yubormasligi kerak).
  */
-export function formatAlertDigest(payloads: AlertPayload[]): string {
+export function formatAlertDigest(payloads: AlertPayload[], opts: { reminder?: boolean } = {}): string {
   if (!Array.isArray(payloads) || payloads.length === 0) throw new Error(NOTIFY_TEXTS.digest.empty)
+  const titleIcon = opts.reminder ? '⏰' : '⚠️'
+  const titleText = opts.reminder ? NOTIFY_TEXTS.reminder.digestTitle : NOTIFY_TEXTS.digest.title
   const byType: Record<string, number> = {}
   for (const p of payloads) byType[p.type] = (byType[p.type] ?? 0) + 1
 
@@ -919,14 +1289,16 @@ export function formatAlertDigest(payloads: AlertPayload[]): string {
           ? estimateContext({ ...p, details })
           : p.type === 'otkazma_farqi'
             ? (transferLines({ ...p, details })[0] ?? '')
-            : contextLine(p)
+            : p.type === 'podotchet_muddati' || p.type === 'podotchet_manfiy'
+              ? (nameHtml(details.profile_name) ?? '')
+              : contextLine(p)
     const head = `${escalationPrefix(p)}${alertEmoji(p.type, p.severity, details)} ${alertTitle(p.type, details)}`
     return ctx ? `${head}: ${ctx}` : head
   })
   const rest = payloads.length - shown.length
 
   const lines = [
-    `⚠️ <b>${NOTIFY_TEXTS.digest.title(count(payloads.length))}</b>`,
+    `${titleIcon} <b>${titleText(count(payloads.length))}</b>`,
     typeBreakdown(byType),
     ...items,
   ]
@@ -964,6 +1336,9 @@ export function formatDailyReport(p: DailyReportPayload): string {
   const pending = positive(p.transfers_pending_count)
   const restored = positive(p.restored_count)
   const noEstimate = positive(p.chiqim_without_estimate_count)
+  const lowStock = positive(p.low_stock_count)
+  const geoDenied = positive(p.geo_denied_count)
+  const geoUnavailable = positive(p.geo_unavailable_count)
   return fitLines([
     `📊 <b>${t.title} · ${formatDateIso(p.date)}</b>`,
     period ?? '',
@@ -977,7 +1352,86 @@ export function formatDailyReport(p: DailyReportPayload): string {
     `${t.selfReceived}${count(p.self_received_count)}`,
     `${t.deleted}${count(p.deleted_count)}`,
     restored ? t.restored + restored : '',
+    lowStock ? `📉 ${t.lowStock}${lowStock}` : '',
+    geoDenied ? t.geoDenied + geoDenied : '',
+    geoUnavailable ? t.geoUnavailable + geoUnavailable : '',
     failed !== '0' && !failed.startsWith('-') ? `⚠️ ${t.failed}${failed}` : '',
+  ])
+}
+
+// ---------------------------------------------------------------------------
+// Batch 12 — eslatma, muddati o'tgan so'rovlar, haftalik podotchet
+// ---------------------------------------------------------------------------
+
+/**
+ * Ko'rilmagan alert eslatmasi: "⏰ Eslatma · 49 soatdan beri ko'rilmagan" + asl alert xabari
+ * (≤ 4096 belgi — oxiridan butun qatorlar olib tashlanadi).
+ */
+export function formatAlertReminder(p: AlertReminderPayload): string {
+  const hours = nonNegInt(p.hours_open)
+  const body = formatAlertMessage(p)
+  return fitLines([`⏰ <i>${NOTIFY_TEXTS.reminder.head(hours)}</i>`, ...body.split('\n')])
+}
+
+/** Muddati o'tgan tasdiqlangan so'rovlar ro'yxati (taminotchi va admin uchun). */
+export function formatRequestOverdue(p: RequestOverduePayload): string {
+  const t = NOTIFY_TEXTS.overdue
+  const raw = Array.isArray(p.requests) ? p.requests : []
+  const items = raw
+    .filter((r): r is OverdueRequestItem => !!r && typeof r === 'object')
+    .map((r) => {
+      const material = nameHtml(r.material_name) ?? '?'
+      const input = formatDecimal(r.qty_input, 3)
+      const inputUnit = nameHtml(r.unit_input)
+      const base = qtyText(r.qty_base, r.base_unit)
+      let qty = input !== null ? `${input}${inputUnit ? ` ${inputUnit}` : ''}` : (base ?? '')
+      if (input !== null && base !== null && inputUnit !== nameHtml(r.base_unit)) qty += ` (${base})`
+      const due = typeof r.needed_by === 'string' ? dateOnly(r.needed_by) : null
+      const parts = [
+        `${material}${qty ? ` — ${qty}` : ''}`,
+        nameHtml(r.object_name),
+        due ? t.due(due, nonNegInt(r.days_overdue)) : null,
+        nameHtml(r.created_by_name),
+      ].filter((x) => x)
+      return `• ${parts.join(' · ')}`
+    })
+  const total = nonNegInt(p.count)
+  const totalNum = total === null ? items.length : Number(total.replace(/ /g, ''))
+  return fitWithList(
+    [
+      `⏰ <b>${t.title} · ${formatDateIso(p.date)}</b>`,
+      nameHtml(p.company_name) ?? '',
+      t.intro(count(Math.max(totalNum, items.length))),
+    ],
+    items,
+    Math.max(0, totalNum - items.length),
+    [],
+  )
+}
+
+/** Haftalik podotchet xabari — pul egasiga shaxsan. */
+export function formatCashStatement(p: CashStatementPayload): string {
+  const t = NOTIFY_TEXTS.cashStatement
+  const zero = `0 ${NOTIFY_TEXTS.currency}`
+  const start = typeof p.period_start === 'string' ? dateOnly(p.period_start) : null
+  const end = typeof p.period_end === 'string' ? dateOnly(p.period_end) : null
+  const period = start && end ? `${start} – ${end}` : formatDateIso(p.date)
+  const balRaw = toDecString(p.balance)
+  const negative = balRaw !== null && balRaw.startsWith('-') && formatDecimal(balRaw, 2) !== '0'
+  const balLine = negative
+    ? `${t.overspent}${moneyText(balRaw.slice(1)) ?? zero}`
+    : `${t.balance}<b>${moneyText(p.balance) ?? zero}</b>`
+  const oldest = typeof p.oldest_open_date === 'string' ? dateOnly(p.oldest_open_date) : null
+  return fitLines([
+    `💵 <b>${t.title} · ${period}</b>`,
+    nameHtml(p.profile_name) ?? '',
+    nameHtml(p.company_name) ?? '',
+    t.week,
+    `${t.issued}${moneyText(p.issued_week) ?? zero}`,
+    `${t.spent}${moneyText(p.spent_week) ?? zero}`,
+    `${t.returned}${moneyText(p.returned_week) ?? zero}`,
+    balLine,
+    oldest && !negative ? t.oldest(oldest, nonNegInt(p.days_open)) : '',
   ])
 }
 
@@ -985,10 +1439,43 @@ export function formatDailyReport(p: DailyReportPayload): string {
 // Inline tugma
 // ---------------------------------------------------------------------------
 
+export type InlineButton = { text: string; web_app: { url: string } } | { text: string; callback_data: string }
+export interface InlineKeyboard {
+  inline_keyboard: InlineButton[][]
+}
+
+/** "Ko'rildi" tugmasi callback'i: `al:seen:<alert_id>` (≤ 64 bayt). */
+export const SEEN_CALLBACK_PREFIX = 'al:seen:'
+
 /** Xabar ostidagi `web_app` tugmasi. */
 export function miniAppKeyboard(
   url: string,
   text: string = NOTIFY_TEXTS.openMiniApp,
 ): { inline_keyboard: { text: string; web_app: { url: string } }[][] } {
   return { inline_keyboard: [[{ text, web_app: { url } }]] }
+}
+
+/** Mini App havolasiga `alert=<id>` qo'shadi (frontend shu alertni ochishi mumkin). */
+export function alertOpenUrl(baseUrl: string, alertId: string): string {
+  try {
+    const u = new URL(baseUrl)
+    u.searchParams.set('alert', alertId)
+    return u.toString()
+  } catch {
+    return baseUrl
+  }
+}
+
+/**
+ * Bitta alert xabari tugmalari: `withSeen` (admin / super_admin) bo'lsa "✓ Ko'rildi"
+ * (`al:seen:<id>`) + "Ochish"; aks holda faqat "Ochish". `deepLink` = false bo'lsa "Ochish"
+ * oddiy Mini App havolasi (`?alert=` siz) — alertlarni RLS bo'yicha o'qiy olmaydigan rollar (prorab).
+ */
+export function alertKeyboard(baseUrl: string, alertId: string, withSeen: boolean, deepLink = true): InlineKeyboard {
+  const url = deepLink ? alertOpenUrl(baseUrl, alertId) : baseUrl
+  const open: InlineButton = { text: NOTIFY_TEXTS.buttons.open, web_app: { url } }
+  const row: InlineButton[] = withSeen
+    ? [{ text: NOTIFY_TEXTS.buttons.seen, callback_data: `${SEEN_CALLBACK_PREFIX}${alertId}` }, open]
+    : [open]
+  return { inline_keyboard: [row] }
 }

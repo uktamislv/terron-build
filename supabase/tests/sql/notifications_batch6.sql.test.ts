@@ -351,6 +351,10 @@ describe('daily_report_stats', () => {
       // Batch 8 (O3)
       transfers_pending_count: 0,
       chiqim_without_estimate_count: 1, // E firma obyektida smeta yo'q
+      // Batch 12: prognoz now() ga bog'liq (14 kunlik oyna); geo yo'q
+      low_stock_count: expect.any(Number),
+      geo_denied_count: 0,
+      geo_unavailable_count: 0,
     })
   })
 

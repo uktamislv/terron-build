@@ -154,3 +154,20 @@ export function rejectRequest(id: string, reason: string): Promise<void> {
 export function markRequestPurchased(id: string, purchaseId: string | null): Promise<void> {
   return updateById('material_requests', id, purchaseId ? { status: 'xarid_qilindi', purchase_id: purchaseId } : { status: 'xarid_qilindi' })
 }
+
+/**
+ * Batch 12 (H): obyektning tasdiqlangan (hali xarid qilinmagan) so'rovlari — xarid ekranidagi chiplar.
+ * Eskisi birinchi (kutayotgan vaqti uzoqroq).
+ */
+export async function listApprovedRequests(objectId: string, limit = 20): Promise<MaterialRequest[]> {
+  const { data, error } = await getSupabase()
+    .from('material_requests')
+    .select(REQUEST_SELECT)
+    .eq('object_id', objectId)
+    .eq('status', 'tasdiqlandi')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .limit(limit)
+  if (error) throw toRepoError(error)
+  return ((data ?? []) as unknown as RawRequest[]).map(normalize)
+}

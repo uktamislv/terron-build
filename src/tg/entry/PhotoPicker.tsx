@@ -17,6 +17,8 @@ export interface PickedPhoto {
   /** Siqilgan va tekshirilgan rasm (yuklashga tayyor). */
   blob: Blob
   name: string
+  /** Batch 12 (C): asl faylning SHA-256 (hex); WebCrypto yo'q — null. */
+  sha256?: string | null
 }
 
 /**
@@ -117,10 +119,13 @@ export function PhotoField({
   busy,
   preparing,
   notice,
+  requiredReason = null,
   onPick,
   onRemove,
 }: {
   label: string
+  /** Batch 12 (E): rasm majburiy bo'lsa — sabab matni (belgi va izoh ko'rsatiladi). */
+  requiredReason?: string | null
   photo: PickedPhoto | null
   busy: boolean
   preparing: boolean
@@ -130,7 +135,15 @@ export function PhotoField({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-sm font-medium text-ink">{label}</span>
+      <span className="flex items-center gap-2 text-sm font-medium text-ink">
+        {label}
+        {requiredReason && (
+          <span data-testid="photo-required" className="rounded-lg bg-danger-bg px-2 py-0.5 text-xs font-semibold text-danger">
+            {t.tg.auto.photoRequired}
+          </span>
+        )}
+      </span>
+      {requiredReason && !photo && <p className="text-sm text-danger">{requiredReason}</p>}
       <PhotoPicker photo={photo} busy={busy} onPick={onPick} onRemove={onRemove} />
       {preparing && (
         <p role="status" className="flex items-center gap-2 text-sm text-muted">
@@ -153,18 +166,21 @@ export function PhotoErrorBox({
   message: string
   busy: boolean
   onRetry: () => void
-  onWithoutPhoto: () => void
+  /** null — rasm majburiy, "Rasmsiz saqlash" yo'q. */
+  onWithoutPhoto: (() => void) | null
 }) {
   return (
     <div role="alert" className="flex flex-col gap-3 rounded-xl border border-danger/20 bg-danger-bg p-3">
       <p className="text-sm font-medium text-danger">{message}</p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className={onWithoutPhoto ? 'grid grid-cols-2 gap-2' : 'grid gap-2'}>
         <Button variant="secondary" disabled={busy} onClick={onRetry}>
           {t.common.retry}
         </Button>
-        <Button variant="primary" disabled={busy} onClick={onWithoutPhoto}>
-          {tm.saveWithoutPhoto}
-        </Button>
+        {onWithoutPhoto && (
+          <Button variant="primary" disabled={busy} onClick={onWithoutPhoto}>
+            {tm.saveWithoutPhoto}
+          </Button>
+        )}
       </div>
     </div>
   )

@@ -8,7 +8,7 @@ export const UNIT_COLUMNS = 'id, company_id, material_id, unit, factor::text, va
 export const ALIAS_COLUMNS = 'id, company_id, material_id, alias, lang, created_at, updated_at'
 // FK nomi aniq ko'rsatiladi — keyin boshqa bog'lanish qo'shilsa ham embed noaniq bo'lmaydi.
 const MATERIAL_SELECT =
-  'id, company_id, name, base_unit, category, waste_pct::text, is_active, created_by, created_at, updated_at, ' +
+  'id, company_id, name, base_unit, category, waste_pct::text, is_active, photo_required, created_by, created_at, updated_at, ' +
   `units:material_units!material_units_material_fkey(${UNIT_COLUMNS}, deleted_at), ` +
   `aliases:material_aliases!material_aliases_material_fkey(${ALIAS_COLUMNS}, deleted_at)`
 
@@ -21,6 +21,7 @@ export interface NewMaterial {
   category?: string | null
   /** Dec satr, masalan "2.5". Bo'sh — 0. */
   wastePct?: string
+  photoRequired?: boolean
 }
 
 export interface MaterialPatch {
@@ -29,6 +30,8 @@ export interface MaterialPatch {
   category?: string | null
   wastePct?: string
   isActive?: boolean
+  /** Batch 12 (E). */
+  photoRequired?: boolean
 }
 
 type WithDeleted<T> = T & { deleted_at?: string | null }
@@ -111,6 +114,7 @@ export async function createMaterial(input: NewMaterial): Promise<Material> {
     base_unit: input.baseUnit.trim(),
     category: cleanCategory(input.category),
     waste_pct: cleanWaste(input.wastePct),
+    photo_required: input.photoRequired ?? false,
   }
   const { data, error } = await getSupabase().from('materials').insert(row).select('id').single()
   if (error) throw toRepoError(error, MATERIAL_ERRORS)
@@ -124,6 +128,7 @@ export async function updateMaterial(id: string, patch: MaterialPatch): Promise<
   if (patch.category !== undefined) row.category = cleanCategory(patch.category)
   if (patch.wastePct !== undefined) row.waste_pct = cleanWaste(patch.wastePct)
   if (patch.isActive !== undefined) row.is_active = patch.isActive
+  if (patch.photoRequired !== undefined) row.photo_required = patch.photoRequired
   await updateById('materials', id, row, MATERIAL_ERRORS)
 }
 

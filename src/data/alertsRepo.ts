@@ -89,3 +89,13 @@ export function closeAlert(id: string, note?: string | null): Promise<void> {
   const clean = note?.trim().slice(0, CLOSE_NOTE_MAX)
   return updateById('alerts', id, { status: 'yopildi', close_note: clean ? clean : null })
 }
+
+/**
+ * Bitta ogohlantirish (Batch 12, J: Telegram "Ochish" tugmasi → Mini App `?alert=<id>`).
+ * RLS ko'rsatmasa yoki o'chirilgan bo'lsa — null.
+ */
+export async function getAlertById(id: string): Promise<Alert | null> {
+  const { data, error } = await getSupabase().from('alerts').select(ALERT_SELECT).eq('id', id).is('deleted_at', null).maybeSingle()
+  if (error) throw toRepoError(error)
+  return data ? normalize(data as unknown as RawAlert) : null
+}

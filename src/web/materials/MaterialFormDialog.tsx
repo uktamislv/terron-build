@@ -38,6 +38,7 @@ export function MaterialFormDialog({
   const [otherOpen, setOtherOpen] = useState(Boolean(initialBase) && !initialIsQuick)
   const [category, setCategory] = useState(material?.category ?? '')
   const [waste, setWaste] = useState(material ? formatQty(material.waste_pct) : '')
+  const [photoRequired, setPhotoRequired] = useState(Boolean(material?.photo_required))
   const [errors, setErrors] = useState<Errors>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -53,10 +54,10 @@ export function MaterialFormDialog({
     setSaveError(null)
     try {
       if (material) {
-        await updateMaterial(material.id, { name, baseUnit, category, wastePct })
+        await updateMaterial(material.id, { name, baseUnit, category, wastePct, photoRequired })
         onSaved(material.id)
       } else {
-        const created = await createMaterial({ companyId, name, baseUnit, category, wastePct })
+        const created = await createMaterial({ companyId, name, baseUnit, category, wastePct, photoRequired })
         onSaved(created.id)
       }
     } catch (err) {
@@ -140,6 +141,18 @@ export function MaterialFormDialog({
           onChange={(e) => setWaste(e.target.value)}
           error={errors.waste ? t.materials.errWaste : null}
         />
+        <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line bg-paper px-3 py-2.5">
+          <input
+            type="checkbox"
+            checked={photoRequired}
+            onChange={(e) => setPhotoRequired(e.target.checked)}
+            className="mt-0.5 size-5 shrink-0 accent-brand"
+          />
+          <span className="flex flex-col">
+            <span className="text-sm font-medium text-ink">{t.materials.photoRequired}</span>
+            <span className="text-xs text-muted">{t.materials.photoRequiredHint}</span>
+          </span>
+        </label>
         <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
           <Button variant="secondary" onClick={onClose}>
             {t.common.cancel}

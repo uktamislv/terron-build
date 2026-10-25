@@ -24,6 +24,15 @@ export const BOT_MESSAGES = {
   notFound: "Bu raqam tizimda topilmadi. Adminingizga murojaat qiling.",
   multipleCompanies: "Raqam bir nechta firmada — adminingizga murojaat qiling.",
   tryAgain: "Xatolik yuz berdi. Birozdan keyin qayta urinib ko'ring.",
+
+  // Batch 12 — alert xabaridagi "Ko'rildi" tugmasi (answerCallbackQuery, ≤ 200 belgi)
+  seenOk: "Ko'rildi deb belgilandi",
+  seenForbidden: "Faqat admin belgilay oladi",
+  seenNotFound: 'Ogohlantirish topilmadi (o\'chirilgan bo\'lishi mumkin)',
+  seenError: "Xatolik. Birozdan keyin qayta urinib ko'ring",
+  /** Xabar oxiriga qo'shiladigan qator: "✓ Ko'rildi — Ali Valiyev" */
+  seenMark: (name: string) => `✓ Ko'rildi — ${name}`,
+  seenMarkPrefix: "✓ Ko'rildi — ",
 } as const
 
 export const BOT_BUTTONS = {

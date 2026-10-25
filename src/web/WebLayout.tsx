@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { KeyRound, LogOut, Menu, X } from 'lucide-react'
+import { KeyRound, LogOut, Menu, Settings, X } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { ChangePasswordForm } from '@/auth/ChangePasswordForm'
 import { BrandMark, cx, IconButton, Modal, useOverlay } from '@/components/ui'
@@ -8,6 +8,7 @@ import { BrandMark, cx, IconButton, Modal, useOverlay } from '@/components/ui'
 import { t } from '@/i18n'
 import { webNavForRole } from './nav'
 import { webNavIcons } from './navIcons'
+import { CompanySettingsForm } from './settings/CompanySettingsForm'
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -27,6 +28,9 @@ function DrawerBehaviour({ target, onClose }: { target: RefObject<HTMLElement | 
 export function WebLayout({ children }: { children?: ReactNode } = {}) {
   const [open, setOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
+  // Batch 12: firma sozlamalari (admin) — modal
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const closeSettings = useCallback(() => setSettingsOpen(false), [])
   const closePassword = useCallback(() => setPasswordOpen(false), [])
   const closeMenu = useCallback(() => setOpen(false), [])
   const { profile, signOut } = useAuth()
@@ -111,6 +115,20 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
                 <p className="truncate text-xs text-white/60">{t.roles[profile.role]}</p>
               </div>
             </div>
+            {(profile.role === 'admin' || profile.role === 'super_admin') && (
+              <button
+                type="button"
+                title={t.settings.open}
+                onClick={() => {
+                  closeMenu()
+                  setSettingsOpen(true)
+                }}
+                className="mt-1 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-2 text-sm text-white/75 hover:bg-white/10 hover:text-white xl:justify-start xl:px-3"
+              >
+                <Settings aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
+                <span className="lg:sr-only xl:not-sr-only">{t.settings.open}</span>
+              </button>
+            )}
             <div className="mt-1 flex gap-1 lg:flex-col xl:flex-row">
               <button
                 type="button"
@@ -162,6 +180,11 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
           {children ?? <Outlet />}
         </main>
       </div>
+      {settingsOpen && profile && (
+        <Modal title={t.settings.title} onClose={closeSettings} size="lg">
+          <CompanySettingsForm companyId={profile.company_id} canEdit />
+        </Modal>
+      )}
       {passwordOpen && (
         <Modal title={t.password.change} onClose={closePassword}>
           <ChangePasswordForm onDone={closePassword} />

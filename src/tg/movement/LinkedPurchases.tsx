@@ -10,17 +10,20 @@ const tl = t.tg.movement.linked
 
 /**
  * Kirim ekranidagi "Bog'langan xarid": shu obyekt va materialdagi to'liq qabul qilinmagan xaridlar.
- * Hech qachon avtomatik belgilanmaydi: bitta bo'lsa — "Taklif: … — Bog'lash", bir nechta bo'lsa — har
- * birida "Bog'lash". Bir bosishda bog'lanadi, "Bog'lamaslik" — bekor qilish.
+ * Batch 12 (A): bittagina bo'lsa — oldindan tanlangan ("Bog'lamaslik" — bir bosishda olib tashlanadi);
+ * bir nechta bo'lsa — eng eskisi birinchi, hech biri tanlanmagan, har birida "Bog'lash".
  */
 export function LinkedPurchases({
   rows,
   selectedId,
+  autoLinked = false,
   baseUnit,
   onSelect,
 }: {
   rows: OpenPurchase[]
   selectedId: string | null
+  /** Batch 12 (A): yagona ochiq xarid avtomatik tanlangan — izoh boshqacha. */
+  autoLinked?: boolean
   baseUnit: string
   onSelect: (id: string | null) => void
 }) {
@@ -35,7 +38,7 @@ export function LinkedPurchases({
           </button>
         )}
       </div>
-      <p className="text-sm text-muted">{rows.length > 1 ? tl.choose : tl.hint}</p>
+      <p className="text-sm text-muted">{rows.length > 1 ? tl.choose : autoLinked && selectedId ? tl.autoLinked : tl.hint}</p>
       {rows.map((p) => {
         const selected = p.id === selectedId
         return (

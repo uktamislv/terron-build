@@ -14,6 +14,8 @@ import { MaterialGrid } from '../entry/MaterialGrid'
 import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
 import { MaterialHeader, NoteField, QtyField } from '../entry/QtyField'
 import { UnitChips } from '../entry/UnitChips'
+import { initialUnitId, loadLastEntry, rememberLastEntry } from '../entry/lastEntry'
+import { LastQtyChip } from '../entry/LastQtyChip'
 import { loadLastObject } from '../movement/prefs'
 import { getWebApp, haptic } from '../telegram'
 import { SavedBanner, SectionTitle } from '../ui'
@@ -30,11 +32,14 @@ type FieldErrors = Partial<Record<DraftField | 'to', DraftErrorCode>>
  * `targets` — qabul qiluvchi bo'la oladigan obyektlar (RPC `transfer_target_objects`; joriy `from` chiqariladi).
  */
 export function TransferForm({
+  profileId,
   objects,
   targets,
   materials,
   onSaved,
 }: {
+  /** Batch 12 (L): oxirgi birlik/miqdor uchun. */
+  profileId: string
   objects: ObjectRow[]
   targets: { id: string; name: string }[]
   materials: Material[]
@@ -113,6 +118,7 @@ export function TransferForm({
         note,
       })
       haptic.success()
+      rememberLastEntry(profileId, materialId, unitId, result.qtyInput)
       setSavedText(
         tt.saved(formatQty(result.qtyInput), unit ? unitLabel(unit) : '', material?.name ?? '', to.name),
       )
@@ -131,7 +137,7 @@ export function TransferForm({
       savingRef.current = false
       setSaving(false)
     }
-  }, [fromId, materialId, unitId, qty, toOptions, toId, draftId, note, unit, material, onSaved])
+  }, [fromId, materialId, unitId, qty, toOptions, toId, draftId, note, unit, material, onSaved, profileId])
 
   const onMain = useCallback(() => void save(), [save])
   const onBack = useCallback(() => {
@@ -171,7 +177,7 @@ export function TransferForm({
           onPick={(m) => {
             haptic.tap()
             setMaterialId(m.id)
-            setUnitId(m.units[0]?.id ?? null)
+            setUnitId(initialUnitId(m.units, loadLastEntry(profileId, m.id)))
             setQty('')
             setFieldErrors({})
             setSaveError(null)
@@ -221,6 +227,17 @@ export function TransferForm({
               setFieldErrors((e) => ({ ...e, qty: undefined }))
             }}
           />
+          {qty.trim() === '' && (
+            <LastQtyChip
+              last={loadLastEntry(profileId, material.id)}
+              units={material.units}
+              onUse={(v, uid) => {
+                haptic.select()
+                setQty(v)
+                setUnitId(uid)
+              }}
+            />
+          )}
           <UnitChips
             units={material.units}
             selectedId={unitId}

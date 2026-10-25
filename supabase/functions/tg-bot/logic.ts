@@ -5,7 +5,8 @@
 import { checkWebhookSecret } from '../_shared/telegramAuth.ts'
 import { normalizePhone } from '../_shared/phone.ts'
 import { BOT_BUTTONS, BOT_MESSAGES } from '../_shared/botMessages.ts'
-import { errMessage, isRecord, respond, type HandlerResult, type LogFn } from '../_shared/handler.ts'
+import { errMessage, isRecord, isUuid, respond, type HandlerResult, type LogFn } from '../_shared/handler.ts'
+import { SEEN_CALLBACK_PREFIX } from '../_shared/notifyMessages.ts'
 import type { LogAuthEventFn } from '../_shared/authUsers.ts'
 
 export const DEFAULT_MINI_APP_URL = 'https://terron-build.terron-build.workers.dev/tg'
@@ -18,6 +19,20 @@ export type ReplyMarkup =
       resize_keyboard: true
       one_time_keyboard: true
     }
+
+export type MarkSeenResult = { ok: true; name: string } | { ok: false; reason: 'forbidden' | 'not_found' }
+
+/** Tahrirlangan xabar tugmalari (Telegram'dan kelgan reply_markup ning xavfsiz nusxasi). */
+export type InlineMarkup = {
+  inline_keyboard: (
+    | { text: string; web_app: { url: string } }
+    | { text: string; url: string }
+    | { text: string; callback_data: string }
+  )[][]
+}
+
+/** Telegram xabar matni chegarasi. */
+const TG_MAX_TEXT = 4096
 
 export interface TgBotDeps {
   env: { webhookSecret: string | undefined; miniAppUrl: string | undefined }
@@ -34,6 +49,23 @@ export interface TgBotDeps {
    */
   linkTelegram: (profileId: string, telegramUserId: number, chatId: number, e164: string) => Promise<boolean>
   sendMessage: (chatId: number, text: string, replyMarkup?: ReplyMarkup) => Promise<void>
+  /**
+   * Batch 12: `svc_mark_alert_seen(p_telegram_user_id, p_alert_id)` (service_role).
+   * hint `alert_action_forbidden` → forbidden, `alert_not_found` → not_found; boshqa xato — throw.
+   */
+  markAlertSeen: (telegramUserId: number, alertId: string) => Promise<MarkSeenResult>
+  /** Bot API answerCallbackQuery (xato — throw). */
+  answerCallbackQuery: (callbackQueryId: string, text: string, showAlert: boolean) => Promise<void>
+  /**
+   * Bot API editMessageText (`edit` bor bo'lsa, `entities` bilan — parse_mode yo'q) yoki
+   * editMessageReplyMarkup (`edit` = null). Xato — throw.
+   */
+  editMessage: (
+    chatId: number,
+    messageId: number,
+    edit: { text: string; entities: unknown[] } | null,
+    replyMarkup: InlineMarkup,
+  ) => Promise<void>
   logAuthEvent: LogAuthEventFn
   log: LogFn
 }
@@ -90,6 +122,10 @@ export async function handleTgBot(
     return respond(401, { error: 'unauthorized' })
   }
 
+  if (isRecord(update) && isRecord(update.callback_query)) {
+    await handleCallbackQuery(update.callback_query, deps)
+    return OK
+  }
   if (!isRecord(update) || !isRecord(update.message)) return OK // boshqa update turlari — e'tiborsiz
   const message = update.message
   const from = message.from
@@ -194,4 +230,102 @@ async function handleContact(
     deps.log('error', 'tg-bot: audit yozilmadi', { error: errMessage(e), profile_id: target.id })
   }
   await deps.sendMessage(chatId, BOT_MESSAGES.linked, openAppMarkup(appUrl))
+}
+
+// ---------------------------------------------------------------------------
+// Batch 12: "Ko'rildi" tugmasi (callback_query `al:seen:<alert_id>`)
+// ---------------------------------------------------------------------------
+
+/** `al:seen:<uuid>` → alert id (kichik harf), aks holda null. */
+export function parseSeenCallback(data: unknown): string | null {
+  if (typeof data !== 'string' || !data.startsWith(SEEN_CALLBACK_PREFIX)) return null
+  const id = data.slice(SEEN_CALLBACK_PREFIX.length)
+  return isUuid(id) ? id.toLowerCase() : null
+}
+
+/**
+ * Xabar tugmalaridan "Ko'rildi" (`al:seen:*`) ni olib tashlaydi, qolganini (Ochish — web_app,
+ * url, boshqa callback) saqlaydi. Noma'lum ko'rinishdagi tugmalar tashlanadi; bo'sh qatorlar ham.
+ */
+export function withoutSeenButton(markup: unknown): InlineMarkup {
+  const rows = isRecord(markup) && Array.isArray(markup.inline_keyboard) ? markup.inline_keyboard : []
+  const out: InlineMarkup['inline_keyboard'] = []
+  for (const row of rows) {
+    if (!Array.isArray(row)) continue
+    const kept: InlineMarkup['inline_keyboard'][number] = []
+    for (const b of row) {
+      if (!isRecord(b) || typeof b.text !== 'string') continue
+      if (isRecord(b.web_app) && typeof b.web_app.url === 'string') {
+        kept.push({ text: b.text, web_app: { url: b.web_app.url } })
+      } else if (typeof b.url === 'string') {
+        kept.push({ text: b.text, url: b.url })
+      } else if (typeof b.callback_data === 'string' && !b.callback_data.startsWith(SEEN_CALLBACK_PREFIX)) {
+        kept.push({ text: b.text, callback_data: b.callback_data })
+      }
+    }
+    if (kept.length > 0) out.push(kept)
+  }
+  return { inline_keyboard: out }
+}
+
+/**
+ * Yangi matn: asl matn + bo'sh qator + "✓ Ko'rildi — <ism>" (entity offsetlari o'zgarmaydi —
+ * oxiriga qo'shiladi).
+ * Belgi allaqachon bor yoki 4096 dan oshsa — null (faqat tugmalar o'zgaradi).
+ */
+export function seenText(original: unknown, name: string): string | null {
+  if (typeof original !== 'string' || original === '') return null
+  if (original.includes(BOT_MESSAGES.seenMarkPrefix)) return null
+  const who = name.replace(/\s+/g, ' ').trim().slice(0, 100) || '—'
+  const text = `${original}\n\n${BOT_MESSAGES.seenMark(who)}`
+  return text.length <= TG_MAX_TEXT ? text : null
+}
+
+async function handleCallbackQuery(cq: Record<string, unknown>, deps: TgBotDeps): Promise<void> {
+  const id = typeof cq.id === 'string' && cq.id !== '' ? cq.id : null
+  const from = cq.from
+  if (id === null || !isRecord(from) || !isSafeId(from.id) || from.is_bot === true) return
+  const fromId = from.id
+
+  const answer = async (text: string, showAlert = false): Promise<void> => {
+    try {
+      await deps.answerCallbackQuery(id, text, showAlert)
+    } catch (e) {
+      deps.log('warn', 'tg-bot: answerCallbackQuery xatosi', { error: errMessage(e) })
+    }
+  }
+
+  const alertId = parseSeenCallback(cq.data)
+  if (alertId === null) {
+    await answer('') // noma'lum tugma — faqat "soat"ni to'xtatamiz
+    return
+  }
+
+  let result: MarkSeenResult
+  try {
+    result = await deps.markAlertSeen(fromId, alertId)
+  } catch (e) {
+    deps.log('error', 'tg-bot: svc_mark_alert_seen xatosi', { error: errMessage(e), alert_id: alertId })
+    await answer(BOT_MESSAGES.seenError, true)
+    return
+  }
+  if (!result.ok) {
+    deps.log('info', "tg-bot: ko'rildi rad etildi", { reason: result.reason, alert_id: alertId, telegram_user_id: fromId })
+    await answer(result.reason === 'forbidden' ? BOT_MESSAGES.seenForbidden : BOT_MESSAGES.seenNotFound, true)
+    return
+  }
+  await answer(BOT_MESSAGES.seenOk)
+
+  // Xabarni tahrirlash: "✓ Ko'rildi — <ism>" va "Ko'rildi" tugmasisiz. Xato — faqat log.
+  const msg = cq.message
+  if (!isRecord(msg) || !isRecord(msg.chat) || !isSafeId(msg.chat.id) || !isSafeId(msg.message_id)) return
+  if (msg.date === 0) return // InaccessibleMessage
+  const markup = withoutSeenButton(msg.reply_markup)
+  const text = seenText(msg.text, result.name)
+  const entities = Array.isArray(msg.entities) ? msg.entities.filter(isRecord) : []
+  try {
+    await deps.editMessage(msg.chat.id, msg.message_id, text === null ? null : { text, entities }, markup)
+  } catch (e) {
+    deps.log('warn', 'tg-bot: xabar tahrirlanmadi', { error: errMessage(e), alert_id: alertId })
+  }
 }

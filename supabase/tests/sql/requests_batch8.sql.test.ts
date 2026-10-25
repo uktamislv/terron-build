@@ -589,7 +589,13 @@ describe('o`tkazmalar', () => {
     for (const role of ['omborchi', 'direktor', 'taminotchi', 'tekshiruvchi'] as const) {
       expect(await as(role, (tx) => tryCreate(tx, A.ids.obj1!, A.ids.obj2!, '1')), role).toBe('42501:transfer_forbidden')
     }
-    expect(await as('admin', (tx) => tryCreate(tx, A.ids.obj2!, A.ids.obj3!, '1'))).toBe('OK:1')
+    // Batch 12: manba qoldig'i kerak (obj2 da 40 kg, 1 qop = 50 kg)
+    expect(
+      await as('admin', async (tx) => {
+        await kirim(tx, A.ids.obj2!, '100')
+        return tryCreate(tx, A.ids.obj2!, A.ids.obj3!, '1')
+      }),
+    ).toBe('OK:1')
   })
 
   it('to`g`ridan-to`g`ri INSERT/UPDATE (RPC`siz) — 42501 transfer_direct_edit', async () => {
@@ -608,6 +614,7 @@ describe('o`tkazmalar', () => {
 
   it('qabul: to obyekt a`zosi (prorab/omborchi); to qoldig`i ko`payadi; takroriy — o`zgarishsiz; boshqa miqdor — 55000', async () => {
     const r = await as('admin', async (tx) => {
+      await kirim(tx, A.ids.obj2!, '200') // Batch 12: manba qoldig'i
       const id = await create(tx, A.ids.obj2!, A.ids.obj1!, '3') // 150 kg
       await tx.exec(`set local request.jwt.claim.sub = '${A.users.omborchi.authUid}'`)
       await tx.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: A.users.omborchi.authUid, role: 'authenticated' })])
@@ -654,6 +661,7 @@ describe('o`tkazmalar', () => {
 
   it('kam qabul → otkazma_farqi (ogohlantirish, under) + telegram navbati; ko`p qabul → over', async () => {
     const r = await as('admin', async (tx) => {
+      await kirim(tx, A.ids.obj1!, '200') // Batch 12: manba qoldig'i
       const a = await create(tx, A.ids.obj1!, A.ids.obj2!, '3') // 150
       await tx.query(`select public.receive_transfer($1, '2.5', 'yo''lda yo''qoldi')`, [a]) // 125
       const b = await create(tx, A.ids.obj1!, A.ids.obj2!, '1') // 50
@@ -736,6 +744,7 @@ describe('o`tkazmalar', () => {
 
   it('RLS: omborchi (obj1) kelayotgan o`tkazmani ko`radi; obj2→obj3 — ko`rmaydi', async () => {
     const r = await as('admin', async (tx) => {
+      await kirim(tx, A.ids.obj2!, '100') // Batch 12: manba qoldig'i
       const inc = await create(tx, A.ids.obj2!, A.ids.obj1!, '1')
       const other = await create(tx, A.ids.obj2!, A.ids.obj3!, '1')
       await tx.query(`select set_config('request.jwt.claims', $1, true), set_config('request.jwt.claim.sub', $2, true)`, [

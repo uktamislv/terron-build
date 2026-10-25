@@ -1,6 +1,17 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { contactPhone, DEFAULT_MINI_APP_URL, handleTgBot, type ReplyMarkup, type TgBotDeps } from './logic.ts'
+import {
+  contactPhone,
+  DEFAULT_MINI_APP_URL,
+  handleTgBot,
+  parseSeenCallback,
+  seenText,
+  withoutSeenButton,
+  type InlineMarkup,
+  type MarkSeenResult,
+  type ReplyMarkup,
+  type TgBotDeps,
+} from './logic.ts'
 import type { AuthEvent } from '../_shared/authUsers.ts'
 import { BOT_MESSAGES } from '../_shared/botMessages.ts'
 
@@ -22,7 +33,18 @@ function fake(opts: {
   miniAppUrl?: string
   throwOnFind?: boolean
   auditThrows?: boolean
+  seen?: MarkSeenResult | 'throw'
+  editThrows?: boolean
+  answerThrows?: boolean
 } = {}) {
+  const seenCalls: { tg: number; alertId: string }[] = []
+  const answers: { id: string; text: string; showAlert: boolean }[] = []
+  const edits: {
+    chatId: number
+    messageId: number
+    edit: { text: string; entities: unknown[] } | null
+    markup: InlineMarkup
+  }[] = []
   const sent: Sent[] = []
   const links: { profileId: string; tg: number; chat: number; phone: string }[] = []
   const audit: AuthEvent[] = []
@@ -43,13 +65,26 @@ function fake(opts: {
     sendMessage: async (chatId, text, markup) => {
       sent.push({ chatId, text, ...(markup ? { markup } : {}) })
     },
+    markAlertSeen: async (tg, alertId) => {
+      seenCalls.push({ tg, alertId })
+      if (opts.seen === 'throw') throw new Error('db down')
+      return opts.seen ?? { ok: true, name: 'Ali Valiyev' }
+    },
+    answerCallbackQuery: async (id, text, showAlert) => {
+      answers.push({ id, text, showAlert })
+      if (opts.answerThrows) throw new Error('tg down')
+    },
+    editMessage: async (chatId, messageId, edit, markup) => {
+      edits.push({ chatId, messageId, edit, markup })
+      if (opts.editThrows) throw new Error('tg down')
+    },
     logAuthEvent: async (e) => {
       if (opts.auditThrows) throw new Error('audit down')
       audit.push(e)
     },
     log: (level, message) => logs.push({ level, message }),
   }
-  return { deps, sent, links, phonesQueried, logs, audit }
+  return { deps, sent, links, phonesQueried, logs, audit, seenCalls, answers, edits }
 }
 
 function msg(message: Record<string, unknown>) {
@@ -264,5 +299,143 @@ describe('tg-bot: kontakt raqami formatlari', () => {
     expect(r.status).toBe(200)
     expect(f.sent[0]?.text).toBe(BOT_MESSAGES.linked)
     expect(f.logs.some((l) => l.level === 'error')).toBe(true)
+  })
+})
+
+describe("tg-bot: \"Ko'rildi\" tugmasi (callback_query)", () => {
+  const ALERT = '11111111-2222-3333-4444-555555555555'
+  const TEXT = '⚠️ Narx odatdagidan yuqori\nSement · Obyekt A\n29.10.2026 14:32'
+  const ENTITIES = [{ type: 'bold', offset: 3, length: 23 }]
+  const OPEN = { text: 'Ochish', web_app: { url: `https://app.example.uz/tg?alert=${ALERT}` } }
+  const MARKUP = { inline_keyboard: [[{ text: "✓ Ko'rildi", callback_data: `al:seen:${ALERT}` }, OPEN]] }
+  const cb = (over: Record<string, unknown> = {}, msgOver: Record<string, unknown> = {}) => ({
+    update_id: 2,
+    callback_query: {
+      id: 'cbq-1',
+      from: { id: FROM, is_bot: false, first_name: 'Ali' },
+      data: `al:seen:${ALERT}`,
+      chat_instance: 'x',
+      message: {
+        message_id: 77,
+        date: 1700000000,
+        chat: { id: CHAT, type: 'private' },
+        text: TEXT,
+        entities: ENTITIES,
+        reply_markup: MARKUP,
+        ...msgOver,
+      },
+      ...over,
+    },
+  })
+
+  it('muvaffaqiyat: RPC, javob, xabar tahrirlanadi (matn + Ochish qoladi)', async () => {
+    const f = fake()
+    const r = await handleTgBot(SECRET, cb(), f.deps)
+    expect(r).toEqual({ status: 200, body: { ok: true } })
+    expect(f.seenCalls).toEqual([{ tg: FROM, alertId: ALERT }])
+    expect(f.answers).toEqual([{ id: 'cbq-1', text: BOT_MESSAGES.seenOk, showAlert: false }])
+    expect(f.edits).toEqual([
+      {
+        chatId: CHAT,
+        messageId: 77,
+        edit: { text: `${TEXT}\n\n✓ Ko'rildi — Ali Valiyev`, entities: ENTITIES },
+        markup: { inline_keyboard: [[OPEN]] },
+      },
+    ])
+    expect(f.sent).toEqual([])
+  })
+
+  it("sir noto'g'ri → 401, RPC chaqirilmaydi", async () => {
+    const f = fake()
+    expect((await handleTgBot('wrong', cb(), f.deps)).status).toBe(401)
+    expect(f.seenCalls).toEqual([])
+  })
+
+  it('admin emas / boshqa firma → "Faqat admin" (alert oynasi), tahrir yo\'q', async () => {
+    const f = fake({ seen: { ok: false, reason: 'forbidden' } })
+    await handleTgBot(SECRET, cb(), f.deps)
+    expect(f.answers).toEqual([{ id: 'cbq-1', text: BOT_MESSAGES.seenForbidden, showAlert: true }])
+    expect(f.edits).toEqual([])
+  })
+
+  it('alert topilmadi', async () => {
+    const f = fake({ seen: { ok: false, reason: 'not_found' } })
+    await handleTgBot(SECRET, cb(), f.deps)
+    expect(f.answers[0]?.text).toBe(BOT_MESSAGES.seenNotFound)
+    expect(f.edits).toEqual([])
+  })
+
+  it('RPC xatosi → xato javobi, 200', async () => {
+    const f = fake({ seen: 'throw' })
+    expect((await handleTgBot(SECRET, cb(), f.deps)).status).toBe(200)
+    expect(f.answers[0]).toMatchObject({ text: BOT_MESSAGES.seenError, showAlert: true })
+    expect(f.edits).toEqual([])
+  })
+
+  it("noma'lum / yaroqsiz data → faqat bo'sh javob, RPC yo'q", async () => {
+    for (const data of ['boshqa', 'al:seen:not-a-uuid', `al:seen:${ALERT}x`, 42, undefined]) {
+      const f = fake()
+      await handleTgBot(SECRET, cb({ data }), f.deps)
+      expect(f.seenCalls).toEqual([])
+      expect(f.answers).toEqual([{ id: 'cbq-1', text: '', showAlert: false }])
+    }
+  })
+
+  it("id yoki from yo'q / bot → e'tiborsiz", async () => {
+    for (const over of [{ id: '' }, { from: null }, { from: { id: 'x' } }, { from: { id: FROM, is_bot: true } }]) {
+      const f = fake()
+      expect((await handleTgBot(SECRET, cb(over), f.deps)).status).toBe(200)
+      expect(f.seenCalls).toEqual([])
+      expect(f.answers).toEqual([])
+    }
+  })
+
+  it("xabar yo'q yoki InaccessibleMessage (date 0) → belgilanadi, tahrir yo'q", async () => {
+    const f1 = fake()
+    await handleTgBot(SECRET, cb({ message: undefined }), f1.deps)
+    expect(f1.seenCalls.length).toBe(1)
+    expect(f1.edits).toEqual([])
+    const f2 = fake()
+    await handleTgBot(SECRET, cb({}, { date: 0 }), f2.deps)
+    expect(f2.edits).toEqual([])
+  })
+
+  it('belgi allaqachon bor (ikkinchi bosish) → faqat tugmalar', async () => {
+    const f = fake()
+    await handleTgBot(SECRET, cb({}, { text: `${TEXT}\n\n✓ Ko'rildi — Vali` }), f.deps)
+    expect(f.edits[0]?.edit).toBeNull()
+  })
+
+  it('tahrir / javob xatosi — 200, log', async () => {
+    const f = fake({ editThrows: true, answerThrows: true })
+    expect((await handleTgBot(SECRET, cb(), f.deps)).status).toBe(200)
+    expect(f.logs.some((l) => l.message.includes('tahrirlanmadi'))).toBe(true)
+  })
+
+  it('parseSeenCallback', () => {
+    expect(parseSeenCallback(`al:seen:${ALERT.toUpperCase()}`)).toBe(ALERT)
+    expect(parseSeenCallback('al:seen:')).toBeNull()
+    expect(parseSeenCallback(null)).toBeNull()
+  })
+
+  it('withoutSeenButton: faqat al:seen olib tashlanadi; url, boshqa callback qoladi; yaroqsizlar tashlanadi', () => {
+    expect(
+      withoutSeenButton({
+        inline_keyboard: [
+          [{ text: "✓ Ko'rildi", callback_data: 'al:seen:x' }],
+          [{ text: 'Sayt', url: 'https://a.uz' }, { text: 'Boshqa', callback_data: 'x:y' }, { bad: 1 }, 'str'],
+          'not-a-row',
+        ],
+      }),
+    ).toEqual({ inline_keyboard: [[{ text: 'Sayt', url: 'https://a.uz' }, { text: 'Boshqa', callback_data: 'x:y' }]] })
+    expect(withoutSeenButton(undefined)).toEqual({ inline_keyboard: [] })
+  })
+
+  it("seenText: 4096 chegarasi, bo'sh matn, ism normallashtiriladi", () => {
+    expect(seenText('x'.repeat(4090), 'Ali')).toBeNull()
+    expect(seenText('', 'Ali')).toBeNull()
+    expect(seenText(undefined, 'Ali')).toBeNull()
+    expect(seenText('A', '  Ali \n Valiyev ')).toBe("A\n\n✓ Ko'rildi — Ali Valiyev")
+    expect(seenText('A', '   ')).toBe("A\n\n✓ Ko'rildi — —")
   })
 })

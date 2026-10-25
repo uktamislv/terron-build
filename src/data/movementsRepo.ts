@@ -1,13 +1,15 @@
 import { isPkeyConflict, toRepoError } from './errors'
 import { chunkOpts, fetchAll, type ChunkOpts } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
+import { cleanSha256, geoColumns, GEO_SELECT } from './geo'
 import { getSupabase } from './supabaseClient'
-import type { Movement, MovementKind } from './types'
+import type { GeoFix, Movement, MovementKind } from './types'
 
 // numeric ustunlar `::text` — aniqlik yo'qolmasin. Embed'lar FK nomi bilan (kompozit FK'lar).
 const MOVEMENT_COLUMNS =
   'id, company_id, type, object_id, material_id, unit_id, qty_input::text, unit_input, unit_variant, qty_base::text, ' +
-  'purchase_id, photo_path, occurred_at, note, created_by, created_at, deleted_at'
+  'purchase_id, photo_path, photo_sha256, occurred_at, note, created_by, created_at, deleted_at, ' +
+  GEO_SELECT
 const MOVEMENT_SELECT =
   `${MOVEMENT_COLUMNS}, ` +
   'object:objects!movements_object_fkey(name), ' +
@@ -32,6 +34,10 @@ export interface NewMovement {
   occurredAt?: string | null
   /** Faqat kirim: bog'langan xarid (`open_purchases` dan tanlangan). */
   purchaseId?: string | null
+  /** Batch 12 (C): rasm SHA-256 (hex) — takroriy rasmni server aniqlaydi. */
+  photoSha256?: string | null
+  /** Batch 12 (D): Mini App joylashuvi; veb — berilmaydi. */
+  geo?: GeoFix | null
 }
 
 export interface MovementFilters {
@@ -92,7 +98,10 @@ export async function createMovement(input: NewMovement): Promise<Movement> {
     qty_input: input.qtyInput,
     note: clean(input.note),
     photo_path: clean(input.photoPath),
+    ...geoColumns(input.geo),
   }
+  const sha = input.photoPath ? cleanSha256(input.photoSha256) : null
+  if (sha) row.photo_sha256 = sha
   if (input.occurredAt) row.occurred_at = input.occurredAt
   // Xarid bilan bog'lash faqat kirimda (bazadagi trigger material va obyekt mosligini tekshiradi)
   if (input.purchaseId && input.type === 'kirim') row.purchase_id = input.purchaseId

@@ -1,7 +1,7 @@
 // Bosh sahifa: rolga qarab bo'limlar va kartochkalar (havolalar filtr bilan). Sof funksiyalar.
 // Ko'rinadigan raqamlarni baribir RLS cheklaydi; bu yerda faqat qaysi bo'lim chizilishi.
 import type { DashboardSummary } from '@/data/reportsRepo'
-import { isNegative } from '@/domain/decimal'
+import { isNegative, isZero } from '@/domain/decimal'
 import { webNavFor, type Role, type WebNavKey } from '@/domain/roles'
 import { t } from '@/i18n'
 import { formatQty, formatSum } from '@/lib/format'
@@ -127,7 +127,7 @@ export function buildCards(s: DashboardSummary, role: Role, r: CardRange): DashC
         companyWide: true,
         label: tc.cashIssued,
         value: formatSum(s.cash_issued_sum),
-        sub: null,
+        sub: s.cash_returned_sum && !isZero(s.cash_returned_sum) ? tc.cashReturnedSub(formatSum(s.cash_returned_sum)) : null,
         tone: 'default',
         to: link('cash', '/cash'),
       },
