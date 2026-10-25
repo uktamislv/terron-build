@@ -40,7 +40,23 @@ function askHidden(question) {
   })
 }
 
-const token = await askHidden('BotFather bergan bot tokenini kiriting (yozganingiz ko‘rinmaydi), keyin Enter: ')
+function readClipboard() {
+  if (process.platform !== 'win32') return ''
+  const res = spawnSync('powershell.exe', ['-NoProfile', '-Command', 'Get-Clipboard'], { encoding: 'utf8' })
+  return (res.stdout ?? '').trim()
+}
+
+// Avval buferdan (ichki terminallar yashirin kiritishni qo'llamasligi mumkin); bo'lmasa — so'raladi.
+// Token hech qachon ekranga chiqarilmaydi.
+let token = readClipboard()
+if (/^\d+:[\w-]{30,}$/.test(token)) {
+  console.log('Token buferdan olindi.')
+} else if (process.stdin.isTTY) {
+  token = await askHidden('Buferda token topilmadi. Tokenni kiriting (ko‘rinmaydi), keyin Enter: ')
+} else {
+  console.error('Buferda token topilmadi. BotFather’dan tokenni nusxalang (Copy) va skriptni qayta ishga tushiring.')
+  process.exit(1)
+}
 if (!/^\d+:[\w-]{30,}$/.test(token)) {
   console.error('Token formati noto‘g‘ri (123456789:AA... ko‘rinishida bo‘lishi kerak).')
   process.exit(1)
