@@ -13,11 +13,13 @@ import { RequireAuth, RequireNav } from '@/web/guards'
 import { webNavItems } from '@/web/nav'
 import { DashboardPage } from '@/web/pages/DashboardPage'
 import { LoginPage } from '@/web/pages/LoginPage'
+import { MaterialsPage } from '@/web/pages/MaterialsPage'
 import { ObjectsPage } from '@/web/pages/ObjectsPage'
 import { UsersPage } from '@/web/pages/UsersPage'
 
 // Tayyor veb sahifalar; qolganlari hozircha "Tez orada"
 const webPages: Partial<Record<WebNavKey, ReactNode>> = {
+  materials: <MaterialsPage />,
   users: <UsersPage />,
   objects: <ObjectsPage />,
 }

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import * as authRepo from '@/data/authRepo'
 import type { AuthSession } from '@/data/types'
@@ -57,7 +57,8 @@ describe('Mini App pastki menyu', () => {
     const links = screen.getAllByRole('link')
     expect(links.map((a) => a.textContent)).toEqual([t.tg.nav.purchase, t.tg.nav.mine])
     expect(links[0]?.parentElement).toHaveStyle({ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' })
-    expect(router.state.location.pathname).toBe('/tg/purchase')
+    // Navigate redirect havolalar chizilgandan keyin bajarilishi mumkin
+    await waitFor(() => expect(router.state.location.pathname).toBe('/tg/purchase'))
   })
 
   it('prorab — Kirim/chiqim, Xarid, So‘rov, Yozuvlarim', async () => {

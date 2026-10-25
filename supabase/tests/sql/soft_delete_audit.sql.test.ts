@@ -54,7 +54,7 @@ describe('DELETE taqiqlangan', () => {
   it.each([...BUSINESS_TABLES])('%s: service_role — 42501 (trigger)', async (t) => {
     const r = await asService(db, (tx) => tryExec(tx, `delete from public.${t} where id = $1`, [targetId(A, t)]))
     expect(r.ok ? r.affected : r.code).toBe('42501')
-    if (!r.ok) expect(r.msg).toMatch(/soft delete only/)
+    if (!r.ok) expect(r.msg).toMatch(/butunlay o'chirib bo'lmaydi/)
   })
 
   it('superuser (migratsiya egasi) ham DELETE qila olmaydi', async () => {

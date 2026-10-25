@@ -1,6 +1,7 @@
 import { normalizePhone } from '@shared/phone'
 import type { Role } from '@/domain/roles'
 import { RepoError, toRepoError } from './errors'
+import { softDeleteById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
 import type { Profile } from './types'
 
@@ -86,10 +87,6 @@ export function setProfileActive(id: string, isActive: boolean): Promise<Profile
 }
 
 /** Soft delete — yozuv tarixda qoladi va tiklanadi. */
-export async function softDeleteProfile(id: string): Promise<void> {
-  const { error } = await getSupabase()
-    .from('profiles')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id)
-  if (error) throw toRepoError(error, PROFILE_ERRORS)
+export function softDeleteProfile(id: string): Promise<void> {
+  return softDeleteById('profiles', id, PROFILE_ERRORS)
 }

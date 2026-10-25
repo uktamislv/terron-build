@@ -1,4 +1,5 @@
 import { toRepoError } from './errors'
+import { softDeleteById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
 import type { ObjectMember } from './types'
 
@@ -26,12 +27,8 @@ export async function addObjectMember(companyId: string, objectId: string, profi
 }
 
 /** Olib tashlash = soft delete. */
-export async function removeObjectMember(memberId: string): Promise<void> {
-  const { error } = await getSupabase()
-    .from('object_members')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', memberId)
-  if (error) throw toRepoError(error, MEMBER_ERRORS)
+export function removeObjectMember(memberId: string): Promise<void> {
+  return softDeleteById('object_members', memberId, MEMBER_ERRORS)
 }
 
 /** Joriy va kerakli obyektlar orasidagi farq: nima qo'shiladi, nima olib tashlanadi. */

@@ -1,4 +1,5 @@
 import { toRepoError } from './errors'
+import { softDeleteById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
 import type { ObjectRow, ObjectStatus } from './types'
 
@@ -60,10 +61,6 @@ export async function updateObject(id: string, patch: ObjectPatch): Promise<Obje
   return data as ObjectRow
 }
 
-export async function softDeleteObject(id: string): Promise<void> {
-  const { error } = await getSupabase()
-    .from('objects')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id)
-  if (error) throw toRepoError(error)
+export function softDeleteObject(id: string): Promise<void> {
+  return softDeleteById('objects', id)
 }

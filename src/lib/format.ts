@@ -1,3 +1,6 @@
+import { parseDec, round, type Dec } from '@/domain/decimal'
+import { formatDecUz } from '@/domain/units'
+
 export const TIME_ZONE = 'Asia/Tashkent'
 
 function parts(date: Date, options: Intl.DateTimeFormatOptions): Record<string, string> {
@@ -38,4 +41,17 @@ export function formatSum(value: string | bigint): string {
   const grouped = intPart.replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
   const frac = fracPart && /[1-9]/.test(fracPart) ? `,${fracPart.replace(/0+$/, '')}` : ''
   return `${negative ? '-' : ''}${grouped}${frac} so‘m`
+}
+
+/**
+ * Miqdor (`numeric` → Dec satr) o'zbekcha formatda: kasr — vergul, minglik — bo'sh joy.
+ * "1250.5" → "1 250,5", "50.000000" → "50". Float'ga aylantirilmaydi.
+ * `maxFrac` berilsa, kasr qismi shu xonagacha yaxlitlanadi (PostgreSQL `round` kabi, half away from zero).
+ * Raqam bo'lmagan qiymat o'zgarishsiz qaytadi.
+ */
+export function formatQty(value: Dec | bigint, maxFrac?: number): string {
+  const raw = String(value).trim()
+  const dec = parseDec(raw)
+  if (dec === null) return raw
+  return formatDecUz(maxFrac === undefined ? dec : round(dec, maxFrac))
 }

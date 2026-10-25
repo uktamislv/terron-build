@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -103,8 +103,8 @@ Bu Batch 1 asosi; keyingi batch'larda (masalan creator o'z yozuvini tuzatishi) k
 
 ## Soft delete
 
-- Har jadvalda `before delete` trigger → `raise exception 'soft delete only'` (service_role uchun ham).
-- O'chirish = `deleted_at` qo'yish; tiklash = `deleted_at = null` (faqat admin).
+- Har jadvalda `before delete` trigger → 42501, hint `soft_delete_only` (service_role uchun ham).
+- O'chirish = `deleted_at` qo'yish (qiymat — server vaqti `now()`, klientniki e'tiborga olinmaydi; qo'yilgani o'zgarmaydi — Batch 3); tiklash = `deleted_at = null` (faqat admin).
 
 ## Audit
 
@@ -120,13 +120,13 @@ Bu Batch 1 asosi; keyingi batch'larda (masalan creator o'z yozuvini tuzatishi) k
 - `companies`: `name`, `receipt_mismatch_pct numeric(6,2) default 2`, `price_deviation_pct default 8`, `price_avg_window int default 5`, `timezone text default 'Asia/Tashkent'`, `is_active`.
 - `objects`: `name`, `address`, `status` (`faol`/`yakunlangan`/`toxtatilgan`).
 - `object_members`: `object_id`, `profile_id`, unique (`object_id`,`profile_id`) o'chirilmaganlar orasida.
-- `materials`: `name` (firma ichida `lower(name)` unique, o'chirilmaganlar orasida), `base_unit text`, `waste_pct numeric(6,2) default 0`, `is_active`, `category text`.
-- `material_units`: `material_id`, `unit text`, `factor numeric(20,10) check (> 0)` — 1 `unit` = `factor` asosiy birlik, `variant text` (ixtiyoriy). Unique (`material_id`,`unit`,`coalesce(variant,'')`) o'chirilmaganlar orasida. Asosiy birlikning o'zi ham `factor = 1` qator sifatida saqlanadi (birlik tanlash tugmalari bitta ro'yxatdan chiqadi).
-- `material_aliases`: `material_id`, `alias text`, `lang text` (`ru`, `uz`). Unique (`company_id`, `lower(alias)`).
+- `materials`: `name` (firma ichida `private.norm_name(name)` unique, o'chirilmaganlar orasida), `base_unit text`, `waste_pct numeric(6,2) default 0`, `is_active`, `category text`.
+- `material_units`: `material_id`, `unit text`, `factor numeric(20,10) check (> 0)` — 1 `unit` = `factor` asosiy birlik, `variant text` (ixtiyoriy). Unique (`material_id`, `norm_name(unit)`, `coalesce(norm_name(variant),'')`) o'chirilmaganlar orasida. Asosiy birlikning o'zi ham `factor = 1` qator sifatida saqlanadi (birlik tanlash tugmalari bitta ro'yxatdan chiqadi).
+- `material_aliases`: `material_id`, `alias text`, `lang text` (`ru`, `uz`). Unique (`company_id`, `norm_name(alias)`) o'chirilmaganlar orasida.
 - `suppliers`: `name`, `phone`, `note`.
 - `cash_advances`: `recipient_id` (→ profiles), `amount numeric(18,2) check (> 0)`, `issued_at`, `note`.
 - **Miqdor bazada hisoblanadi** (`purchases`, `movements`, `transfers`, `material_requests`): `unit_id uuid not null`, FK `(company_id, unit_id) → material_units (company_id, id)`. Trigger `b_compute_qty` (before insert or update, security definer): birlikni o'qiydi (o'chirilmagan; UPDATE'da o'zgarmagan eski birlik o'chirilgan bo'lsa ham qoladi), `unit.material_id ≠ material_id` yoki topilmasa — `23503`; `unit_input := unit.unit`, `unit_variant := unit.variant`, `qty_base := round(qty_input * factor, 6)`. Klient yuborgan `qty_base`, `unit_input` e'tiborga olinmaydi. Qulaylik: `unit_id` berilmasa, `(material_id, unit_input)` bo'yicha **variantsiz** birlik qidiriladi. `inventory_adjust` da `qty_input` manfiy bo'lishi mumkin — ishora `qty_base` ga o'tadi.
-- Har materialning asosiy birligi (`factor = 1`) material yaratilganda avtomatik `material_units` ga qo'shiladi (`b_base_unit` trigger). `base_unit` ni keyin o'zgartirish hozircha cheklanmagan — Batch 3 da (harakat bo'lsa taqiqlash) hal qilinadi.
+- Har materialning asosiy birligi (`factor = 1`) material yaratilganda avtomatik `material_units` ga qo'shiladi (`b_base_unit` trigger). `base_unit` ni o'zgartirish — Batch 3 qoidalari bo'yicha (pastda "Katalog yaxlitligi").
 - `purchases`: `buyer_id` (→ profiles), `object_id` (not null), `material_id`, `unit_id`, `supplier_id` (nullable), `qty_input`, `unit_input`, `unit_variant`, `qty_base`, `total_amount numeric(18,2)` — **haqiqat manbai** (foydalanuvchi chekdagi jami summani kiritadi), `unit_price numeric(18,2)` = `round(total_amount / qty_input, 2)` va `price_per_base numeric(18,4)` = `round(total_amount / qty_base, 4)` — ikkalasini trigger hisoblaydi (narx og'ishi qoidasi `price_per_base` ga tayanadi), `receipt_photo_path text`, `purchased_at`, `note`. `check (qty_base > 0 and total_amount >= 0)`.
 - `movements`: `type movement_type` (`kirim`,`chiqim`,`transfer_out`,`transfer_in`,`inventory_adjust`), `object_id`, `material_id`, `unit_id`, `qty_input`, `unit_input`, `unit_variant`, `qty_base`, `purchase_id` (nullable), `transfer_id` (nullable), `inventory_count_id` (nullable), `photo_path`, `occurred_at`, `note`. `qty_base > 0`, `qty_input > 0` (inventory_adjust uchun `<> 0`, ishorali). Bog'lanishlar (`movements_links_check`): `kirim` — `transfer_id`, `inventory_count_id` null (`purchase_id` ixtiyoriy); `chiqim` — uchalasi null; `transfer_in/out` — `transfer_id` majburiy, boshqalari null; `inventory_adjust` — `inventory_count_id` majburiy, boshqalari null. `purchase_id` bo'lsa (trigger): xarid shu firmada, o'chirilmagan (aks holda `23503`), `material_id` va `object_id` mos (aks holda `23514`).
 - `inventory_counts`: `object_id`, `status` (`draft`/`submitted`), `counted_at`. `inventory_count_items`: `inventory_count_id`, `material_id`, `qty_counted`, `qty_expected` (yuborish paytidagi hisob).
@@ -135,13 +135,102 @@ Bu Batch 1 asosi; keyingi batch'larda (masalan creator o'z yozuvini tuzatishi) k
 - `transfers`: `from_object_id`, `to_object_id` (`check from <> to`), `material_id`, `unit_id`, `qty_input`, `unit_input`, `unit_variant`, `qty_base`, `status` (`yuborildi`/`qabul_qilindi`/`bekor`).
 - `alerts`: `type alert_type` (`xarid_qabul_farqi`, `ozi_qabul_qilgan`, `narx_ogishi`, `normadan_oshish`, `inventarizatsiya_kamomadi`, `smetadan_ortiq_sorov`), `status alert_status` (`yangi`,`korildi`,`yopildi`), `severity` (`belgi`,`ogohlantirish`,`jiddiy`), `object_id`, `material_id`, `purchase_id`, `movement_id`, `request_id`, `inventory_count_id` (5-qoida uchun), `details jsonb`, `closed_by`, `closed_at`.
 
+## Katalog yaxlitligi (Batch 3 — `20261027000001_catalog_guards.sql`)
+
+Triggerlar service_role va superuser uchun ham ishlaydi (ma'lumot yaxlitligi). Xato shakli: `errcode` + `hint` (barqaror kalit) + o'zbekcha `message` (UUID'siz). Frontend `errors.ts` server xabarini **faqat ma'lum `hint` bo'lsa** ko'rsatadi — to'liq ro'yxat pastda ("Xato kalitlari").
+
+### Nomlarni normallashtirish — `private.norm_name(text)`
+
+`immutable strict`, `search_path = ''`. Tartib: bo'sh joy belgilari (probel, `\t`, `\n`, `\r`, NBSP `U+00A0`, `U+202F`, `U+2007`) ketma-ketligi → bitta probel; `btrim`; `ё→е`, `Ё→Е`; `lower()`. `null → null`. **Shartnoma:** domain-logic `normalizeAlias` (TS) aynan shunday ishlaydi va PGlite'da shu funksiya bilan solishtiriladi — nomi va xatti-harakati o'zgarmaydi. Execute: `authenticated`, `service_role` (unique indeks ifodasida), `anon`/`public` — yo'q.
+
+Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(name))`, `material_aliases (company_id, norm_name(alias))`, `material_units (material_id, norm_name(unit), coalesce(norm_name(variant), ''))`. Migratsiya indekslarni almashtirishdan oldin normallashtirilgan dublikatlarni qidiradi — topilsa aniq xato bilan to'xtaydi (ma'lumotni qo'lda tuzatish kerak). Triggerlar dublikatni indeksdan oldin aniq `hint` bilan rad etadi (indeks — zaxira). `b_compute_qty` ning `unit_input` fallback'i, shablon (`template_*`) idempotentligi ham `norm_name` bo'yicha.
+
+### Qoidalar
+
+| # | Qoida | Trigger | `errcode` / `hint` |
+|---|---|---|---|
+| 1 | `materials.base_unit` — material biror yozuvda (`movements`, `purchases`, `transfers`, `material_requests`, `inventory_count_items`, `estimate_items`; **o'chirilganlari ham**) ishlatilgan bo'lsa o'zgarmaydi | `b_materials_guard` | P0001 `catalog_base_unit_in_use` |
+| 1 | Yangi `base_unit` (norm_name bo'yicha) materialning boshqa variantsiz faol birligi bilan bir xil | `b_materials_guard` | P0001 `catalog_base_unit_conflict` |
+| 1 | Ishlatilmagan materialda `base_unit` o'zgarsa — asosiy birlik qatori (`factor = 1`, variantsiz) yangi nomga sinxron o'zgaradi (bo'lmasa — yaratiladi) | `c_base_unit_sync` (after) | — |
+| 1 | Asosiy birlik qatori (`unit = materials.base_unit`, `factor = 1`, variantsiz, faol): soft delete yoki `factor`/`unit`/`variant`/`material_id` o'zgarishi | `b_material_units_guard` | P0001 `catalog_base_unit_locked` |
+| 2 | Birlik operatsiyada `unit_id` sifatida ishlatilgan (o'chirilganlari ham) — `factor`/`unit`/`variant`/`material_id` o'zgarmaydi. Yo'l: yangi birlik qo'shib, eskisini o'chirish (soft delete — ruxsat) | `b_material_units_guard` | P0001 `catalog_unit_in_use` |
+| 3 | Material nomi dublikati (norm_name) — insert, qayta nomlash, tiklash | `b_materials_guard` | 23505 `catalog_name_duplicate` |
+| 3 | Alias dublikati (firma bo'yicha) — insert, o'zgartirish, tiklash (shu jumladan material tiklanganda kaskad) | `b_material_aliases_guard` | 23505 `catalog_alias_duplicate` |
+| 3 | Birlik dublikati (`material_id`, unit, variant) | `b_material_units_guard` | 23505 `catalog_unit_duplicate` |
+| 4 | Material nomi = boshqa materialning alias'i yoki aksincha (norm_name; o'chirilmagan alias va o'chirilmagan material orasida). O'z nomiga teng alias — ruxsat | `b_materials_guard`, `b_material_aliases_guard` | P0001 `catalog_name_alias_conflict` |
+| 5 | Materialni soft delete — `stock_balances` da qoldig'i ≠ 0 (manfiy ham) obyekt bo'lsa (xabarda obyekt nomi) | `b_materials_guard` | P0001 `catalog_material_has_stock` |
+| 5 | O'chirilgan materialga yangi operatsiya yoki `material_id` ni unga o'zgartirish (6 jadval); o'chirilgan materialga birlik/alias qo'shish, ko'chirish, tiklash | `b_check_material`, `b_material_units_guard`, `b_material_aliases_guard` | P0001 `catalog_material_deleted` |
+| 5 | Materiali o'chirilgan **mavjud** operatsiya qatori "muzlatiladi": faqat `note`, `photo_path`, `receipt_photo_path` (va trigger hisoblaydigan `qty_base`, `unit_input`, `unit_variant`, `unit_price`, `price_per_base`, `qty_expected`) o'zgaradi. `deleted_at`, `qty_input`, `unit_id`, `type`, `object_id`, bog'lanishlar, status — rad (qoldiq "tirilmasin"). Material tiklansa — yana tahrirlanadi | `b_check_material` | P0001 `catalog_material_deleted` |
+| 5 | Nofaol material: yangi `purchases`, `transfers`, `material_requests`, `movements` (`kirim`/`chiqim`). Ruxsat: `transfer_in/out`, `inventory_adjust`, `inventory_count_items`, `estimate_items` | `b_check_material` | P0001 `catalog_material_inactive` |
+| 6 | Material soft delete → uning faol alias'lari ham soft delete, `deleted_at` **aynan materialniki**. Tiklashda faqat shu `deleted_at` li alias'lar tiklanadi (oldin qo'lda o'chirilganlari emas); to'qnashsa — `catalog_alias_duplicate` / `catalog_name_alias_conflict` va butun tiklash bekor | `c_aliases_cascade` (after) | — |
+| 7 | `deleted_at`: null → qiymat bo'lganda **server vaqti** `now()` (klient yuborgani e'tiborga olinmaydi); bir marta qo'yilgan qiymat o'zgarmaydi (faqat null ga — tiklash). Barcha 18 jadval | `a_before_update` | — |
+
+- **"O'chirilganlari ham" (1–2) — ataylab qattiqroq.** `b_compute_qty` UPDATE'da (tiklashda ham) `qty_base` ni joriy `factor` bilan qayta hisoblaydi; factor faqat o'chirilgan yozuv bo'lgani uchun o'zgarsa, tiklashda tarixiy `qty_base` jimgina o'zgarardi. Shu sabab `b_compute_qty` ning qayta hisoblashi xavfsiz qoldirildi: ishlatilgan birlikning factor'i o'zgarmas.
+- **Bitta tranzaksiyada** alias qo'lda o'chirilib, keyin material o'chirilsa — ikkalasining `deleted_at` i bir xil (`now()` — tranzaksiya boshi), material tiklanganda bu alias ham tiklanadi. Qabul qilingan cheklov.
+- **Trigger tartibi** (alifbo): `a_*` → `b_check_material` → `b_compute_qty` → boshqa `b_*` → `c_*` → `z_audit`.
+
+### Qulflar va poyga
+
+- **Miqdor hisoblash (`b_compute_qty`):** (1) `materials` qatori `for share`; (2) `unit_id` bo'lmasa nom bo'yicha qidirish; (3) `material_units` qatorini **o'qish va `for share` qulflash bitta so'rovda**; (4) factor/unit shu qatordan. INSERT va har UPDATE'da (unit_id o'zgarsa ham). Natija: parallel `factor`/`unit` o'zgarishi (`b_material_units_guard`, UPDATE — qatorni `for no key update` qulflaydi) yoki `base_unit` o'zgarishi/materialni o'chirish bilan poyga yo'q — biri ikkinchisini kutadi, keyin READ COMMITTED da yangi snapshot bilan tekshiradi. PGlite bitta sessiyali — ikki sessiyali poyga testi yo'q; test funksiya manbasida qulf tartibini va trigger tartibini tekshiradi.
+- **`b_check_material`** ham material qatorini `for share` qulflaydi (inventarizatsiya va smeta qatorlari uchun ham).
+- **Qulf tartibi: avval `materials`, keyin `material_units`.** Ommaviy yozuvda (import, RPC, bir tranzaksiyada ko'p qator) qatorlarni **material `id` tartibida** yozing — aks holda ikki tranzaksiya qarama-qarshi tartibda qulflab deadlock'ga tushishi mumkin (PostgreSQL birini `40P01` bilan bekor qiladi — klient qayta urinadi).
+- **Nom/alias:** firma bo'yicha `pg_advisory_xact_lock` (`private.lock_catalog_names`), so'ng tekshiruv. READ COMMITTED da qulfdan keyingi so'rov yangi snapshot oladi va parallel commit'ni ko'radi. **Cheklov:** REPEATABLE READ / SERIALIZABLE tranzaksiyadagi RPC'larda snapshot birinchi so'rovda qotadi — qulfdan keyingi tekshiruv parallel commit'ni **ko'rmaydi**; bunday RPC'lar katalogga yozsa, unique indeks (zaxira) 23505 beradi yoki nom↔alias to'qnashuvi o'tib ketishi mumkin. Katalogga yozuvchi RPC'lar READ COMMITTED da bo'lsin.
+- **Yordamchilar** (`private`, security definer, `search_path = ''`, execute — hech kimga): `material_is_referenced`, `unit_is_referenced`, `lock_catalog_names`.
+- **Katalog RLS** o'zgarmadi: yozish — `super_admin`, `admin` (frontend `can('manage_catalog')`), ko'rish — firma a'zolari.
+- `base_unit` o'zgarganda boshqa birliklarning koeffitsientlari avtomatik qayta hisoblanmaydi (material ishlatilmagan — admin tuzatadi).
+
+### Hisobotlar uchun
+
+- Guruhlash **`unit_id` / `qty_base` bo'yicha**, `unit_input` matni bo'yicha emas: `unit_input` — kiritilgan paytdagi birlik nomining nusxasi (ko'rsatish uchun); birlik o'chirilib, shu nomda yangisi (boshqa factor bilan) qo'shilishi mumkin. Miqdorlarni solishtirish va yig'ish — faqat `qty_base` (asosiy birlikda).
+
+### Deploy tekshiruvi
+
+- `lower()` (va `norm_name`) kirill harflarini bazaning locale/collation'iga qarab kichraytiradi. PGlite'da `Ц→ц` ishlaydi; **prod Supabase'da birinchi deploy'da tekshiring:** `select private.norm_name('ЦЕМЕНТ Ё') = 'цемент е'` → `true` bo'lishi kerak. `false` bo'lsa — nom/alias unique va to'qnashuv tekshiruvlari kirillda katta-kichik harfni farqlaydi.
+
+### Xato kalitlari (`hint`) — Batch 1–3 to'liq ro'yxati
+
+| `hint` | `errcode` | Qayerda | Ma'nosi |
+|---|---|---|---|
+| `soft_delete_only` | 42501 | `a_block_delete` | Yozuvni butunlay o'chirib bo'lmaydi |
+| `truncate_blocked` | 42501 | `a_block_truncate` | TRUNCATE taqiqlangan |
+| `audit_append_only` | 42501 | `audit_log_immutable` | Tarixni tahrirlab/o'chirib bo'lmaydi |
+| `immutable_column` | 42501 | `a_before_update` | `id`, `company_id`, `created_by`, `created_at` o'zgarmaydi |
+| `restore_admin_only` | 42501 | `a_before_update` | Tiklash faqat admin |
+| `company_status_super_admin_only` | 42501 | `b_companies_guard` | Firma `is_active`/`deleted_at` — faqat super_admin |
+| `ops_unit_not_found` | 23503 | `b_compute_qty` | Birlik topilmadi yoki o'chirilgan |
+| `ops_unit_material_mismatch` | 23503 | `b_compute_qty` | Birlik boshqa materialniki |
+| `ops_purchase_not_found` | 23503 | `b_compute_qty` (movements) | Bog'langan xarid yo'q / o'chirilgan |
+| `ops_purchase_mismatch` | 23514 | `b_compute_qty` (movements) | Xarid boshqa material/obyektga tegishli |
+| `request_fields_locked` | 42501 | `b_material_requests_guard` | Taminotchi faqat holat va izohni o'zgartiradi |
+| `request_status_transition` | 42501 | `b_material_requests_guard` | Ruxsatsiz holat o'tishi |
+| `inventory_status_direct` | 42501 | `b_inventory_counts_guard` | Holat faqat `submit_inventory_count` orqali |
+| `auth_required` | 42501 | `submit_inventory_count` | Tizimga kirilmagan |
+| `inventory_not_found` | P0002 | `submit_inventory_count` | Inventarizatsiya topilmadi |
+| `inventory_submit_forbidden` | 42501 | `submit_inventory_count` | Yuborishga ruxsat yo'q |
+| `inventory_already_submitted` | 55000 | `submit_inventory_count` | Allaqachon yuborilgan |
+| `template_super_admin_only` | 42501 | `apply_material_template` | Faqat super_admin |
+| `template_company_not_found` | P0002 | `apply_material_template` | Firma topilmadi |
+| `catalog_base_unit_in_use` | P0001 | `b_materials_guard` | Asosiy birlik — material ishlatilgan |
+| `catalog_base_unit_conflict` | P0001 | `b_materials_guard` | Yangi asosiy birlik nomi band |
+| `catalog_base_unit_locked` | P0001 | `b_material_units_guard` | Asosiy birlik qatori qulflangan |
+| `catalog_unit_in_use` | P0001 | `b_material_units_guard` | Ishlatilgan birlik o'zgarmaydi |
+| `catalog_unit_duplicate` | 23505 | `b_material_units_guard` | Birlik dublikati |
+| `catalog_name_duplicate` | 23505 | `b_materials_guard` | Material nomi dublikati |
+| `catalog_alias_duplicate` | 23505 | `b_material_aliases_guard` | Muqobil nom dublikati |
+| `catalog_name_alias_conflict` | P0001 | `b_materials_guard`, `b_material_aliases_guard` | Nom ↔ alias to'qnashuvi |
+| `catalog_material_has_stock` | P0001 | `b_materials_guard` | Qoldig'i bor material o'chirilmaydi |
+| `catalog_material_deleted` | P0001 | `b_check_material`, `b_material_units_guard`, `b_material_aliases_guard` | O'chirilgan material |
+| `catalog_material_inactive` | P0001 | `b_check_material` | Nofaol material |
+
+Hint'siz qolganlar (foydalanuvchi ko'rmaydi): RLS rad etishi (42501, PostgreSQL xabari), CHECK/FK/unique cheklovlar (23514/23503/23505 — zaxira), `private.log_auth_event` (faqat service_role, Edge Function ichki xatosi), birinchi migratsiyadagi BYPASSRLS tekshiruvi.
+
 ## Qoldiq
 
 - View `public.stock_balances` (`with (security_invoker = true)` — RLS chaqiruvchi huquqida ishlaydi): `company_id`, `object_id`, `material_id`, `last_movement_at`, `qty_base` = `kirim + transfer_in − chiqim − transfer_out + inventory_adjust`, faqat `deleted_at is null` harakatlar.
 
 ## Seed va shablon
 
-- `private.apply_material_template(company_id uuid)` — yangi firma uchun materiallar shabloni (SaaS'da har yangi firmaga chaqiriladi). Idempotent (material nom bo'yicha, birlik `(unit, variant)` bo'yicha, alias `lower(alias)` bo'yicha tekshiriladi). Execute — faqat `service_role` (va egasi); foydalanuvchi sessiyasida faqat super_admin. Sement M400 va M500 — ikki alohida material.
+- `private.apply_material_template(company_id uuid)` — yangi firma uchun materiallar shabloni (SaaS'da har yangi firmaga chaqiriladi). Idempotent (material nom bo'yicha, birlik `(unit, variant)` bo'yicha, alias — hammasi `private.norm_name` bo'yicha (Batch 3) tekshiriladi). Execute — faqat `service_role` (va egasi); foydalanuvchi sessiyasida faqat super_admin. Sement M400 va M500 — ikki alohida material.
 - `supabase/seed.sql`: namuna firma, 3 obyekt, shablon qo'llanadi. Auth foydalanuvchilarisiz (ular Batch 2 da). **Production'ga qo'llanmaydi** — faqat lokal/sinov uchun namuna ma'lumot.
 
 ## Xavfsizlik chegaralari va eslatmalar
