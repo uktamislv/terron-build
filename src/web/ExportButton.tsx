@@ -1,5 +1,6 @@
 // "Excel" tugmasi: eksport jarayonida spinner va "Bekor qilish"; xato — qisqa xabar.
 import { useEffect, useRef, useState } from 'react'
+import { FileSpreadsheet, LoaderCircle } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { isAbortError } from '@/data/fetchAll'
 import { t } from '@/i18n'
@@ -52,22 +53,24 @@ export function ExportButton({
     <div className="flex flex-col items-end gap-1">
       {busy ? (
         <div className="flex items-center gap-2" role="status">
-          <span className="size-5 animate-spin rounded-full border-2 border-brand border-t-transparent" aria-hidden />
-          <span className="text-sm text-slate-600">{t.excel.exporting}</span>
+          <LoaderCircle aria-hidden className="size-5 animate-spin text-brand" strokeWidth={1.75} />
+          <span className="text-sm text-muted">{t.excel.exporting}</span>
           <Button variant="secondary" onClick={cancel}>
             {t.excel.cancel}
           </Button>
         </div>
       ) : (
-        <Button variant="secondary" disabled={disabled} onClick={() => void start()}>
-          <svg viewBox="0 0 24 24" className="size-5 text-ok" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
-          </svg>
+        <Button
+          variant="secondary"
+          disabled={disabled}
+          onClick={() => void start()}
+          icon={<FileSpreadsheet aria-hidden className="size-5 text-ok" strokeWidth={1.75} />}
+        >
           {label}
         </Button>
       )}
       {error && (
-        <p role="alert" className="text-right text-sm text-danger">
+        <p role="alert" className="max-w-xs text-right text-sm text-danger">
           {error}
         </p>
       )}

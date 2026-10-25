@@ -1,6 +1,7 @@
 // Smeta import ustasi (docs/estimate-design.md, "Oqim" 1–8). Bosqichlar ko'rinadi, orqaga qaytish
 // mumkin — barcha tanlovlar shu komponent holatida saqlanadi.
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, ArrowRight, Save } from 'lucide-react'
 import { Button, Notice, Spinner } from '@/components/ui'
 import { listEstimateItems, listEstimates } from '@/data/estimatesRepo'
 import { findTemplateBySignature } from '@/data/estimateTemplatesRepo'
@@ -37,17 +38,18 @@ import {
   mappingRecord,
   newMaterialProblem,
   sanitizeMapping,
+  STEPS,
   titleFromFileName,
   type Decision,
   type RowFix,
+  type StepKey,
   type UnitAnswer,
 } from './wizardModel'
+import { WizardFrame } from './wizardChrome'
 import { ColumnsStep, FileStep, RowsStep, SheetStep } from './wizardSteps'
 
 const tw = t.estimates.wizard
 
-const STEPS = ['file', 'sheet', 'columns', 'rows', 'catalog', 'units', 'review', 'save'] as const
-type StepKey = (typeof STEPS)[number]
 
 const EMPTY_ROWS: Cell[][] = []
 
@@ -279,48 +281,7 @@ export function ImportWizard({
   const saving = save?.status === 'saving'
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-brand-dark">{tw.title}</h1>
-        <Button variant="secondary" disabled={saving} onClick={onCancel}>
-          {tw.cancel}
-        </Button>
-      </div>
-
-      <nav aria-label={tw.title}>
-        <ol className="flex flex-wrap gap-2">
-          {STEPS.map((key, i) => {
-            const active = i === step
-            const reachable = i <= maxStep && !saving && key !== 'save'
-            return (
-              <li key={key}>
-                <button
-                  type="button"
-                  disabled={!reachable || active}
-                  aria-current={active ? 'step' : undefined}
-                  onClick={() => setStep(i)}
-                  className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-medium ${
-                    active
-                      ? 'border-brand bg-brand text-white'
-                      : reachable
-                        ? 'border-brand/30 bg-brand-light text-brand-dark hover:bg-brand-light/70'
-                        : 'border-slate-200 bg-white text-slate-400'
-                  }`}
-                >
-                  <span>{i + 1}</span>
-                  <span>{tw.steps[key]}</span>
-                </button>
-              </li>
-            )
-          })}
-        </ol>
-      </nav>
-
-      <section aria-label={tw.steps[stepKey]} className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
-        <div>
-          <p className="text-xs text-slate-500">{tw.stepOf(step + 1, STEPS.length)}</p>
-          <h2 className="text-lg font-semibold text-brand-dark">{tw.steps[stepKey]}</h2>
-        </div>
+    <WizardFrame stepKey={stepKey} step={step} maxStep={maxStep} saving={saving} onStep={setStep} onCancel={onCancel}>
         {materialsError && <Notice>{materialsError}</Notice>}
 
         {stepKey === 'file' && (
@@ -482,22 +443,22 @@ export function ImportWizard({
         {blockedMessage[stepKey] && <Notice tone="warn">{blockedMessage[stepKey]}</Notice>}
 
         {stepKey !== 'save' && (
-          <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-between">
-            <Button variant="secondary" disabled={step === 0} onClick={() => setStep(step - 1)}>
+          <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-between">
+            <Button variant="secondary" disabled={step === 0} icon={<ArrowLeft aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => setStep(step - 1)}>
               {tw.back}
             </Button>
             {stepKey === 'review' ? (
-              <Button disabled={!canNext.review} onClick={() => void runSave()}>
+              <Button disabled={!canNext.review} icon={<Save aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => void runSave()}>
                 {tw.saveButton}
               </Button>
             ) : (
               <Button onClick={onNext} disabled={stepKey !== 'file' && !canNext[stepKey]}>
                 {tw.next}
+                <ArrowRight aria-hidden className="size-5" strokeWidth={1.75} />
               </Button>
             )}
           </div>
         )}
-      </section>
-    </div>
+    </WizardFrame>
   )
 }

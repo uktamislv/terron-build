@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { Building2, Check, Package, ShieldCheck, TriangleAlert, X } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Button, Modal, Notice, Spinner } from '@/components/ui'
+import { Badge, Button, EmptyState, EntryRow, FilterBar, Modal, Notice, PageHeader, Pager, RetryNotice, Spinner } from '@/components/ui'
 import {
   ALERTS_PAGE_SIZE,
   CLOSE_NOTE_MAX,
@@ -32,24 +32,25 @@ import { ExportButton } from '../ExportButton'
 import { alertsSheet } from '../exports'
 import { paramId, paramOneOf } from '../urlFilters'
 import { alertDetailText, autoCloseReason, isAutoClosed } from '../alerts/alertDetails'
-import { SEVERITY_TONE, STATUS_TONE } from '../alerts/alertTones'
-import { Pager, RetryNotice, SelectField } from '../fields'
+import { SEVERITY_ENTRY_KIND, SEVERITY_TONE, STATUS_TONE } from '../alerts/alertTones'
+import { AlertTypeIcon } from '../alerts/AlertTypeIcon'
 
 const tp = t.alertsPage
 const ta = t.alertTexts
+const ic = { className: 'size-5', strokeWidth: 1.75, 'aria-hidden': true } as const
 
 type StatusFilter = 'open' | 'all' | AlertStatus
 
-interface FilterForm {
+export interface AlertFilterForm {
   status: StatusFilter
   type: '' | AlertType
   severity: '' | AlertSeverity
   objectId: string
 }
 
-const EMPTY: FilterForm = { status: 'open', type: '', severity: '', objectId: '' }
+const EMPTY: AlertFilterForm = { status: 'open', type: '', severity: '', objectId: '' }
 
-function toFilters(f: FilterForm): AlertFilters {
+function toFilters(f: AlertFilterForm): AlertFilters {
   return {
     statuses: f.status === 'open' ? ['yangi', 'korildi'] : f.status === 'all' ? undefined : [f.status],
     type: f.type || undefined,
@@ -58,13 +59,176 @@ function toFilters(f: FilterForm): AlertFilters {
   }
 }
 
+export interface AlertsViewProps {
+  rows: Alert[] | null
+  total: number
+  page: number
+  onPage: (page: number) => void
+  form: AlertFilterForm
+  onFilter: (patch: Partial<AlertFilterForm>) => void
+  objects: ObjectRow[]
+  canManage: boolean
+  busyId?: string | null
+  error?: string | null
+  actionError?: string | null
+  onRetry?: () => void
+  onMarkSeen?: (a: Alert) => void
+  onClose?: (a: Alert) => void
+  exportSlot?: ReactNode
+}
+
+/** Ogohlantirishlar ro'yxati: tur belgisi, jiddiylik — chap chiziq rangi. Ma'lumot props orqali. */
+export function AlertsView({
+  rows,
+  total,
+  page,
+  onPage,
+  form,
+  onFilter,
+  objects,
+  canManage,
+  busyId = null,
+  error,
+  actionError,
+  onRetry,
+  onMarkSeen,
+  onClose,
+  exportSlot,
+}: AlertsViewProps) {
+  const actions = (a: Alert) =>
+    canManage && a.status !== 'yopildi' ? (
+      <>
+        {a.status === 'yangi' && (
+          <Button variant="ghost" size="sm" icon={<Check {...ic} />} disabled={busyId === a.id} onClick={() => onMarkSeen?.(a)}>
+            {tp.markSeen}
+          </Button>
+        )}
+        <Button variant="ghost" size="sm" className="text-danger! hover:bg-danger-bg!" icon={<X {...ic} />} disabled={busyId === a.id} onClick={() => onClose?.(a)}>
+          {tp.close}
+        </Button>
+      </>
+    ) : undefined
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader title={tp.title} icon={<TriangleAlert strokeWidth={1.75} />} actions={exportSlot} />
+      <FilterBar
+        label={t.ombor.filters}
+        onClear={() => onFilter(EMPTY)}
+        filters={[
+          {
+            kind: 'select',
+            key: 'status',
+            label: tp.filterStatus,
+            value: form.status,
+            emptyValue: EMPTY.status,
+            onChange: (v) => onFilter({ status: v as StatusFilter }),
+            options: [
+              { value: 'open', label: tp.statusOpen },
+              ...ALERT_STATUSES.map((s) => ({ value: s, label: ta.statuses[s] })),
+              { value: 'all', label: tp.all },
+            ],
+          },
+          {
+            kind: 'select',
+            key: 'type',
+            label: tp.filterType,
+            value: form.type,
+            onChange: (v) => onFilter({ type: v as AlertFilterForm['type'] }),
+            options: [{ value: '', label: tp.all }, ...ALERT_TYPES.map((k) => ({ value: k, label: ta.types[k] }))],
+          },
+          {
+            kind: 'select',
+            key: 'severity',
+            label: tp.filterSeverity,
+            value: form.severity,
+            onChange: (v) => onFilter({ severity: v as AlertFilterForm['severity'] }),
+            options: [{ value: '', label: tp.all }, ...ALERT_SEVERITIES.map((k) => ({ value: k, label: ta.severities[k] }))],
+          },
+          {
+            kind: 'select',
+            key: 'object',
+            label: tp.filterObject,
+            value: form.objectId,
+            onChange: (v) => onFilter({ objectId: v }),
+            options: [{ value: '', label: tp.all }, ...objects.map((o) => ({ value: o.id, label: o.name }))],
+          },
+        ]}
+      />
+
+      {error && <RetryNotice message={error} onRetry={onRetry ?? (() => undefined)} />}
+      {actionError && <Notice>{actionError}</Notice>}
+      {!rows && !error && <Spinner />}
+      {rows && rows.length === 0 && <EmptyState icon={<ShieldCheck strokeWidth={1.5} />} title={tp.empty} text={tp.emptyHint} />}
+
+      {rows && rows.length > 0 && (
+        <>
+          <ul className="flex flex-col gap-2" aria-label={tp.title}>
+            {rows.map((a) => (
+              <EntryRow
+                key={a.id}
+                as="li"
+                testId="alert-row"
+                kind={a.status === 'yopildi' ? 'neutral' : SEVERITY_ENTRY_KIND[a.severity]}
+                icon={<AlertTypeIcon type={a.type} />}
+                title={ta.types[a.type]}
+                badge={
+                  <>
+                    <Badge tone={SEVERITY_TONE[a.severity]}>{ta.severities[a.severity]}</Badge>
+                    <Badge tone={STATUS_TONE[a.status]}>{ta.statuses[a.status]}</Badge>
+                  </>
+                }
+                meta={
+                  <>
+                    <span className="text-sm text-ink">{alertDetailText(a)}</span>
+                    {(a.object_name || a.material_name) && (
+                      <span className="flex flex-wrap gap-x-3 gap-y-0.5">
+                        {a.object_name && (
+                          <span className="inline-flex items-center gap-1">
+                            <Building2 aria-hidden className="size-3.5" strokeWidth={1.75} />
+                            {a.object_name}
+                          </span>
+                        )}
+                        {a.material_name && (
+                          <span className="inline-flex items-center gap-1">
+                            <Package aria-hidden className="size-3.5" strokeWidth={1.75} />
+                            {a.material_name}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {a.status === 'yopildi' && isAutoClosed(a) && (
+                      <span>
+                        {tp.autoClosed}
+                        {autoCloseReason(a) ? `: ${autoCloseReason(a)}` : ''}
+                      </span>
+                    )}
+                    {a.close_note && (
+                      <span>
+                        {tp.closeNoteLabel}: {a.close_note}
+                      </span>
+                    )}
+                  </>
+                }
+                trailing={<span className="tabular text-xs whitespace-nowrap text-muted">{formatDateTime(a.created_at)}</span>}
+                actions={actions(a)}
+              />
+            ))}
+          </ul>
+          <Pager page={page} pageSize={ALERTS_PAGE_SIZE} total={total} onPage={onPage} />
+        </>
+      )}
+    </div>
+  )
+}
+
 /** Ogohlantirishlar: admin — "Ko'rildi" / "Yopish"; direktor, buxgalter — faqat ko'rish. */
 export function AlertsPage() {
   const { profile: me } = useAuth()
   const [objects, setObjects] = useState<ObjectRow[]>([])
   const [params] = useSearchParams()
   // Bosh sahifa havolalari: ?status=open&severity=jiddiy&object=...
-  const [form, setForm] = useState<FilterForm>(() => ({
+  const [form, setForm] = useState<AlertFilterForm>(() => ({
     status: paramOneOf<StatusFilter>(params, 'status', ['open', 'all', ...ALERT_STATUSES], EMPTY.status) || EMPTY.status,
     type: paramOneOf(params, 'type', ALERT_TYPES, ''),
     severity: paramOneOf(params, 'severity', ALERT_SEVERITIES, ''),
@@ -106,7 +270,7 @@ export function AlertsPage() {
     }
   }, [form, page, reloadKey])
 
-  const update = (patch: Partial<FilterForm>) => {
+  const update = (patch: Partial<AlertFilterForm>) => {
     setForm((f) => ({ ...f, ...patch }))
     setPage(0)
   }
@@ -134,176 +298,64 @@ export function AlertsPage() {
 
   if (!me) return null
 
-  const actions = (a: Alert) =>
-    canManage && a.status !== 'yopildi' ? (
-      <div className="flex flex-wrap gap-2">
-        {a.status === 'yangi' && (
-          <Button variant="secondary" disabled={busyId === a.id} onClick={() => void act(a.id, markAlertSeen)}>
-            {tp.markSeen}
-          </Button>
-        )}
-        <Button
-          variant="danger"
-          disabled={busyId === a.id}
-          onClick={() => {
-            setActionError(null)
-            setCloseNote('')
-            setClosing(a)
-          }}
-        >
-          {tp.close}
-        </Button>
-      </div>
-    ) : null
-
-  const statusCell = (a: Alert) => (
-    <span className="flex flex-col items-start gap-1">
-      <StatusBadge tone={STATUS_TONE[a.status]}>{ta.statuses[a.status]}</StatusBadge>
-      {a.status === 'yopildi' && isAutoClosed(a) && (
-        <span className="text-xs text-slate-500">
-          {tp.autoClosed}
-          {autoCloseReason(a) ? `: ${autoCloseReason(a)}` : ''}
-        </span>
-      )}
-      {a.close_note && (
-        <span className="text-xs text-slate-600">
-          {tp.closeNoteLabel}: {a.close_note}
-        </span>
-      )}
-    </span>
-  )
-
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h1 className="text-2xl font-bold text-brand-dark">{tp.title}</h1>
-        <ExportButton
-          run={async (signal) => {
-            const rows = await listAllAlerts(toFilters(form), signal)
-            await exportWorkbook({
-              fileName: exportFileName(t.excel.sections.alerts),
-              sheets: [alertsSheet(rows)],
-              signal,
-            })
-          }}
-        />
-      </div>
-
-      <form
-        aria-label={t.ombor.filters}
-        onSubmit={(e) => e.preventDefault()}
-        className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4"
-      >
-        <SelectField label={tp.filterStatus} value={form.status} onChange={(v) => update({ status: v as StatusFilter })}>
-          <option value="open">{tp.statusOpen}</option>
-          {ALERT_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {ta.statuses[s]}
-            </option>
-          ))}
-          <option value="all">{tp.all}</option>
-        </SelectField>
-        <SelectField label={tp.filterType} value={form.type} onChange={(v) => update({ type: v as FilterForm['type'] })}>
-          <option value="">{tp.all}</option>
-          {ALERT_TYPES.map((k) => (
-            <option key={k} value={k}>
-              {ta.types[k]}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField
-          label={tp.filterSeverity}
-          value={form.severity}
-          onChange={(v) => update({ severity: v as FilterForm['severity'] })}
-        >
-          <option value="">{tp.all}</option>
-          {ALERT_SEVERITIES.map((k) => (
-            <option key={k} value={k}>
-              {ta.severities[k]}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField label={tp.filterObject} value={form.objectId} onChange={(v) => update({ objectId: v })}>
-          <option value="">{tp.all}</option>
-          {objects.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </SelectField>
-      </form>
-
-      {error && <RetryNotice message={error} onRetry={reload} />}
-      {actionError && !closing && <Notice>{actionError}</Notice>}
-      {!data && !error && <Spinner />}
-      {data && data.rows.length === 0 && <p className="text-slate-600">{tp.empty}</p>}
-
-      {data && data.rows.length > 0 && (
-        <>
-          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white md:block">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 font-medium">{tp.colDate}</th>
-                  <th className="px-3 py-2 font-medium">{tp.colType}</th>
-                  <th className="px-3 py-2 font-medium">{tp.colSeverity}</th>
-                  <th className="px-3 py-2 font-medium">{tp.colObject}</th>
-                  <th className="px-3 py-2 font-medium">{tp.colMaterial}</th>
-                  <th className="px-3 py-2 font-medium">{tp.colDetails}</th>
-                  <th className="px-3 py-2 font-medium">{tp.colStatus}</th>
-                  {canManage && <th className="px-3 py-2 font-medium">{tp.colActions}</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((a) => (
-                  <tr key={a.id} data-testid="alert-row" className="border-t border-slate-100 align-top">
-                    <td className="whitespace-nowrap px-3 py-2">{formatDateTime(a.created_at)}</td>
-                    <td className="px-3 py-2 font-medium">{ta.types[a.type]}</td>
-                    <td className="px-3 py-2">
-                      <StatusBadge tone={SEVERITY_TONE[a.severity]}>{ta.severities[a.severity]}</StatusBadge>
-                    </td>
-                    <td className="px-3 py-2">{a.object_name ?? '—'}</td>
-                    <td className="px-3 py-2">{a.material_name ?? '—'}</td>
-                    <td className="px-3 py-2 text-slate-700">{alertDetailText(a)}</td>
-                    <td className="px-3 py-2">{statusCell(a)}</td>
-                    {canManage && <td className="px-3 py-2">{actions(a)}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <ul className="flex flex-col gap-3 md:hidden" aria-label={tp.title}>
-            {data.rows.map((a) => (
-              <li key={a.id} className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold text-slate-900">{ta.types[a.type]}</p>
-                  <StatusBadge tone={SEVERITY_TONE[a.severity]}>{ta.severities[a.severity]}</StatusBadge>
-                </div>
-                <p className="text-sm text-slate-600">
-                  {a.object_name ?? '—'} · {a.material_name ?? '—'}
-                </p>
-                <p className="text-sm text-slate-800">{alertDetailText(a)}</p>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-slate-500">{formatDateTime(a.created_at)}</span>
-                  {statusCell(a)}
-                </div>
-                {actions(a)}
-              </li>
-            ))}
-          </ul>
-
-          <Pager page={page} pageSize={ALERTS_PAGE_SIZE} total={data.total} onPage={setPage} />
-        </>
-      )}
+    <>
+      <AlertsView
+        rows={data?.rows ?? null}
+        total={data?.total ?? 0}
+        page={page}
+        onPage={setPage}
+        form={form}
+        onFilter={update}
+        objects={objects}
+        canManage={canManage}
+        busyId={busyId}
+        error={error}
+        actionError={closing ? null : actionError}
+        onRetry={reload}
+        onMarkSeen={(a) => void act(a.id, markAlertSeen)}
+        onClose={(a) => {
+          setActionError(null)
+          setCloseNote('')
+          setClosing(a)
+        }}
+        exportSlot={
+          <ExportButton
+            run={async (signal) => {
+              const rows = await listAllAlerts(toFilters(form), signal)
+              await exportWorkbook({
+                fileName: exportFileName(t.excel.sections.alerts),
+                sheets: [alertsSheet(rows)],
+                signal,
+              })
+            }}
+          />
+        }
+      />
       {closing && (
-        <Modal title={tp.closeTitle} onClose={() => setClosing(null)}>
+        <Modal
+          title={tp.closeTitle}
+          onClose={() => setClosing(null)}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setClosing(null)}>
+                {t.common.cancel}
+              </Button>
+              <Button variant="danger" loading={busyId === closing.id} onClick={() => void confirmClose()}>
+                {tp.close}
+              </Button>
+            </>
+          }
+        >
           <div className="flex flex-col gap-4">
-            <p className="text-sm text-slate-700">
-              {ta.types[closing.type]} · {alertDetailText(closing)}
-            </p>
+            <EntryRow
+              kind={SEVERITY_ENTRY_KIND[closing.severity]}
+              icon={<AlertTypeIcon type={closing.type} />}
+              title={ta.types[closing.type]}
+              meta={<span className="text-sm text-ink">{alertDetailText(closing)}</span>}
+            />
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="alert-close-note" className="text-sm font-medium text-slate-700">
+              <label htmlFor="alert-close-note" className="text-sm font-medium text-ink">
                 {tp.closeNote}
               </label>
               <textarea
@@ -312,22 +364,14 @@ export function AlertsPage() {
                 maxLength={CLOSE_NOTE_MAX}
                 value={closeNote}
                 onChange={(e) => setCloseNote(e.target.value)}
-                className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                className="min-h-11 rounded-xl border border-line bg-paper px-3 py-2 text-base outline-none focus:border-brand focus:ring-3 focus:ring-brand/15"
               />
-              <p className="text-xs text-slate-500">{tp.closeNoteHint}</p>
+              <p className="text-xs text-muted">{tp.closeNoteHint}</p>
             </div>
             {actionError && <Notice>{actionError}</Notice>}
-            <div className="flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setClosing(null)}>
-                {t.common.cancel}
-              </Button>
-              <Button variant="danger" disabled={busyId === closing.id} onClick={() => void confirmClose()}>
-                {tp.close}
-              </Button>
-            </div>
           </div>
         </Modal>
       )}
-    </div>
+    </>
   )
 }

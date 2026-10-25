@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '@/auth/authContext'
 import { ProfileErrorScreen } from '@/auth/screens'
-import { Button, FullPageSpinner, Notice, Spinner } from '@/components/ui'
+import { Clock, LoaderCircle, Phone, Send, ShieldX, WifiOff } from 'lucide-react'
+import { BrandMark, Button, cx, FullPageSpinner, Notice } from '@/components/ui'
 import { clearLocalSession, telegramSignIn, type TelegramSignInStatus } from '@/data/authRepo'
 import { t } from '@/i18n'
 import { botLink, getInitData, haptic, isInsideTelegram, requestContact, stripLaunchParamsFromUrl } from './telegram'
@@ -43,14 +44,34 @@ async function signInOnce(refreshSession: () => Promise<void>): Promise<Telegram
   return status
 }
 
-function Screen({ children }: { children: ReactNode }) {
+/** Kirish holati ekrani: tepada brend, markazda belgi (ice/xato doira), sarlavha, matn va amallar. */
+function Screen({ children, icon, tone = 'default' }: { children: ReactNode; icon?: ReactNode; tone?: 'default' | 'danger' }) {
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-5 bg-white p-6 text-center">
-      <p className="text-lg font-bold text-brand-dark">{t.app.name}</p>
-      {children}
+    <div className="mx-auto flex min-h-screen max-w-md flex-col bg-canvas px-5 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div className="flex items-center gap-2.5">
+        <BrandMark className="size-9" />
+        <span className="text-base font-semibold text-ink">{t.app.name}</span>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-8 text-center [&>button]:w-full [&>a]:w-full">
+        {icon && (
+          <span
+            aria-hidden
+            className={cx(
+              'inline-flex size-16 items-center justify-center rounded-full [&>svg]:size-8',
+              tone === 'danger' ? 'bg-danger-bg text-danger' : 'bg-ice text-brand',
+            )}
+          >
+            {icon}
+          </span>
+        )}
+        {children}
+      </div>
     </div>
   )
 }
+
+const title = 'text-2xl leading-tight font-semibold text-ink'
+const text = 'max-w-xs text-base text-muted'
 
 /**
  * Mini App kirishi. Har ochilganda xom initData serverda (tg-auth) tekshiriladi —
@@ -117,12 +138,12 @@ export function TgAuthGate({ children, pollIntervalMs = 2000, pollTimeoutMs = 30
   switch (state) {
     case 'outside':
       return (
-        <Screen>
-          <h1 className="text-xl font-semibold">{t.tg.gate.outsideTitle}</h1>
-          <p className="text-slate-600">{t.tg.gate.outsideText}</p>
+        <Screen icon={<Send strokeWidth={1.5} />}>
+          <h1 className={title}>{t.tg.gate.outsideTitle}</h1>
+          <p className={text}>{t.tg.gate.outsideText}</p>
           <a
             href={botLink()}
-            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-brand px-5 font-medium text-white"
+            className="mt-2 inline-flex min-h-13 items-center justify-center gap-2 rounded-xl bg-brand px-5 text-base font-semibold text-white"
           >
             {t.tg.gate.openBot}
           </a>
@@ -133,47 +154,57 @@ export function TgAuthGate({ children, pollIntervalMs = 2000, pollTimeoutMs = 30
     case 'need_contact':
     case 'declined':
       return (
-        <Screen>
-          <h1 className="text-xl font-semibold">{t.tg.gate.contactTitle}</h1>
-          <p className="text-slate-600">{t.tg.gate.contactText}</p>
-          {state === 'declined' && <Notice tone="warn">{t.tg.gate.declined}</Notice>}
-          <Button onClick={() => void shareContact()}>{t.tg.gate.shareContact}</Button>
+        <Screen icon={<Phone strokeWidth={1.5} />}>
+          <h1 className={title}>{t.tg.gate.contactTitle}</h1>
+          <p className={text}>{t.tg.gate.contactText}</p>
+          {state === 'declined' && <Notice tone="warn" className="w-full text-left">{t.tg.gate.declined}</Notice>}
+          <Button size="lg" className="mt-2" onClick={() => void shareContact()}>
+            {t.tg.gate.shareContact}
+          </Button>
         </Screen>
       )
     case 'waiting':
       return (
-        <Screen>
-          <Spinner label={t.tg.gate.waiting} />
+        <Screen icon={<LoaderCircle className="animate-spin" strokeWidth={1.5} />}>
+          <p role="status" className={text}>
+            {t.tg.gate.waiting}
+          </p>
         </Screen>
       )
     case 'timeout':
       return (
-        <Screen>
-          <h1 className="text-xl font-semibold">{t.tg.gate.timeoutTitle}</h1>
-          <Notice tone="warn">{t.tg.gate.timeoutText}</Notice>
-          <Button onClick={() => setState('waiting')}>{t.common.retry}</Button>
-          <Button variant="secondary" onClick={() => void shareContact()}>
+        <Screen icon={<Clock strokeWidth={1.5} />}>
+          <h1 className={title}>{t.tg.gate.timeoutTitle}</h1>
+          <Notice tone="warn" className="w-full text-left">{t.tg.gate.timeoutText}</Notice>
+          <Button size="lg" className="mt-2" onClick={() => setState('waiting')}>
+            {t.common.retry}
+          </Button>
+          <Button size="lg" variant="secondary" onClick={() => void shareContact()}>
             {t.tg.gate.shareContact}
           </Button>
         </Screen>
       )
     case 'inactive':
       return (
-        <Screen>
-          <Notice>{t.tg.gate.inactive}</Notice>
+        <Screen icon={<ShieldX strokeWidth={1.5} />} tone="danger">
+          <p role="alert" className={text}>{t.tg.gate.inactive}</p>
         </Screen>
       )
     case 'invalid':
       return (
-        <Screen>
-          <Notice>{t.tg.gate.invalid}</Notice>
+        <Screen icon={<ShieldX strokeWidth={1.5} />} tone="danger">
+          <p role="alert" className={text}>{t.tg.gate.invalid}</p>
         </Screen>
       )
     case 'error':
       return (
-        <Screen>
-          <Notice>{t.tg.gate.error}</Notice>
-          <Button onClick={() => setState('checking')}>{t.common.retry}</Button>
+        <Screen icon={<WifiOff strokeWidth={1.5} />} tone="danger">
+          <p role="alert" className={text}>
+            {t.tg.gate.error}
+          </p>
+          <Button size="lg" className="mt-2" onClick={() => setState('checking')}>
+            {t.common.retry}
+          </Button>
         </Screen>
       )
     case 'ok':
@@ -182,8 +213,8 @@ export function TgAuthGate({ children, pollIntervalMs = 2000, pollTimeoutMs = 30
       // Sessiya bor, lekin profil topilmadi (nofaol / firma nofaol)
       if (notice === 'noAccess') {
         return (
-          <Screen>
-            <Notice>{t.tg.gate.inactive}</Notice>
+          <Screen icon={<ShieldX strokeWidth={1.5} />} tone="danger">
+            <p role="alert" className={text}>{t.tg.gate.inactive}</p>
           </Screen>
         )
       }

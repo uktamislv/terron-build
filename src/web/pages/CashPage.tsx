@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Button, Modal, Notice, Spinner } from '@/components/ui'
+import { HandCoins, History, Plus, RotateCcw, Trash2, UserRound, Wallet } from 'lucide-react'
+import { Badge, Button, DataTable, DetailRows, DetailSheet, EmptyState, EntryRow, FilterBar, Modal, Money, Notice, PageHeader, RetryNotice, Spinner } from '@/components/ui'
 import {
   emptyBalance,
   listAllCashHistory,
@@ -22,7 +22,6 @@ import { formatDate, formatDateTime, formatSum } from '@/lib/format'
 import { ExportButton } from '../ExportButton'
 import { cashSheets } from '../exports'
 import { IssueAdvanceDialog } from '../cash/IssueAdvanceDialog'
-import { RetryNotice, SelectField } from '../fields'
 
 const tc = t.cash
 
@@ -34,12 +33,6 @@ function balanceTone(balance: string): Tone {
   return isZero(balance) ? 'zero' : 'positive'
 }
 
-const TONE_CLASS: Record<Tone, string> = {
-  negative: 'text-danger',
-  zero: 'text-slate-500',
-  positive: 'text-ok',
-}
-
 function lastActivity(b: CashBalance): string | null {
   const dates = [b.last_issued_at, b.last_spent_at].filter((x): x is string => Boolean(x))
   if (dates.length === 0) return null
@@ -49,6 +42,7 @@ function lastActivity(b: CashBalance): string | null {
 type Dialog =
   | { kind: 'issue'; initial?: { recipientId: string; amount: string; note: string | null } }
   | { kind: 'delete'; entry: CashHistoryEntry }
+  | { kind: 'detail'; entry: CashHistoryEntry }
   | null
 
 /** Podotchet: odamlar bo'yicha qo'limdagi pul, pul berish, tarix. */
@@ -173,136 +167,155 @@ export function CashPage() {
     await exportWorkbook({ fileName: exportFileName(t.excel.sections.cash), sheets: cashSheets(named, entries), signal })
   }
 
+  const balanceMoney = (balance: string, size: 'sm' | 'lg') => {
+    const tone = balanceTone(balance)
+    return (
+      <span data-tone={tone} title={tone === 'negative' ? tc.negativeHint : undefined}>
+        <Money value={balance} size={size} tone={tone === 'positive' ? 'ok' : tone === 'zero' ? 'muted' : undefined} />
+      </span>
+    )
+  }
+
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-brand-dark">{tc.title}</h1>
-        <div className="ml-auto">
-          <ExportButton run={runExport} />
-        </div>
-        {canIssue && (
-          <Button
-            onClick={() => {
-              setDone(null)
-              setDialog({ kind: 'issue' })
-            }}
-          >
-            {tc.issue}
-          </Button>
-        )}
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={tc.title}
+        icon={<Wallet strokeWidth={1.75} />}
+        actions={
+          <>
+            <ExportButton run={runExport} />
+            {canIssue && (
+              <Button
+                icon={<Plus aria-hidden className="size-5" strokeWidth={1.75} />}
+                onClick={() => {
+                  setDone(null)
+                  setDialog({ kind: 'issue' })
+                }}
+              >
+                {tc.issue}
+              </Button>
+            )}
+          </>
+        }
+      />
       {done && <Notice tone="ok">{done}</Notice>}
 
       <section className="flex flex-col gap-3" aria-label={tc.balancesTitle}>
-        <h2 className="text-lg font-semibold text-brand-dark">{tc.balancesTitle}</h2>
+        <h2 className="text-lg font-semibold text-ink md:text-xl">{tc.balancesTitle}</h2>
         {balanceError && <RetryNotice message={balanceError} onRetry={reload} />}
         {!balances && !balanceError && <Spinner />}
-        {balances && rows.length === 0 && <p className="text-slate-600">{tc.noBalances}</p>}
-        {balances && rows.length > 0 && (
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 font-medium">{tc.colPerson}</th>
-                  <th className="px-3 py-2 font-medium">{tc.colRole}</th>
-                  <th className="px-3 py-2 text-right font-medium">{tc.colIssued}</th>
-                  <th className="px-3 py-2 text-right font-medium">{tc.colSpent}</th>
-                  <th className="px-3 py-2 text-right font-medium">{tc.colBalance}</th>
-                  <th className="px-3 py-2 font-medium">{tc.colLast}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map(({ profile, balance }) => {
-                  const tone = balanceTone(balance.balance)
+        {balances && (
+          <DataTable
+            caption={tc.balancesTitle}
+            rows={rows}
+            rowKey={(r) => r.profile.id}
+            rowTestId="balance-row"
+            empty={<EmptyState icon={<Wallet strokeWidth={1.5} />} title={tc.noBalances} />}
+            columns={[
+              { key: 'person', header: tc.colPerson, cell: ({ profile }) => <span className="font-medium text-ink">{profile.full_name}</span> },
+              { key: 'role', header: tc.colRole, cell: ({ profile }) => <span className="text-muted">{t.roles[profile.role]}</span> },
+              { key: 'issued', header: tc.colIssued, align: 'right', cell: ({ balance }) => <Money value={balance.issued_total} size="sm" /> },
+              { key: 'spent', header: tc.colSpent, align: 'right', cell: ({ balance }) => <Money value={balance.spent_total} size="sm" /> },
+              { key: 'balance', header: tc.colBalance, align: 'right', cell: ({ balance }) => balanceMoney(balance.balance, 'sm') },
+              {
+                key: 'last',
+                header: tc.colLast,
+                cell: ({ balance }) => {
                   const last = lastActivity(balance)
-                  return (
-                    <tr key={profile.id} data-testid="balance-row" className="border-t border-slate-100">
-                      <td className="px-3 py-2 font-medium text-slate-900">{profile.full_name}</td>
-                      <td className="px-3 py-2 text-slate-600">{t.roles[profile.role]}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right">{formatSum(balance.issued_total)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right">{formatSum(balance.spent_total)}</td>
-                      <td
-                        data-tone={tone}
-                        title={tone === 'negative' ? tc.negativeHint : undefined}
-                        className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${TONE_CLASS[tone]}`}
-                      >
-                        {formatSum(balance.balance)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-slate-600">{last ? formatDate(last) : '—'}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                  return <span className="tabular text-muted">{last ? formatDate(last) : '—'}</span>
+                },
+              },
+            ]}
+            renderMobile={({ profile, balance }) => {
+              const last = lastActivity(balance)
+              const tone = balanceTone(balance.balance)
+              return (
+                <EntryRow
+                  kind={tone === 'negative' ? 'danger' : tone === 'positive' ? 'ok' : 'neutral'}
+                  icon={<UserRound className="size-[18px]" strokeWidth={1.75} />}
+                  title={profile.full_name}
+                  meta={
+                    <>
+                      <span>{t.roles[profile.role]}</span>
+                      <span>
+                        {tc.colIssued}: <Money value={balance.issued_total} size="sm" className="[&_span]:text-xs [&_span]:font-normal" />
+                      </span>
+                      <span>
+                        {tc.colSpent}: <Money value={balance.spent_total} size="sm" className="[&_span]:text-xs [&_span]:font-normal" />
+                      </span>
+                      {last && <span className="tabular">{formatDate(last)}</span>}
+                    </>
+                  }
+                  trailing={balanceMoney(balance.balance, 'lg')}
+                  trailingMeta={tc.colBalance}
+                />
+              )
+            }}
+          />
         )}
       </section>
 
       <section className="flex flex-col gap-3" aria-label={tc.historyTitle}>
-        <h2 className="text-lg font-semibold text-brand-dark">{tc.historyTitle}</h2>
-        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
-          <SelectField label={tc.filterPerson} value={personId} onChange={setPersonId}>
-            <option value="">{tc.all}</option>
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.full_name}
-              </option>
-            ))}
-          </SelectField>
-          {canSeeDeleted && (
-            <label className="flex min-h-11 items-center gap-2 self-end text-sm text-slate-700">
-              <input
-                type="checkbox"
-                className="size-5"
-                checked={includeDeleted}
-                onChange={(e) => setIncludeDeleted(e.target.checked)}
-              />
-              {tc.filterDeleted}
-            </label>
-          )}
-        </div>
+        <h2 className="text-lg font-semibold text-ink md:text-xl">{tc.historyTitle}</h2>
+        <FilterBar
+          label={t.ombor.filters}
+          onClear={() => {
+            setPersonId('')
+            setIncludeDeleted(false)
+          }}
+          filters={[
+            {
+              kind: 'select',
+              key: 'person',
+              label: tc.filterPerson,
+              value: personId,
+              onChange: setPersonId,
+              options: [{ value: '', label: tc.all }, ...profiles.map((p) => ({ value: p.id, label: p.full_name }))],
+            },
+            ...(canSeeDeleted
+              ? [{ kind: 'toggle' as const, key: 'deleted', label: tc.filterDeleted, checked: includeDeleted, onChange: setIncludeDeleted }]
+              : []),
+          ]}
+        />
         {historyError && <RetryNotice message={historyError} onRetry={reload} />}
         {actionError && !dialog && <Notice>{actionError}</Notice>}
         {!history && !historyError && <Spinner />}
-        {history && history.length === 0 && <p className="text-slate-600">{tc.noHistory}</p>}
+        {history && history.length === 0 && <EmptyState compact icon={<History strokeWidth={1.5} />} title={tc.noHistory} />}
         {history && history.length > 0 && (
           <ul className="flex flex-col gap-2" aria-label={tc.historyTitle}>
             {history.map((h) => (
-              <li
+              <EntryRow
                 key={`${h.kind}:${h.id}`}
-                data-testid="cash-history-row"
-                className={`flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 ${
-                  h.deletedAt ? 'opacity-60' : ''
-                }`}
-              >
-                <StatusBadge tone={h.kind === 'issued' ? 'ok' : 'info'}>{tc.kinds[h.kind]}</StatusBadge>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-slate-900">
-                    {h.profileName}{' '}
-                    <span className={h.kind === 'issued' ? 'text-ok' : 'text-slate-700'}>
-                      {h.kind === 'issued' ? '+' : '−'}
-                      {formatSum(h.amount)}
-                    </span>
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {formatDateTime(h.at)}
-                    {h.kind === 'spent' && ` · ${h.materialName ?? ''} · ${h.objectName ?? ''}`}
-                    {h.kind === 'issued' && h.createdByName && ` · ${h.createdByName}`}
-                    {h.note && ` · ${h.note}`}
-                  </p>
-                </div>
-                {h.deletedAt && <StatusBadge tone="danger">{t.movements.deleted}</StatusBadge>}
-                {h.kind === 'issued' && canIssue && !h.deletedAt && (
-                  <Button variant="danger" onClick={() => setDialog({ kind: 'delete', entry: h })}>
-                    {tc.delete}
-                  </Button>
-                )}
-                {h.kind === 'issued' && canRestore && h.deletedAt && (
-                  <Button variant="secondary" disabled={busy} onClick={() => void run(() => restoreAdvance(h.id))}>
-                    {tc.restore}
-                  </Button>
-                )}
-              </li>
+                as="li"
+                testId="cash-history-row"
+                kind={h.kind === 'issued' ? 'ok' : 'xarid'}
+                icon={h.kind === 'issued' ? <HandCoins className="size-[18px]" strokeWidth={1.75} /> : undefined}
+                deleted={Boolean(h.deletedAt)}
+                title={h.profileName}
+                badge={
+                  <>
+                    <Badge tone={h.kind === 'issued' ? 'ok' : 'info'}>{tc.kinds[h.kind]}</Badge>
+                    {h.deletedAt && <Badge tone="danger">{t.movements.deleted}</Badge>}
+                  </>
+                }
+                meta={
+                  <>
+                    <span className="tabular">{formatDateTime(h.at)}</span>
+                    {h.kind === 'spent' && (h.materialName || h.objectName) && (
+                      <span>{[h.materialName, h.objectName].filter(Boolean).join(', ')}</span>
+                    )}
+                    {h.kind === 'issued' && h.createdByName && <span>{h.createdByName}</span>}
+                    {h.note && <span className="text-ink/80">{h.note}</span>}
+                  </>
+                }
+                trailing={
+                  <span className={`tabular inline-flex items-baseline ${h.kind === 'issued' ? 'text-ok' : 'text-ink'}`}>
+                    <span className="text-base font-semibold">{h.kind === 'issued' ? '+' : '−'}</span>
+                    <Money value={h.amount} tone={h.kind === 'issued' ? 'ok' : undefined} />
+                  </span>
+                }
+                onClick={() => setDialog({ kind: 'detail', entry: h })}
+              />
             ))}
           </ul>
         )}
@@ -322,13 +335,62 @@ export function CashPage() {
           }}
         />
       )}
-      {dialog?.kind === 'delete' && (
-        <Modal title={tc.delete} onClose={closeDialog}>
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-slate-700">{tc.deleteConfirm}</p>
-            <p className="text-xs text-slate-500">{tc.amountLockedHint}</p>
+      {dialog?.kind === 'detail' && (
+        <DetailSheet
+          title={dialog.entry.profileName ?? t.ui.details}
+          onClose={closeDialog}
+          footer={
+            dialog.entry.kind === 'issued' &&
+            (canIssue && !dialog.entry.deletedAt ? (
+              <Button
+                variant="danger"
+                className="flex-1 sm:flex-none"
+                icon={<Trash2 aria-hidden className="size-5" strokeWidth={1.75} />}
+                onClick={() => setDialog({ kind: 'delete', entry: dialog.entry })}
+              >
+                {tc.delete}
+              </Button>
+            ) : canRestore && dialog.entry.deletedAt ? (
+              <Button
+                variant="secondary"
+                className="flex-1 sm:flex-none"
+                icon={<RotateCcw aria-hidden className="size-5" strokeWidth={1.75} />}
+                loading={busy}
+                onClick={() => {
+                  const id = dialog.entry.id
+                  void run(() => restoreAdvance(id))
+                }}
+              >
+                {tc.restore}
+              </Button>
+            ) : null)
+          }
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge tone={dialog.entry.kind === 'issued' ? 'ok' : 'info'}>{tc.kinds[dialog.entry.kind]}</Badge>
+              {dialog.entry.deletedAt && <Badge tone="danger">{t.movements.deleted}</Badge>}
+            </div>
+            <Money value={dialog.entry.amount} size="hero" tone={dialog.entry.kind === 'issued' ? 'ok' : undefined} />
+            <DetailRows
+              items={[
+                { label: t.ombor.colDate, value: <span className="tabular">{formatDateTime(dialog.entry.at)}</span> },
+                dialog.entry.kind === 'spent' && dialog.entry.materialName ? { label: t.ombor.colMaterial, value: dialog.entry.materialName } : null,
+                dialog.entry.kind === 'spent' && dialog.entry.objectName ? { label: t.ombor.colObject, value: dialog.entry.objectName } : null,
+                dialog.entry.kind === 'issued' && dialog.entry.createdByName ? { label: t.ombor.colUser, value: dialog.entry.createdByName } : null,
+                dialog.entry.note ? { label: t.ombor.colNote, value: dialog.entry.note } : null,
+              ]}
+            />
             {actionError && <Notice>{actionError}</Notice>}
-            <div className="flex flex-wrap justify-end gap-2">
+          </div>
+        </DetailSheet>
+      )}
+      {dialog?.kind === 'delete' && (
+        <Modal
+          title={tc.delete}
+          onClose={closeDialog}
+          footer={
+            <>
               <Button variant="secondary" onClick={closeDialog}>
                 {t.common.cancel}
               </Button>
@@ -338,7 +400,13 @@ export function CashPage() {
               <Button disabled={busy} onClick={() => void deleteAndReissue(dialog.entry)}>
                 {tc.deleteAndReissue}
               </Button>
-            </div>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-muted">{tc.deleteConfirm}</p>
+            <p className="text-xs text-muted">{tc.amountLockedHint}</p>
+            {actionError && <Notice>{actionError}</Notice>}
           </div>
         </Modal>
       )}

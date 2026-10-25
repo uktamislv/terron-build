@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Plus } from 'lucide-react'
 import { Button, Notice, TextField } from '@/components/ui'
 import { isBaseUnit } from '@/data/materialsRepo'
 import { addMaterialUnit, softDeleteMaterialUnit, updateMaterialUnit } from '@/data/materialUnitsRepo'
@@ -83,9 +84,9 @@ function UnitForm({
       noValidate
       onSubmit={onSubmit}
       aria-label={unit ? tu.editTitle : tu.addTitle}
-      className="flex flex-col gap-3 rounded-xl border border-brand/30 bg-brand-light/40 p-3"
+      className="flex flex-col gap-3 rounded-xl border border-brand/30 bg-ice/40 p-3"
     >
-      <p className="text-sm font-semibold text-brand-dark">{unit ? tu.editTitle : tu.addTitle}</p>
+      <p className="text-sm font-semibold text-navy">{unit ? tu.editTitle : tu.addTitle}</p>
       {saveError && (
         <Notice>
           <span className="block">{saveError.text}</span>
@@ -120,7 +121,7 @@ function UnitForm({
         onChange={(e) => setVariant(e.target.value)}
       />
       {preview && (
-        <p role="status" className="rounded-lg bg-white px-3 py-2 text-sm text-brand-dark">
+        <p role="status" className="rounded-lg bg-paper px-3 py-2 text-sm text-navy">
           {tu.preview}: <span className="font-semibold">{preview}</span>
         </p>
       )}
@@ -174,9 +175,9 @@ export function UnitsSection({
   return (
     <section aria-label={tu.title} className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="font-semibold text-slate-900">{tu.title}</h3>
+        <h3 className="text-base font-semibold text-ink">{tu.title}</h3>
         {canManage && editing?.kind !== 'add' && (
-          <Button variant="ghost" onClick={() => setEditing({ kind: 'add' })}>
+          <Button variant="ghost" icon={<Plus aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => setEditing({ kind: 'add' })}>
             {tu.add}
           </Button>
         )}
@@ -204,25 +205,25 @@ export function UnitsSection({
               key={u.id}
               data-testid={`unit-${u.id}`}
               className={`flex flex-col gap-2 rounded-xl border px-3 py-2 sm:flex-row sm:items-center sm:justify-between ${
-                base ? 'border-brand/30 bg-brand-light/50' : 'border-slate-200'
+                base ? 'border-brand/30 bg-ice/50' : 'border-line'
               }`}
             >
               <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-2 font-medium text-slate-900">
+                <p className="flex flex-wrap items-center gap-2 font-medium text-ink">
                   {unitLabel(u)}
                   {base && (
-                    <span title={tu.baseLocked} className="rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-white">
+                    <span title={tu.baseLocked} className="rounded-lg bg-brand px-2 py-0.5 text-xs font-semibold text-white">
                       {tu.base}
                     </span>
                   )}
                 </p>
-                <p className="text-sm text-slate-600">{conversionHint(toUnitDef(u), material.base_unit)}</p>
+                <p className="text-sm text-muted">{conversionHint(toUnitDef(u), material.base_unit)}</p>
               </div>
               {canManage && !base && (
                 <div className="flex flex-wrap gap-2">
                   {confirmId === u.id ? (
                     <>
-                      <span className="self-center text-sm text-slate-700">{tu.deleteConfirm}</span>
+                      <span className="self-center text-sm text-muted">{tu.deleteConfirm}</span>
                       <Button variant="danger" disabled={busy} onClick={() => void remove(u.id)}>
                         {t.common.yes}
                       </Button>
@@ -246,7 +247,7 @@ export function UnitsSection({
           )
         })}
       </ul>
-      {material.units.length <= 1 && <p className="text-sm text-slate-500">{tu.empty}</p>}
+      {material.units.length <= 1 && <p className="text-sm text-muted">{tu.empty}</p>}
     </section>
   )
 }

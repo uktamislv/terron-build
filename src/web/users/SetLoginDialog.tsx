@@ -18,9 +18,9 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false)
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <span className="text-xs font-medium text-muted">{label}</span>
       <div className="flex items-center gap-2">
-        <code className="flex min-h-11 flex-1 items-center break-all rounded-xl bg-slate-100 px-3 font-mono text-sm">
+        <code className="flex min-h-11 flex-1 items-center break-all rounded-xl bg-canvas px-3 font-mono text-sm">
           {value}
         </code>
         <Button
@@ -84,7 +84,7 @@ export function SetLoginDialog({ profile, onClose, onSaved }: Props) {
   return (
     <Modal title={`${t.login.title} — ${profile.full_name}`} onClose={onClose}>
       <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4">
-        <p className="text-sm text-slate-600">{t.login.intro}</p>
+        <p className="text-sm text-muted">{t.login.intro}</p>
         {saveError && <Notice>{saveError}</Notice>}
         <TextField
           label={t.login.email}

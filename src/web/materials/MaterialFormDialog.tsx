@@ -68,7 +68,7 @@ export function MaterialFormDialog({
 
   const chip = (selected: boolean) =>
     `flex min-h-11 items-center justify-center rounded-xl border px-3 text-sm font-medium ${
-      selected ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'
+      selected ? 'border-brand bg-brand text-white' : 'border-line bg-paper text-ink hover:bg-canvas'
     }`
 
   return (
@@ -82,7 +82,7 @@ export function MaterialFormDialog({
           error={errors.name === 'missing' ? t.materials.errName : errors.name === 'taken' ? t.materials.errNameTaken : null}
         />
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1.5 text-sm font-medium text-slate-700">{t.materials.baseUnit}</legend>
+          <legend className="mb-1.5 text-sm font-medium text-muted">{t.materials.baseUnit}</legend>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
             {QUICK_BASE_UNITS.map((u) => (
               <button
@@ -117,7 +117,7 @@ export function MaterialFormDialog({
               onChange={(e) => setBaseUnit(e.target.value)}
             />
           )}
-          <p className={`text-xs ${errors.baseUnit ? 'text-danger' : 'text-slate-500'}`}>
+          <p className={`text-xs ${errors.baseUnit ? 'text-danger' : 'text-muted'}`}>
             {errors.baseUnit ? t.materials.errBaseUnit : t.materials.baseUnitHint}
           </p>
         </fieldset>

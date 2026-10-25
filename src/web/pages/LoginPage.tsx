@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
-import { Button, FullPageSpinner, Notice, TextField } from '@/components/ui'
+import { Eye, EyeOff } from 'lucide-react'
+import { BrandMark, Button, FullPageSpinner, Notice, TextField } from '@/components/ui'
 import { signInWithPassword, type SignInError } from '@/data/authRepo'
 import { t } from '@/i18n'
 
@@ -42,18 +43,17 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <p className="text-2xl font-bold text-brand-dark">{t.app.name}</p>
-          <p className="mt-1 text-sm text-slate-600">{t.app.tagline}</p>
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+      <div className="w-full max-w-[400px]">
+        <div className="mb-6 flex flex-col items-center gap-3 text-center">
+          <BrandMark className="size-14" />
+          <div>
+            <p className="text-2xl font-semibold tracking-tight text-ink">{t.app.name}</p>
+            <p className="mt-1 text-sm text-muted">{t.app.tagline}</p>
+          </div>
         </div>
-        <form
-          noValidate
-          onSubmit={onSubmit}
-          className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-        >
-          <h1 className="text-xl font-semibold text-brand-dark">{t.auth.title}</h1>
+        <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4 rounded-2xl border border-line bg-paper p-6 sm:p-8">
+          <h1 className="text-xl font-semibold text-ink">{t.auth.title}</h1>
 
           {!configured && <Notice tone="warn">{t.auth.notConfigured}</Notice>}
           {notice === 'noAccess' && <Notice>{t.auth.noAccess}</Notice>}
@@ -80,17 +80,19 @@ export function LoginPage() {
             />
             <button
               type="button"
-              className="self-start text-sm font-medium text-brand min-h-11"
+              aria-pressed={showPassword}
+              className="inline-flex min-h-11 items-center gap-2 self-start rounded-lg px-1 text-sm font-semibold text-brand hover:underline"
               onClick={() => setShowPassword((v) => !v)}
             >
+              {showPassword ? <EyeOff aria-hidden className="size-4" strokeWidth={1.75} /> : <Eye aria-hidden className="size-4" strokeWidth={1.75} />}
               {showPassword ? t.auth.hidePassword : t.auth.showPassword}
             </button>
           </div>
 
-          <Button type="submit" disabled={!configured || submitting} className="w-full">
+          <Button type="submit" size="lg" disabled={!configured} loading={submitting} className="w-full">
             {submitting ? t.auth.submitting : t.auth.submit}
           </Button>
-          <p className="text-center text-xs text-slate-500">{t.auth.forgot}</p>
+          <p className="text-center text-xs text-muted">{t.auth.forgot}</p>
         </form>
       </div>
     </div>

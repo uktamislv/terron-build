@@ -1,7 +1,9 @@
 // Mini App direktor ekrani: obyektlar bo'yicha smeta ishlatilishi — sof funksiyalar.
 import type { NormOverviewRow } from '@/data/reportsRepo'
+import type { Movement } from '@/data/types'
 import { add, cmp, div, type Dec } from '@/domain/decimal'
 import { usagePct } from '@/domain/norms'
+import { formatDate } from '@/lib/format'
 
 export interface ObjectUsage {
   objectId: string
@@ -46,4 +48,10 @@ export function objectUsage(rows: NormOverviewRow[]): ObjectUsage[] {
       }
     })
     .sort((a, b) => b.overCount - a.overCount || cmp(b.avgPct ?? '-1', a.avgPct ?? '-1') || a.name.localeCompare(b.name))
+}
+
+/** Toshkent bo'yicha bugungi yozuvlar. */
+export function todayOnly(rows: Movement[], now: Date = new Date()): Movement[] {
+  const today = formatDate(now)
+  return rows.filter((m) => formatDate(m.created_at) === today)
 }

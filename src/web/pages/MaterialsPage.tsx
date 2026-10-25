@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Layers, Package, Percent, Plus, Ruler, SearchX } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Button, Notice, Spinner, TextField } from '@/components/ui'
+import { Badge, Button, EmptyState, FilterBar, PageHeader, RetryNotice, SegmentedControl, SkeletonRows } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
 import type { Material } from '@/data/types'
 import { can } from '@/domain/roles'
@@ -24,7 +24,6 @@ type Dialog = { kind: 'create' } | { kind: 'view'; id: string } | { kind: 'edit'
 
 export function MaterialsPage() {
   const { profile: me } = useAuth()
-  const categoryId = useId()
   const [materials, setMaterials] = useState<Material[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
@@ -63,91 +62,102 @@ export function MaterialsPage() {
   const current = dialog && dialog.kind !== 'create' ? materials?.find((m) => m.id === dialog.id) : undefined
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-brand-dark">{tm.title}</h1>
-        {canManage && <Button onClick={() => setDialog({ kind: 'create' })}>{tm.add}</Button>}
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={tm.title}
+        icon={<Package strokeWidth={1.75} />}
+        actions={
+          canManage && (
+            <Button icon={<Plus aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => setDialog({ kind: 'create' })}>
+              {tm.add}
+            </Button>
+          )
+        }
+      />
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:flex-row md:items-end">
-        <TextField
-          className="flex-1"
-          type="search"
-          label={tm.search}
-          placeholder={tm.searchPlaceholder}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+      <FilterBar
+        filters={[
+          { kind: 'search', key: 'q', label: tm.search, placeholder: tm.searchPlaceholder, value: query, onChange: setQuery },
+          {
+            kind: 'select',
+            key: 'category',
+            label: tm.category,
+            value: category,
+            onChange: setCategory,
+            options: [
+              { value: '', label: tm.allCategories },
+              ...categories.map((c) => ({ value: c, label: c })),
+              { value: NO_CATEGORY, label: tm.noCategory },
+            ],
+          },
+        ]}
+        onClear={() => setCategory('')}
+        extra={
+          <SegmentedControl
+            label={tm.statusFilter}
+            value={active}
+            onChange={setActive}
+            className="min-w-64 shrink-0"
+            options={ACTIVE_FILTERS.map((f) => ({ value: f, label: tm.filters[f] }))}
+          />
+        }
+      />
+
+      {error && <RetryNotice message={error} onRetry={reload} />}
+      {!materials && !error && <SkeletonRows rows={4} />}
+      {materials && materials.length === 0 && (
+        <EmptyState
+          icon={<Package strokeWidth={1.5} />}
+          title={tm.empty}
+          action={
+            canManage && (
+              <Button variant="secondary" onClick={() => setDialog({ kind: 'create' })}>
+                {tm.add}
+              </Button>
+            )
+          }
         />
-        <div className="flex flex-col gap-1.5 md:w-56">
-          <label htmlFor={categoryId} className="text-sm font-medium text-slate-700">
-            {tm.category}
-          </label>
-          <select
-            id={categoryId}
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-base"
-          >
-            <option value="">{tm.allCategories}</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-            <option value={NO_CATEGORY}>{tm.noCategory}</option>
-          </select>
-        </div>
-        <fieldset>
-          <legend className="mb-1.5 text-sm font-medium text-slate-700">{tm.statusFilter}</legend>
-          <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
-            {ACTIVE_FILTERS.map((f) => (
-              <button
-                key={f}
-                type="button"
-                aria-pressed={active === f}
-                onClick={() => setActive(f)}
-                className={`min-h-11 rounded-lg px-3 text-sm font-medium ${
-                  active === f ? 'bg-white text-brand shadow-sm' : 'text-slate-600'
-                }`}
-              >
-                {tm.filters[f]}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-      </div>
-
-      {error && (
-        <Notice>
-          {error}{' '}
-          <button type="button" className="font-semibold underline" onClick={reload}>
-            {t.common.retry}
-          </button>
-        </Notice>
       )}
-      {!materials && !error && <Spinner />}
-      {materials && materials.length === 0 && <p className="text-slate-600">{tm.empty}</p>}
-      {materials && materials.length > 0 && visible.length === 0 && <p className="text-slate-600">{tm.notFound}</p>}
+      {materials && materials.length > 0 && visible.length === 0 && <EmptyState icon={<SearchX strokeWidth={1.5} />} title={tm.notFound} />}
 
       {visible.length > 0 && (
-        <ul className="grid gap-3 md:grid-cols-2 lg:grid-cols-3" aria-label={tm.title}>
+        <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" aria-label={tm.title}>
           {visible.map((m) => (
             <li key={m.id}>
               <button
                 type="button"
                 onClick={() => setDialog({ kind: 'view', id: m.id })}
-                className="flex h-full min-h-11 w-full flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-left hover:border-brand/40 hover:bg-brand-light/30"
+                className="group flex h-full min-h-11 w-full items-start gap-3 rounded-xl border border-line bg-paper p-4 text-left transition-colors hover:border-brand/40 hover:bg-ice/30"
               >
-                <div className="flex w-full items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-900">{m.name}</p>
-                    <p className="text-sm text-slate-600">{m.category ?? tm.noCategory}</p>
-                  </div>
-                  <StatusBadge tone={m.is_active ? 'ok' : 'warn'}>{m.is_active ? tm.active : tm.inactive}</StatusBadge>
-                </div>
-                <p className="text-sm text-slate-500">
-                  {m.base_unit} · {tm.wasteShort} {formatQty(m.waste_pct, 2)}% · {m.units.length} {tm.unitsCount}
-                </p>
+                <span
+                  aria-hidden
+                  className={`inline-flex size-10 shrink-0 items-center justify-center rounded-lg ${m.is_active ? 'bg-ice text-brand' : 'bg-canvas text-muted'}`}
+                >
+                  <Package className="size-5" strokeWidth={1.75} />
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col gap-1">
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-ink">{m.name}</span>
+                      <span className="block text-sm text-muted">{m.category ?? tm.noCategory}</span>
+                    </span>
+                    <Badge tone={m.is_active ? 'ok' : 'warn'}>{m.is_active ? tm.active : tm.inactive}</Badge>
+                  </span>
+                  <span className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Ruler aria-hidden className="size-4" strokeWidth={1.75} />
+                      <span className="font-medium text-ink">{m.base_unit}</span>
+                    </span>
+                    <span className="tabular inline-flex items-center gap-1.5">
+                      <Percent aria-hidden className="size-4" strokeWidth={1.75} />
+                      {tm.wasteShort} {formatQty(m.waste_pct, 2)}%
+                    </span>
+                    <span className="tabular inline-flex items-center gap-1.5">
+                      <Layers aria-hidden className="size-4" strokeWidth={1.75} />
+                      {m.units.length} {tm.unitsCount}
+                    </span>
+                  </span>
+                </span>
               </button>
             </li>
           ))}

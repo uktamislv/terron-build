@@ -1,7 +1,23 @@
 import { useCallback, useEffect, useId, useState } from 'react'
-import { StatusBadge } from '@/components/StatusBadge'
+import { ArrowLeftRight, ArrowRight, X } from 'lucide-react'
 import { TRANSFER_TONE } from '@/components/statusTones'
-import { Button, Modal, Notice, Spinner } from '@/components/ui'
+import {
+  ActionMenu,
+  Badge,
+  Button,
+  DataTable,
+  DetailRows,
+  DetailSheet,
+  EmptyState,
+  EntryRow,
+  FilterBar,
+  Modal,
+  Notice,
+  Pager,
+  Qty,
+  RetryNotice,
+  Spinner,
+} from '@/components/ui'
 import { CANCEL_REASON_MAX, TRANSFERS_PAGE_SIZE, cancelTransfer, listTransfers } from '@/data/transfersRepo'
 import { TRANSFER_STATUSES, type ObjectRow, type Transfer, type TransferStatus } from '@/data/types'
 import { cmp, isZero, sub } from '@/domain/decimal'
@@ -9,7 +25,6 @@ import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatDateTime, formatQty } from '@/lib/format'
-import { Pager, RetryNotice, SelectField } from '../fields'
 
 const tt = t.ombor.transfers
 
@@ -17,6 +32,20 @@ const tt = t.ombor.transfers
 function diffOf(r: Transfer): string | null {
   if (r.received_qty_base === null) return null
   return sub(r.received_qty_base, r.qty_base)
+}
+
+function inputUnit(r: Transfer): string {
+  return unitLabel({ unit: r.unit_input, variant: r.unit_variant })
+}
+
+function Route({ r }: { r: Transfer }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {r.from_object_name ?? tt.otherObject}
+      <ArrowRight aria-hidden className="size-3.5 text-muted" strokeWidth={2} />
+      {r.to_object_name ?? tt.otherObject}
+    </span>
+  )
 }
 
 function CancelDialog({
@@ -36,38 +65,17 @@ function CancelDialog({
   const [reason, setReason] = useState('')
   const [missing, setMissing] = useState(false)
   return (
-    <Modal title={tt.cancelTitle} onClose={onCancel}>
-      <div className="flex flex-col gap-4">
-        <p className="text-sm text-slate-700">
-          {transfer.material_name} · {formatQty(transfer.qty_input)} {unitLabel({ unit: transfer.unit_input, variant: transfer.unit_variant })}{' '}
-          · {transfer.from_object_name ?? tt.otherObject} → {transfer.to_object_name ?? tt.otherObject}
-        </p>
-        <p className="text-sm text-slate-600">{tt.cancelText}</p>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={id} className="text-sm font-medium text-slate-700">
-            {tt.cancelReason}
-          </label>
-          <textarea
-            id={id}
-            rows={3}
-            maxLength={CANCEL_REASON_MAX}
-            value={reason}
-            onChange={(e) => {
-              setReason(e.target.value)
-              setMissing(false)
-            }}
-            className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-          {missing && <p className="text-xs text-danger">{tt.cancelReasonRequired}</p>}
-        </div>
-        {error && <Notice>{error}</Notice>}
-        <div className="flex justify-end gap-2">
+    <Modal
+      title={tt.cancelTitle}
+      onClose={onCancel}
+      footer={
+        <>
           <Button variant="secondary" onClick={onCancel}>
             {t.common.close}
           </Button>
           <Button
             variant="danger"
-            disabled={busy}
+            loading={busy}
             onClick={() => {
               if (!reason.trim()) {
                 setMissing(true)
@@ -78,7 +86,38 @@ function CancelDialog({
           >
             {tt.cancel}
           </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <EntryRow
+          kind="transfer"
+          title={transfer.material_name ?? '—'}
+          meta={<Route r={transfer} />}
+          trailing={<Qty value={transfer.qty_input} unit={inputUnit(transfer)} size="lg" />}
+        />
+        <p className="text-sm text-muted">{tt.cancelText}</p>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={id} className="text-sm font-medium text-ink">
+            {tt.cancelReason}
+          </label>
+          <textarea
+            id={id}
+            rows={3}
+            maxLength={CANCEL_REASON_MAX}
+            value={reason}
+            aria-invalid={missing || undefined}
+            onChange={(e) => {
+              setReason(e.target.value)
+              setMissing(false)
+            }}
+            className={`min-h-11 rounded-xl border bg-paper px-3 py-2 text-base outline-none focus:border-brand focus:ring-3 focus:ring-brand/15 ${
+              missing ? 'border-danger' : 'border-line'
+            }`}
+          />
+          {missing && <p className="text-xs text-danger">{tt.cancelReasonRequired}</p>}
         </div>
+        {error && <Notice>{error}</Notice>}
       </div>
     </Modal>
   )
@@ -92,6 +131,7 @@ export function TransfersTab({ objects, canManage }: { objects: ObjectRow[]; can
   const [data, setData] = useState<{ rows: Transfer[]; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState<Transfer | null>(null)
+  const [detail, setDetail] = useState<Transfer | null>(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -126,14 +166,14 @@ export function TransfersTab({ objects, canManage }: { objects: ObjectRow[]; can
     }
   }
 
-  const sent = (r: Transfer) => `${formatQty(r.qty_base)} ${r.base_unit ?? ''}`.trim()
-  const received = (r: Transfer) => (r.received_qty_base !== null ? `${formatQty(r.received_qty_base)} ${r.base_unit ?? ''}`.trim() : '—')
+  const received = (r: Transfer, size: 'sm' | 'md' = 'sm') =>
+    r.received_qty_base !== null ? <Qty value={r.received_qty_base} unit={r.base_unit} size={size} /> : <span className="text-muted">—</span>
   const diffCell = (r: Transfer) => {
     const d = diffOf(r)
-    if (d === null) return <span className="text-slate-400">—</span>
-    if (isZero(d)) return <span className="text-ok">0</span>
+    if (d === null) return <span className="text-muted">—</span>
+    if (isZero(d)) return <span className="font-semibold text-ok">0</span>
     return (
-      <span data-testid="transfer-diff" className="font-semibold text-danger">
+      <span data-testid="transfer-diff" className="tabular font-semibold whitespace-nowrap text-danger">
         {cmp(d, '0') > 0 ? '+' : ''}
         {formatQty(d)} {r.base_unit ?? ''}
       </span>
@@ -141,128 +181,179 @@ export function TransfersTab({ objects, canManage }: { objects: ObjectRow[]; can
   }
   const statusCell = (r: Transfer) => (
     <span className="flex flex-col items-start gap-1">
-      <StatusBadge tone={TRANSFER_TONE[r.status]}>{t.transfers.statuses[r.status]}</StatusBadge>
-      {r.received_at && <span className="text-xs text-slate-500">{formatDateTime(r.received_at)}</span>}
+      <Badge tone={TRANSFER_TONE[r.status]}>{t.transfers.statuses[r.status]}</Badge>
+      {r.received_at && <span className="tabular text-xs text-muted">{formatDateTime(r.received_at)}</span>}
       {r.cancel_reason && (
-        <span className="text-xs text-slate-600">
+        <span className="text-xs text-muted">
           {tt.cancelReasonLabel}: {r.cancel_reason}
         </span>
       )}
     </span>
   )
-  const action = (r: Transfer) =>
-    canManage && r.status === 'yuborildi' ? (
-      <Button
-        variant="danger"
-        onClick={() => {
-          setActionError(null)
-          setCancelling(r)
-        }}
-      >
-        {tt.cancel}
-      </Button>
-    ) : null
+  const startCancel = (r: Transfer) => {
+    setActionError(null)
+    setCancelling(r)
+  }
+  const canCancel = (r: Transfer) => canManage && r.status === 'yuborildi'
+  /** Jadvalda — "⋯" menyusi; telefonda amal tafsilot varag'ida. */
+  const action = (r: Transfer) => (
+    <ActionMenu
+      items={[
+        canCancel(r) && {
+          key: 'cancel',
+          label: tt.cancel,
+          icon: <X aria-hidden className="size-5" strokeWidth={1.75} />,
+          danger: true,
+          onSelect: () => startCancel(r),
+        },
+      ]}
+    />
+  )
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:max-w-2xl">
-        <SelectField
-          label={tt.filterStatus}
-          value={status}
-          onChange={(v) => {
-            setStatus(v as '' | TransferStatus)
-            setPage(0)
-          }}
-        >
-          <option value="">{t.ombor.all}</option>
-          {TRANSFER_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {t.transfers.statuses[s]}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField
-          label={tt.filterObject}
-          value={objectId}
-          onChange={(v) => {
-            setObjectId(v)
-            setPage(0)
-          }}
-        >
-          <option value="">{t.ombor.all}</option>
-          {objects.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </SelectField>
-      </div>
+      <FilterBar
+        label={t.ombor.filters}
+        onClear={() => {
+          setStatus('')
+          setObjectId('')
+          setPage(0)
+        }}
+        filters={[
+          {
+            kind: 'select',
+            key: 'status',
+            label: tt.filterStatus,
+            value: status,
+            onChange: (v) => {
+              setStatus(v as '' | TransferStatus)
+              setPage(0)
+            },
+            options: [{ value: '', label: t.ombor.all }, ...TRANSFER_STATUSES.map((s) => ({ value: s, label: t.transfers.statuses[s] }))],
+          },
+          {
+            kind: 'select',
+            key: 'object',
+            label: tt.filterObject,
+            value: objectId,
+            onChange: (v) => {
+              setObjectId(v)
+              setPage(0)
+            },
+            options: [{ value: '', label: t.ombor.all }, ...objects.map((o) => ({ value: o.id, label: o.name }))],
+          },
+        ]}
+      />
 
       {error && <RetryNotice message={error} onRetry={reload} />}
       {!data && !error && <Spinner />}
-      {data && data.rows.length === 0 && <p className="text-slate-600">{tt.empty}</p>}
-      {data && data.rows.length > 0 && (
-        <>
-          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white md:block">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 font-medium">{tt.colDate}</th>
-                  <th className="px-3 py-2 font-medium">{tt.colFrom}</th>
-                  <th className="px-3 py-2 font-medium">{tt.colTo}</th>
-                  <th className="px-3 py-2 font-medium">{tt.colMaterial}</th>
-                  <th className="px-3 py-2 text-right font-medium">{tt.colSent}</th>
-                  <th className="px-3 py-2 text-right font-medium">{tt.colReceived}</th>
-                  <th className="px-3 py-2 text-right font-medium">{tt.colDiff}</th>
-                  <th className="px-3 py-2 font-medium">{tt.colStatus}</th>
-                  {canManage && <th className="px-3 py-2 font-medium">{tt.colActions}</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((r) => (
-                  <tr key={r.id} data-testid="transfer-row" className="border-t border-slate-100 align-top">
-                    <td className="whitespace-nowrap px-3 py-2">
-                      {formatDateTime(r.created_at)}
-                      {r.created_by_name && <span className="block text-xs text-slate-500">{r.created_by_name}</span>}
-                    </td>
-                    <td className="px-3 py-2">{r.from_object_name ?? tt.otherObject}</td>
-                    <td className="px-3 py-2">{r.to_object_name ?? tt.otherObject}</td>
-                    <td className="px-3 py-2 font-medium">{r.material_name ?? '—'}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      {sent(r)}
-                      <span className="block text-xs text-slate-500">
-                        {formatQty(r.qty_input)} {unitLabel({ unit: r.unit_input, variant: r.unit_variant })}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">{received(r)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">{diffCell(r)}</td>
-                    <td className="px-3 py-2">{statusCell(r)}</td>
-                    {canManage && <td className="px-3 py-2">{action(r)}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {data && (
+        <DataTable
+          caption={t.ombor.tabTransfers}
+          rows={data.rows}
+          rowKey={(r) => r.id}
+          rowTestId="transfer-row"
+          empty={<EmptyState icon={<ArrowLeftRight strokeWidth={1.5} />} title={tt.empty} />}
+          columns={[
+            {
+              key: 'date',
+              header: tt.colDate,
+              cell: (r) => (
+                <span className="flex flex-col">
+                  <span className="tabular whitespace-nowrap">{formatDateTime(r.created_at)}</span>
+                  {r.created_by_name && <span className="text-xs text-muted">{r.created_by_name}</span>}
+                </span>
+              ),
+            },
+            { key: 'from', header: tt.colFrom, cell: (r) => r.from_object_name ?? tt.otherObject },
+            { key: 'to', header: tt.colTo, cell: (r) => r.to_object_name ?? tt.otherObject },
+            { key: 'material', header: tt.colMaterial, cell: (r) => <span className="font-medium text-ink">{r.material_name ?? '—'}</span> },
+            {
+              key: 'sent',
+              header: tt.colSent,
+              align: 'right',
+              cell: (r) => (
+                <span className="flex flex-col items-end">
+                  <Qty value={r.qty_base} unit={r.base_unit} size="sm" />
+                  <Qty value={r.qty_input} unit={inputUnit(r)} size="sm" tone="muted" className="text-xs" />
+                </span>
+              ),
+            },
+            { key: 'received', header: tt.colReceived, align: 'right', cell: (r) => received(r) },
+            { key: 'diff', header: tt.colDiff, align: 'right', cell: diffCell },
+            { key: 'status', header: tt.colStatus, cell: statusCell },
+            canManage && { key: 'actions', header: tt.colActions, srHeader: true, cell: action },
+          ]}
+          renderMobile={(r) => (
+            <EntryRow
+              kind="transfer"
+              title={r.material_name ?? '—'}
+              badge={<Badge tone={TRANSFER_TONE[r.status]}>{t.transfers.statuses[r.status]}</Badge>}
+              meta={
+                <>
+                  <Route r={r} />
+                  <span className="tabular">{formatDateTime(r.created_at)}</span>
+                  {r.received_qty_base !== null && (
+                    <span>
+                      {tt.colReceived}: {received(r)}
+                    </span>
+                  )}
+                  {diffOf(r) !== null && (
+                    <span>
+                      {tt.colDiff}: {diffCell(r)}
+                    </span>
+                  )}
+                  {r.cancel_reason && (
+                    <span>
+                      {tt.cancelReasonLabel}: {r.cancel_reason}
+                    </span>
+                  )}
+                </>
+              }
+              qty={{ value: r.qty_base, unit: r.base_unit }}
+              baseQty={{ value: r.qty_input, unit: inputUnit(r) }}
+              qtySize="lg"
+              onClick={() => setDetail(r)}
+            />
+          )}
+          footer={<Pager page={page} pageSize={TRANSFERS_PAGE_SIZE} total={data.total} onPage={setPage} />}
+        />
+      )}
+      {detail && (
+        <DetailSheet
+          title={detail.material_name ?? tt.cancelTitle}
+          onClose={() => setDetail(null)}
+          footer={
+            canCancel(detail) && (
+              <Button
+                variant="danger"
+                className="flex-1"
+                icon={<X aria-hidden className="size-5" strokeWidth={1.75} />}
+                onClick={() => {
+                  setDetail(null)
+                  startCancel(detail)
+                }}
+              >
+                {tt.cancel}
+              </Button>
+            )
+          }
+        >
+          <div className="flex flex-col gap-3">
+            <Badge tone={TRANSFER_TONE[detail.status]}>{t.transfers.statuses[detail.status]}</Badge>
+            <Qty value={detail.qty_base} unit={detail.base_unit} size="hero" />
+            <DetailRows
+              items={[
+                { label: `${tt.colFrom} → ${tt.colTo}`, value: <Route r={detail} /> },
+                detail.created_by_name ? { label: tt.colAuthor, value: detail.created_by_name } : null,
+                { label: tt.colDate, value: <span className="tabular">{formatDateTime(detail.created_at)}</span> },
+                detail.received_qty_base !== null && { label: tt.colReceived, value: received(detail) },
+                diffOf(detail) !== null && { label: tt.colDiff, value: diffCell(detail) },
+                detail.cancel_reason ? { label: tt.cancelReasonLabel, value: detail.cancel_reason } : null,
+              ]}
+            />
           </div>
-          <ul className="flex flex-col gap-3 md:hidden" aria-label={t.ombor.tabTransfers}>
-            {data.rows.map((r) => (
-              <li key={r.id} className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold text-slate-900">{r.material_name}</p>
-                  {statusCell(r)}
-                </div>
-                <p className="text-sm text-slate-600">
-                  {r.from_object_name ?? tt.otherObject} → {r.to_object_name ?? tt.otherObject}
-                </p>
-                <p className="text-sm">
-                  {tt.colSent}: {sent(r)} · {tt.colReceived}: {received(r)} · {diffCell(r)}
-                </p>
-                <p className="text-xs text-slate-500">{formatDateTime(r.created_at)}</p>
-                {action(r)}
-              </li>
-            ))}
-          </ul>
-          <Pager page={page} pageSize={TRANSFERS_PAGE_SIZE} total={data.total} onPage={setPage} />
-        </>
+        </DetailSheet>
       )}
       {cancelling && (
         <CancelDialog

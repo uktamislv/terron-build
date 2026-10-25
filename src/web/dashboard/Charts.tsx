@@ -1,5 +1,5 @@
 // Recharts diagrammalari — alohida (lazy) chunk: bosh bundle'ga Recharts tushmaydi.
-// Ranglar CLAUDE.md palitrasidan. Matnlar (tooltip) aniq Dec qiymatdan `formatSum` / `formatQty` bilan.
+// Ranglar dizayn tokenlaridan (PALETTE). Matnlar (tooltip) aniq Dec qiymatdan `formatSum` / `formatQty` bilan.
 import type { ReactNode } from 'react'
 import {
   Bar,
@@ -14,13 +14,14 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { colors } from '@/components/ui/tokens'
 import { t } from '@/i18n'
 import { formatQty, formatSum } from '@/lib/format'
 import { axisNumber, PALETTE, type CashPoint, type DailyPoint, type NormPoint, type SpendPoint } from './chartData'
 
 
 const tc = t.reports.charts
-const AXIS = { fontSize: 12, fill: '#475569' }
+const AXIS = { fontSize: 12, fill: colors.muted }
 
 interface TipProps<T> {
   active?: boolean
@@ -29,8 +30,8 @@ interface TipProps<T> {
 
 function TipBox({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-md">
-      <p className="mb-1 font-semibold text-slate-900">{title}</p>
+    <div className="rounded-xl border border-line bg-paper px-3 py-2 text-xs shadow-float">
+      <p className="mb-1 font-semibold text-ink">{title}</p>
       {children}
     </div>
   )
@@ -38,9 +39,9 @@ function TipBox({ title, children }: { title: string; children: ReactNode }) {
 
 function TipRow({ color, label, value }: { color: string; label: string; value: string }) {
   return (
-    <p className="flex items-center gap-2 text-slate-700">
+    <p className="flex items-center gap-2 text-muted">
       <span className="inline-block size-2.5 rounded-sm" style={{ background: color }} aria-hidden />
-      {label}: <span className="font-medium text-slate-900">{value}</span>
+      {label}: <span className="font-medium text-ink">{value}</span>
     </p>
   )
 }
@@ -91,7 +92,7 @@ function NormTip({ active, payload }: TipProps<NormPoint>) {
         label={tc.normConsumed}
         value={`${formatQty(p.consumedText)} ${p.unit}`.trim()}
       />
-      {p.pct !== null && <p className={p.over ? 'font-semibold text-danger' : 'text-slate-600'}>{formatQty(p.pct, 1)}%</p>}
+      {p.pct !== null && <p className={p.over ? 'font-semibold text-danger' : 'text-muted'}>{formatQty(p.pct, 1)}%</p>}
     </TipBox>
   )
 }
@@ -123,7 +124,7 @@ function SpendTip({ active, payload }: TipProps<SpendPoint>) {
   return (
     <TipBox title={p.label}>
       <TipRow color={p.other ? PALETTE.muted : PALETTE.dark} label={tc.dailySum} value={formatSum(p.valueText)} />
-      <p className="text-slate-600">{t.reports.countUnit(formatQty(String(p.count)))}</p>
+      <p className="text-muted">{t.reports.countUnit(formatQty(String(p.count)))}</p>
     </TipBox>
   )
 }

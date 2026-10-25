@@ -5,6 +5,7 @@ import { ComingSoon } from '@/components/ComingSoon'
 import { RouteErrorPage } from '@/components/ErrorBoundary'
 import { NotFound } from '@/components/NotFound'
 import { LazyBoundary } from '@/components/LazyBoundary'
+import { ToastProvider } from '@/components/ui'
 import type { TgNavKey, WebNavKey } from '@/domain/roles'
 import { TgAuthGate } from '@/tg/TgAuthGate'
 import { RequireTgNav, TgIndex, TgLayout } from '@/tg/TgLayout'
@@ -72,12 +73,26 @@ function render(Page: ComponentType | undefined, title: string): ReactNode {
   )
 }
 
+// Ko'rgazma (/__preview) — faqat `vite dev`. Production'da `import.meta.env.DEV` false bo'ladi va
+// dinamik import kodi bilan birga tashlab yuboriladi (dist'da preview chunk'i yo'q).
+const previewRoutes: RouteObject[] = import.meta.env.DEV
+  ? [
+      {
+        path: '/__preview',
+        element: render(page(() => import('@/preview/PreviewPage'), 'PreviewPage'), 'Preview'),
+      },
+    ]
+  : []
+
 export const routes: RouteObject[] = [
+  ...previewRoutes,
   {
     // AuthProvider router ichida — useNavigate/Navigate ishlatish mumkin
     element: (
       <AuthProvider>
-        <Outlet />
+        <ToastProvider>
+          <Outlet />
+        </ToastProvider>
       </AuthProvider>
     ),
     errorElement: <RouteErrorPage />,

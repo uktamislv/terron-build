@@ -10,6 +10,7 @@ import type { Role } from '@/domain/roles'
 import { t } from '@/i18n'
 import { routes } from '@/routes'
 import { COMPANY_ID, makeObject, makeProfile } from '@/test/fixtures'
+import { textOf } from '@/test/text'
 
 vi.mock('@/data/systemRepo', () => ({
   isConfigured: () => true,
@@ -142,10 +143,12 @@ describe('/cash', () => {
     open('/cash')
     const rows = await screen.findAllByTestId('balance-row')
     const byName = (name: string) => rows.find((r) => r.textContent?.includes(name)) as HTMLElement
-    const ali = within(byName('Ali haydovchi')).getByText('-150 000 so‘m')
-    expect(ali).toHaveAttribute('data-tone', 'negative')
+    const ali = within(byName('Ali haydovchi')).getByText(textOf('-150 000 so‘m'))
+    expect(ali.closest('[data-tone]')).toHaveAttribute('data-tone', 'negative')
     expect(ali.className).toContain('text-danger')
-    expect(within(byName('Vali taminotchi')).getByText('400 000 so‘m')).toHaveAttribute('data-tone', 'positive')
+    const vali = within(byName('Vali taminotchi')).getByText(textOf('400 000 so‘m'))
+    expect(vali.closest('[data-tone]')).toHaveAttribute('data-tone', 'positive')
+    expect(vali.className).toContain('text-ok')
     // Omborchi xarid qilmaydi va balansi yo'q — ro'yxatda emas
     expect(rows.some((r) => r.textContent?.includes('Omborchi'))).toBe(false)
   })
@@ -248,12 +251,40 @@ describe('/purchases', () => {
     open('/purchases')
     const [row] = await screen.findAllByTestId('purchase-row')
     expect(within(row as HTMLElement).getByText(t.alertTexts.types.narx_ogishi)).toBeInTheDocument()
-    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: t.purchases.open }))
+    // "⋯" menyusidan "Ochish"
+    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: t.ui.actions }))
+    fireEvent.click(within(row as HTMLElement).getByRole('menuitem', { name: t.purchases.open }))
     const dialog = await screen.findByRole('dialog')
     expect(await within(dialog).findByText(t.purchases.noLinked)).toBeInTheDocument()
     expect(movementsRepo.listMovements).toHaveBeenCalledWith({ purchaseId: 'pu1' }, 0)
     expect(alertsRepo.listAlerts).toHaveBeenCalledWith({ purchaseId: 'pu1' }, 0)
     expect(await within(dialog).findByText('Narx o‘rtachadan 12% yuqori (o‘rtacha 1 300 so‘m)')).toBeInTheDocument()
+  })
+})
+
+describe('/purchases — amallar', () => {
+  it('qatorda ochiq "O‘chirish" yo‘q; tafsilotda o‘chirish tasdiq bilan', async () => {
+    vi.mocked(purchasesRepo.listPurchases).mockResolvedValue({ rows: [purchase('pu1', '100')], total: 1 })
+    open('/purchases')
+    const [row] = await screen.findAllByTestId('purchase-row')
+    expect(within(row as HTMLElement).queryByRole('button', { name: t.ombor.delete })).not.toBeInTheDocument()
+    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: t.ui.actions }))
+    fireEvent.click(within(row as HTMLElement).getByRole('menuitem', { name: t.purchases.open }))
+    const detail = await screen.findByRole('dialog', { name: t.purchases.detailTitle })
+    fireEvent.click(within(detail).getByRole('button', { name: t.ombor.delete }))
+    fireEvent.click(within(await screen.findByRole('dialog', { name: t.ombor.delete })).getByRole('button', { name: t.common.yes }))
+    await waitFor(() => expect(purchasesRepo.softDeletePurchase).toHaveBeenCalledWith('pu1'))
+  })
+
+  it('buxgalter — "⋯" menyusida faqat "Ochish", tafsilotda o‘chirish yo‘q', async () => {
+    vi.mocked(purchasesRepo.listPurchases).mockResolvedValue({ rows: [purchase('pu1', '100')], total: 1 })
+    open('/purchases', 'buxgalter')
+    const [row] = await screen.findAllByTestId('purchase-row')
+    fireEvent.click(within(row as HTMLElement).getByRole('button', { name: t.ui.actions }))
+    expect(within(row as HTMLElement).getAllByRole('menuitem').map((x) => x.textContent)).toEqual([t.purchases.open])
+    fireEvent.click(within(row as HTMLElement).getByRole('menuitem', { name: t.purchases.open }))
+    const detail = await screen.findByRole('dialog', { name: t.purchases.detailTitle })
+    expect(within(detail).queryByRole('button', { name: t.ombor.delete })).not.toBeInTheDocument()
   })
 })
 
@@ -383,8 +414,16 @@ describe('Batch 5 sharh tuzatishlari', () => {
     ])
     open('/cash', 'buxgalter')
     const rows = await screen.findAllByTestId('cash-history-row')
-    expect(within(rows[1] as HTMLElement).queryByRole('button', { name: t.cash.restore })).not.toBeInTheDocument()
-    fireEvent.click(within(rows[0] as HTMLElement).getByRole('button', { name: t.cash.delete }))
+    // Kartochkada amal tugmalari yo'q — faqat ma'lumot
+    expect(within(rows[0] as HTMLElement).queryByRole('button', { name: t.cash.delete })).not.toBeInTheDocument()
+    // O'chirilgan yozuv: buxgalter tiklay olmaydi (tafsilotda ham tugma yo'q)
+    fireEvent.click(within(rows[1] as HTMLElement).getByRole('button'))
+    const deletedDetail = await screen.findByRole('dialog')
+    expect(within(deletedDetail).queryByRole('button', { name: t.cash.restore })).not.toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    fireEvent.click(within(rows[0] as HTMLElement).getByRole('button'))
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: t.cash.delete }))
     fireEvent.click(await screen.findByRole('button', { name: t.cash.deleteAndReissue }))
     await waitFor(() => expect(cashRepo.softDeleteAdvance).toHaveBeenCalledWith('ca1'))
     const dialog = await screen.findByRole('dialog', { name: t.cash.issueTitle })

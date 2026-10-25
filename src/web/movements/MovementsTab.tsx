@@ -1,27 +1,299 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Image as ImageIcon, RotateCcw, Trash2, Warehouse } from 'lucide-react'
 import { MovementPhoto } from '@/components/MovementPhoto'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Button, Modal, Notice, Spinner } from '@/components/ui'
+import {
+  ActionMenu,
+  Badge,
+  Button,
+  DetailRows,
+  DetailSheet,
+  DataTable,
+  EmptyState,
+  EntryRow,
+  FilterBar,
+  Modal,
+  Notice,
+  Pager,
+  Qty,
+  RetryNotice,
+  sameQty,
+  Spinner,
+  type ActionItem,
+  type FilterDef,
+} from '@/components/ui'
 import { listAllMovements, listMovements, MOVEMENTS_PAGE_SIZE, restoreMovement, softDeleteMovement } from '@/data/movementsRepo'
-import { MOVEMENT_KINDS, type Material, type Movement, type ObjectRow, type Profile } from '@/data/types'
+import { MOVEMENT_KINDS, type Material, type Movement, type MovementKind, type ObjectRow, type Profile } from '@/data/types'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { exportFileName, exportWorkbook } from '@/lib/excelExport'
-import { formatDateTime, formatQty } from '@/lib/format'
+import { formatDateTime } from '@/lib/format'
 import { ExportButton } from '../ExportButton'
 import { movementsSheet } from '../exports'
-import { DateField, SelectField } from '../fields'
+import { MOVEMENT_ENTRY_KIND } from './stockRows'
 import { EMPTY_FILTERS, toRepoFilters, type MovementFilterForm } from './movementFilters'
 
 const to = t.ombor
+const ic = { className: 'size-5', strokeWidth: 1.75, 'aria-hidden': true } as const
 
-function qtyInput(m: Movement): string {
-  return `${formatQty(m.qty_input)} ${unitLabel({ unit: m.unit_input, variant: m.unit_variant })}`
+const TYPE_TONE: Record<MovementKind, 'ok' | 'info' | 'neutral' | 'warn'> = {
+  kirim: 'ok',
+  chiqim: 'info',
+  transfer_out: 'neutral',
+  transfer_in: 'neutral',
+  inventory_adjust: 'warn',
 }
 
-function qtyBase(m: Movement): string {
-  return `${formatQty(m.qty_base)} ${m.base_unit ?? ''}`.trim()
+function inputUnit(m: Movement): string {
+  return unitLabel({ unit: m.unit_input, variant: m.unit_variant })
+}
+
+export interface MovementsTabViewProps {
+  rows: Movement[] | null
+  total: number
+  page: number
+  onPage: (page: number) => void
+  form: MovementFilterForm
+  onFilter: (patch: Partial<MovementFilterForm>) => void
+  objects: ObjectRow[]
+  materials: Material[]
+  profiles: Profile[]
+  isAdmin: boolean
+  canSeeDeleted: boolean
+  busy?: boolean
+  error?: string | null
+  actionError?: string | null
+  onRetry?: () => void
+  onShowPhoto?: (m: Movement) => void
+  onDelete?: (m: Movement) => void
+  onRestore?: (m: Movement) => void
+  /** Excel tugmasi (container beradi; ko'rgazmada yo'q). */
+  exportSlot?: ReactNode
+}
+
+/** Harakatlar: filtrlar, jadval (telefonda yuk xati qatorlari), sahifalash. Ma'lumot props orqali. */
+export function MovementsTabView({
+  rows,
+  total,
+  page,
+  onPage,
+  form,
+  onFilter,
+  objects,
+  materials,
+  profiles,
+  isAdmin,
+  canSeeDeleted,
+  busy = false,
+  error,
+  actionError,
+  onRetry,
+  onShowPhoto,
+  onDelete,
+  onRestore,
+  exportSlot,
+}: MovementsTabViewProps) {
+  const all = { value: '', label: to.all }
+  const filters: FilterDef[] = [
+    {
+      kind: 'select',
+      key: 'object',
+      label: to.filterObject,
+      value: form.objectId,
+      onChange: (v) => onFilter({ objectId: v }),
+      options: [all, ...objects.map((o) => ({ value: o.id, label: o.name }))],
+    },
+    {
+      kind: 'select',
+      key: 'material',
+      label: to.filterMaterial,
+      value: form.materialId,
+      onChange: (v) => onFilter({ materialId: v }),
+      options: [all, ...materials.map((m) => ({ value: m.id, label: m.name }))],
+    },
+    {
+      kind: 'select',
+      key: 'type',
+      label: to.filterType,
+      value: form.type,
+      onChange: (v) => onFilter({ type: v as MovementFilterForm['type'] }),
+      options: [all, ...MOVEMENT_KINDS.map((k) => ({ value: k, label: t.movements.types[k] }))],
+    },
+    {
+      kind: 'select',
+      key: 'user',
+      label: to.filterUser,
+      value: form.createdBy,
+      onChange: (v) => onFilter({ createdBy: v }),
+      options: [all, ...profiles.map((p) => ({ value: p.id, label: p.full_name }))],
+    },
+    {
+      kind: 'dateRange',
+      key: 'date',
+      label: to.colDate,
+      from: form.from,
+      to: form.to,
+      onFrom: (v) => onFilter({ from: v }),
+      onTo: (v) => onFilter({ to: v }),
+      fromLabel: to.filterFrom,
+      toLabel: to.filterTo,
+    },
+  ]
+  if (canSeeDeleted)
+    filters.push({
+      kind: 'toggle',
+      key: 'deleted',
+      label: to.filterDeleted,
+      checked: form.includeDeleted,
+      onChange: (v) => onFilter({ includeDeleted: v }),
+    })
+
+  const [detail, setDetail] = useState<Movement | null>(null)
+
+  /** Qator amallari: jadvalda "⋯" menyusi, telefonda — tafsilot varag'ida. */
+  const actionItems = (m: Movement): ActionItem[] => {
+    const items: ActionItem[] = []
+    if (m.photo_path && onShowPhoto)
+      items.push({ key: 'photo', label: to.showPhoto, icon: <ImageIcon {...ic} />, onSelect: () => onShowPhoto(m) })
+    if (isAdmin && m.deleted_at && onRestore)
+      items.push({ key: 'restore', label: to.restore, icon: <RotateCcw {...ic} />, disabled: busy, onSelect: () => onRestore(m) })
+    if (isAdmin && !m.deleted_at && onDelete)
+      items.push({ key: 'delete', label: to.delete, icon: <Trash2 {...ic} />, danger: true, onSelect: () => onDelete(m) })
+    return items
+  }
+
+  const deletedBadge = (m: Movement) => (m.deleted_at ? <Badge tone="danger">{t.movements.deleted}</Badge> : null)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <FilterBar
+        label={to.filters}
+        filters={filters}
+        onClear={() => onFilter(EMPTY_FILTERS)}
+        extra={exportSlot && <div className="md:ml-auto">{exportSlot}</div>}
+      />
+
+      {error && <RetryNotice message={error} onRetry={onRetry ?? (() => undefined)} />}
+      {actionError && <Notice>{actionError}</Notice>}
+      {!rows && !error && <Spinner />}
+
+      {rows && (
+        <DataTable
+          caption={to.tabMovements}
+          rows={rows}
+          rowKey={(m) => m.id}
+          rowTestId="movement-row"
+          rowClassName={(m) => (m.deleted_at ? 'bg-canvas/60 text-muted' : undefined)}
+          empty={<EmptyState icon={<Warehouse strokeWidth={1.5} />} title={to.empty} text={to.emptyHint} />}
+          columns={[
+            {
+              key: 'date',
+              header: to.colDate,
+              cell: (m) => <span className="tabular whitespace-nowrap text-muted">{formatDateTime(m.occurred_at)}</span>,
+            },
+            {
+              key: 'type',
+              header: to.colType,
+              cell: (m) => (
+                <span className="flex flex-wrap items-center gap-1">
+                  <Badge tone={TYPE_TONE[m.type]}>{t.movements.types[m.type]}</Badge>
+                  {deletedBadge(m)}
+                </span>
+              ),
+            },
+            { key: 'object', header: to.colObject, className: 'min-w-32', cell: (m) => m.object_name },
+            {
+              key: 'material',
+              header: to.colMaterial,
+              className: 'min-w-32',
+              cell: (m) => <span className={m.deleted_at ? 'line-through' : 'font-medium text-ink'}>{m.material_name}</span>,
+            },
+            { key: 'qty', header: to.colQty, align: 'right', cell: (m) => <Qty value={m.qty_input} unit={inputUnit(m)} size="sm" /> },
+            {
+              key: 'base',
+              header: to.colBase,
+              align: 'right',
+              cell: (m) => <Qty value={m.qty_base} unit={m.base_unit} size="sm" tone="muted" />,
+            },
+            { key: 'user', header: to.colUser, className: 'min-w-28', cell: (m) => m.created_by_name },
+            { key: 'note', header: to.colNote, className: 'max-w-48 text-muted', cell: (m) => m.note },
+            { key: 'actions', header: to.colActions, srHeader: true, cell: (m) => <ActionMenu items={actionItems(m)} /> },
+          ]}
+          renderMobile={(m) => (
+            <EntryRow
+              kind={MOVEMENT_ENTRY_KIND[m.type]}
+              deleted={Boolean(m.deleted_at)}
+              title={m.material_name}
+              badge={deletedBadge(m)}
+              meta={
+                <>
+                  <span>
+                    {t.movements.types[m.type]}, {m.object_name}
+                  </span>
+                  <span className="tabular">{formatDateTime(m.occurred_at)}</span>
+                  {m.created_by_name && <span>{m.created_by_name}</span>}
+                  {m.note && <span className="text-ink/80">{m.note}</span>}
+                </>
+              }
+              qty={{ value: m.qty_input, unit: inputUnit(m) }}
+              baseQty={{ value: m.qty_base, unit: m.base_unit }}
+              qtySize="lg"
+              onClick={() => setDetail(m)}
+            />
+          )}
+          footer={<Pager page={page} pageSize={MOVEMENTS_PAGE_SIZE} total={total} onPage={onPage} />}
+        />
+      )}
+
+      {detail && (
+        <DetailSheet
+          title={detail.material_name ?? t.ui.details}
+          onClose={() => setDetail(null)}
+          footer={
+            actionItems(detail).length > 0 &&
+            actionItems(detail).map((a) => (
+              <Button
+                key={a.key}
+                variant={a.danger ? 'danger' : 'secondary'}
+                className="flex-1"
+                icon={a.icon}
+                disabled={a.disabled}
+                onClick={() => {
+                  setDetail(null)
+                  a.onSelect()
+                }}
+              >
+                {a.label}
+              </Button>
+            ))
+          }
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={TYPE_TONE[detail.type]}>{t.movements.types[detail.type]}</Badge>
+              {deletedBadge(detail)}
+            </div>
+            <div className="flex flex-col gap-1">
+              <Qty value={detail.qty_input} unit={inputUnit(detail)} size="hero" />
+              {!sameQty({ value: detail.qty_input, unit: inputUnit(detail) }, { value: detail.qty_base, unit: detail.base_unit }) && (
+                <span className="text-sm text-muted">
+                  = <Qty value={detail.qty_base} unit={detail.base_unit} size="md" tone="muted" />
+                </span>
+              )}
+            </div>
+            <DetailRows
+              items={[
+                { label: to.colObject, value: detail.object_name },
+                { label: to.colDate, value: <span className="tabular">{formatDateTime(detail.occurred_at)}</span> },
+                detail.created_by_name ? { label: to.colUser, value: detail.created_by_name } : null,
+                detail.note ? { label: to.colNote, value: detail.note } : null,
+              ]}
+            />
+          </div>
+        </DetailSheet>
+      )}
+    </div>
+  )
 }
 
 type Dialog = { kind: 'photo'; movement: Movement } | { kind: 'delete'; movement: Movement } | null
@@ -92,207 +364,40 @@ export function MovementsTab({
     }
   }
 
-  const total = data?.total ?? 0
-  const first = total === 0 ? 0 : page * MOVEMENTS_PAGE_SIZE + 1
-  const last = Math.min(total, (page + 1) * MOVEMENTS_PAGE_SIZE)
-
-  const actions = (m: Movement) => (
-    <div className="flex flex-wrap gap-2">
-      {m.photo_path && (
-        <Button variant="ghost" onClick={() => setDialog({ kind: 'photo', movement: m })}>
-          {to.showPhoto}
-        </Button>
-      )}
-      {isAdmin &&
-        (m.deleted_at ? (
-          <Button variant="secondary" disabled={busy} onClick={() => void run(() => restoreMovement(m.id))}>
-            {to.restore}
-          </Button>
-        ) : (
-          <Button variant="danger" onClick={() => setDialog({ kind: 'delete', movement: m })}>
-            {to.delete}
-          </Button>
-        ))}
-    </div>
-  )
-
   return (
-    <div className="flex flex-col gap-4">
-      <form
-        aria-label={to.filters}
-        onSubmit={(e) => e.preventDefault()}
-        className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-3"
-      >
-        <SelectField label={to.filterObject} value={form.objectId} onChange={(v) => update({ objectId: v })}>
-          <option value="">{to.all}</option>
-          {objects.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField label={to.filterMaterial} value={form.materialId} onChange={(v) => update({ materialId: v })}>
-          <option value="">{to.all}</option>
-          {materials.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField
-          label={to.filterType}
-          value={form.type}
-          onChange={(v) => update({ type: v as MovementFilterForm['type'] })}
-        >
-          <option value="">{to.all}</option>
-          {MOVEMENT_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {t.movements.types[k]}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField label={to.filterUser} value={form.createdBy} onChange={(v) => update({ createdBy: v })}>
-          <option value="">{to.all}</option>
-          {profiles.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.full_name}
-            </option>
-          ))}
-        </SelectField>
-        <DateField label={to.filterFrom} value={form.from} onChange={(v) => update({ from: v })} />
-        <DateField label={to.filterTo} value={form.to} onChange={(v) => update({ to: v })} />
-        <div className="flex flex-wrap items-center gap-3 sm:col-span-2 lg:col-span-3">
-          {canSeeDeleted && (
-            <label className="flex min-h-11 items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                className="size-5"
-                checked={form.includeDeleted}
-                onChange={(e) => update({ includeDeleted: e.target.checked })}
-              />
-              {to.filterDeleted}
-            </label>
-          )}
-          <Button variant="ghost" onClick={() => update(EMPTY_FILTERS)}>
-            {to.reset}
-          </Button>
-          <div className="ml-auto">
-            <ExportButton
-              run={async (signal) => {
-                const rows = await listAllMovements(toRepoFilters(form, canSeeDeleted), signal)
-                await exportWorkbook({
-                  fileName: exportFileName(t.excel.sections.movements),
-                  sheets: [movementsSheet(rows)],
-                  signal,
-                })
-              }}
-            />
-          </div>
-        </div>
-      </form>
-
-      {error && (
-        <Notice>
-          {error}{' '}
-          <button type="button" className="ml-1 inline-flex min-h-11 items-center px-1 font-semibold underline" onClick={reload}>
-            {t.common.retry}
-          </button>
-        </Notice>
-      )}
-      {actionError && <Notice>{actionError}</Notice>}
-      {!data && !error && <Spinner />}
-      {data && data.rows.length === 0 && <p className="text-slate-600">{to.empty}</p>}
-
-      {data && data.rows.length > 0 && (
-        <>
-          {/* Keng ekran — jadval */}
-          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white md:block">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 font-medium">{to.colDate}</th>
-                  <th className="px-3 py-2 font-medium">{to.colType}</th>
-                  <th className="px-3 py-2 font-medium">{to.colObject}</th>
-                  <th className="px-3 py-2 font-medium">{to.colMaterial}</th>
-                  <th className="px-3 py-2 text-right font-medium">{to.colQty}</th>
-                  <th className="px-3 py-2 text-right font-medium">{to.colBase}</th>
-                  <th className="px-3 py-2 font-medium">{to.colUser}</th>
-                  <th className="px-3 py-2 font-medium">{to.colNote}</th>
-                  <th className="px-3 py-2 font-medium">{to.colActions}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((m) => (
-                  <tr
-                    key={m.id}
-                    data-testid="movement-row"
-                    className={`border-t border-slate-100 align-top ${m.deleted_at ? 'text-slate-400' : ''}`}
-                  >
-                    <td className="whitespace-nowrap px-3 py-2">{formatDateTime(m.occurred_at)}</td>
-                    <td className="px-3 py-2">
-                      {t.movements.types[m.type]}
-                      {m.deleted_at && (
-                        <span className="ml-1">
-                          <StatusBadge tone="danger">{t.movements.deleted}</StatusBadge>
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">{m.object_name}</td>
-                    <td className="px-3 py-2">{m.material_name}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">{qtyInput(m)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">{qtyBase(m)}</td>
-                    <td className="px-3 py-2">{m.created_by_name}</td>
-                    <td className="max-w-48 px-3 py-2 text-slate-600">{m.note}</td>
-                    <td className="px-3 py-2">{actions(m)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Telefon — kartalar */}
-          <ul className="flex flex-col gap-3 md:hidden" aria-label={to.tabMovements}>
-            {data.rows.map((m) => (
-              <li
-                key={m.id}
-                className={`flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4 ${
-                  m.deleted_at ? 'opacity-60' : ''
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-slate-900">{m.material_name}</p>
-                    <p className="text-sm text-slate-600">
-                      {t.movements.types[m.type]} · {m.object_name}
-                    </p>
-                  </div>
-                  {m.deleted_at && <StatusBadge tone="danger">{t.movements.deleted}</StatusBadge>}
-                </div>
-                <p className="text-sm text-slate-800">
-                  {qtyInput(m)} <span className="text-slate-500">· {qtyBase(m)}</span>
-                </p>
-                <p className="text-xs text-slate-500">
-                  {formatDateTime(m.occurred_at)} · {m.created_by_name}
-                </p>
-                {m.note && <p className="text-sm text-slate-600">{m.note}</p>}
-                {actions(m)}
-              </li>
-            ))}
-          </ul>
-
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-sm text-slate-600">{to.pageInfo(first, last, total)}</span>
-            <div className="flex gap-2">
-              <Button variant="secondary" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-                {to.prev}
-              </Button>
-              <Button variant="secondary" disabled={last >= total} onClick={() => setPage((p) => p + 1)}>
-                {to.next}
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
+    <>
+      <MovementsTabView
+        rows={data?.rows ?? null}
+        total={data?.total ?? 0}
+        page={page}
+        onPage={setPage}
+        form={form}
+        onFilter={update}
+        objects={objects}
+        materials={materials}
+        profiles={profiles}
+        isAdmin={isAdmin}
+        canSeeDeleted={canSeeDeleted}
+        busy={busy}
+        error={error}
+        actionError={dialog ? null : actionError}
+        onRetry={reload}
+        onShowPhoto={(m) => setDialog({ kind: 'photo', movement: m })}
+        onDelete={(m) => setDialog({ kind: 'delete', movement: m })}
+        onRestore={(m) => void run(() => restoreMovement(m.id))}
+        exportSlot={
+          <ExportButton
+            run={async (signal) => {
+              const rows = await listAllMovements(toRepoFilters(form, canSeeDeleted), signal)
+              await exportWorkbook({
+                fileName: exportFileName(t.excel.sections.movements),
+                sheets: [movementsSheet(rows)],
+                signal,
+              })
+            }}
+          />
+        }
+      />
 
       {dialog?.kind === 'photo' && dialog.movement.photo_path && (
         <Modal title={t.movements.photo} onClose={closeDialog}>
@@ -300,27 +405,30 @@ export function MovementsTab({
         </Modal>
       )}
       {dialog?.kind === 'delete' && (
-        <Modal title={to.delete} onClose={closeDialog}>
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-slate-700">{to.deleteConfirm}</p>
-            {actionError && <Notice>{actionError}</Notice>}
-            <div className="flex justify-end gap-2">
+        <Modal
+          title={to.delete}
+          onClose={closeDialog}
+          footer={
+            <>
               <Button variant="secondary" onClick={closeDialog}>
                 {t.common.no}
               </Button>
               <Button
                 variant="danger"
-                disabled={busy}
-                onClick={() =>
-                  void run(() => softDeleteMovement(dialog.movement.id), { leavesPage: !form.includeDeleted })
-                }
+                loading={busy}
+                onClick={() => void run(() => softDeleteMovement(dialog.movement.id), { leavesPage: !form.includeDeleted })}
               >
                 {t.common.yes}
               </Button>
-            </div>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-muted">{to.deleteConfirm}</p>
+            {actionError && <Notice>{actionError}</Notice>}
           </div>
         </Modal>
       )}
-    </div>
+    </>
   )
 }

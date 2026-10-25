@@ -12,6 +12,7 @@ import type { Movement, OpenPurchase } from '@/data/types'
 import { t } from '@/i18n'
 import { routes } from '@/routes'
 import { makeMaterial, makeObject, makeProfile, makeUnit } from '@/test/fixtures'
+import { textOf } from '@/test/text'
 
 const tg = vi.hoisted(() => ({
   app: null as null | { MainButton: Record<string, unknown>; BackButton: Record<string, unknown> },
@@ -141,7 +142,7 @@ describe('/tg/movement — bitta obyektli prorab', () => {
 
     typeQty('3')
     fireEvent.click(within(screen.getByRole('group', { name: tm.unit })).getByRole('button', { name: 'qop' }))
-    expect(screen.getByText('= 150 kg')).toBeInTheDocument()
+    expect(screen.getByText(textOf('= 150 kg'))).toBeInTheDocument()
 
     save()
     await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalledTimes(1))
@@ -417,7 +418,7 @@ describe('/tg/movement — super_admin va qoldiq', () => {
     await pickMaterial('Sement')
     typeQty('100')
     await waitFor(() => expect(stockRepo.getStock).toHaveBeenCalled())
-    expect(screen.getByText('= 100 kg')).toBeInTheDocument()
+    expect(screen.getByText(textOf('= 100 kg'))).toBeInTheDocument()
     expect(screen.queryByText(/Qoldiq:/)).not.toBeInTheDocument()
     expect(screen.queryByText(tm.warnings.exceeds_stock)).not.toBeInTheDocument()
   })

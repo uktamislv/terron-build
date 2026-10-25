@@ -697,3 +697,7 @@ export function totalsDiffer(plan: Pick<Plan, 'total' | 'fileTotal'>): boolean {
 export function shiftRowNumbers(rows: readonly ParsedRow[], offset: number): ParsedRow[] {
   return offset === 0 ? [...rows] : rows.map((r) => ({ ...r, rowNumber: r.rowNumber + offset }))
 }
+
+/** Import ustasi bosqichlari (tartib muhim). */
+export const STEPS = ['file', 'sheet', 'columns', 'rows', 'catalog', 'units', 'review', 'save'] as const
+export type StepKey = (typeof STEPS)[number]

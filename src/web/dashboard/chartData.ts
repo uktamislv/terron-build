@@ -1,5 +1,6 @@
 // Diagramma qatorlarini shakllantirish — sof funksiyalar. Recharts faqat `number` bilan chizadi,
 // shuning uchun har qatorda aniq qiymat (Dec satr, tooltip uchun) va chizish uchun `number` bor.
+import { colors } from '@/components/ui/tokens'
 import type { CashBalance, Profile } from '@/data/types'
 import type { DailyRow, NormOverviewRow, SpendGroup, SpendRow } from '@/data/reportsRepo'
 import { add, cmp, isNegative, sub, type Dec } from '@/domain/decimal'
@@ -8,16 +9,16 @@ import { usagePct } from '@/domain/norms'
 import { t } from '@/i18n'
 import { formatDate, formatQty } from '@/lib/format'
 
-/** CLAUDE.md palitrasi (diagrammalar). */
+/** Diagramma ranglari — dizayn tokenlaridan (src/components/ui/tokens.ts). */
 export const PALETTE = {
-  brand: '#1E5EFF',
-  dark: '#0B2A6B',
-  light: '#EAF1FF',
-  danger: '#B3261E',
-  warn: '#8A5300',
-  ok: '#1B6E35',
-  grid: '#E2E8F0',
-  muted: '#94A3B8',
+  brand: colors.brand,
+  dark: colors.navy,
+  light: colors.ice,
+  danger: colors.danger,
+  warn: colors.warn,
+  ok: colors.ok,
+  grid: colors.line,
+  muted: '#9AA8C0',
 } as const
 
 /** Chizish uchun taxminiy son (faqat geometriya; matn — aniq Dec dan). */

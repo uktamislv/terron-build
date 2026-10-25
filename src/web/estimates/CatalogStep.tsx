@@ -1,10 +1,10 @@
 // Import ustasining 5-qadami: smetadagi nomlarni katalogga moslash.
 import { useMemo, useState } from 'react'
-import { StatusBadge } from '@/components/StatusBadge'
+import { StatusBadge } from '@/components/ui'
 import { Button, Notice, TextField } from '@/components/ui'
 import type { Material } from '@/data/types'
 import { t } from '@/i18n'
-import { Pager, SelectField } from '../fields'
+import { Pager, SelectField } from '@/components/ui'
 import { QUICK_BASE_UNITS } from '../materials/materialForm'
 import { Checkbox } from './parts'
 import { chipClass, pageSlice } from './styles'
@@ -62,11 +62,11 @@ function GroupCard({
     )
 
   return (
-    <li data-testid={`group-${group.key}`} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+    <li data-testid={`group-${group.key}`} className="flex flex-col gap-3 rounded-xl border border-line bg-paper p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-semibold text-slate-900">{group.name}</p>
-          <p className="text-sm text-slate-600">
+          <p className="font-semibold text-ink">{group.name}</p>
+          <p className="text-sm text-muted">
             {group.unit} · {tw.occurrences(group.count)}
           </p>
         </div>
@@ -75,7 +75,7 @@ function GroupCard({
 
       {info.suggestions.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <p className="text-sm font-medium text-slate-700">{tw.suggestions}</p>
+          <p className="text-sm font-medium text-muted">{tw.suggestions}</p>
           <div className="flex flex-wrap gap-2">
             {info.suggestions.map((s) => {
               const m = byId.get(s.id)
@@ -140,7 +140,7 @@ function GroupCard({
       )}
 
       {decision?.kind === 'new' && (
-        <div className="flex flex-col gap-3 rounded-xl border border-brand/30 bg-brand-light/40 p-3">
+        <div className="flex flex-col gap-3 rounded-xl border border-brand/30 bg-ice/40 p-3">
           <TextField
             label={tw.newMaterialName}
             value={decision.name}
@@ -150,7 +150,7 @@ function GroupCard({
             error={problem === 'name' ? t.materials.errName : problem === 'taken' ? tw.newMaterialNameTaken : null}
           />
           <fieldset className="flex flex-col gap-2">
-            <legend className="mb-1.5 text-sm font-medium text-slate-700">{tw.newMaterialBase}</legend>
+            <legend className="mb-1.5 text-sm font-medium text-muted">{tw.newMaterialBase}</legend>
             <div className="flex flex-wrap gap-2">
               {QUICK_BASE_UNITS.map((u) => (
                 <button
@@ -220,7 +220,7 @@ export function CatalogStep({
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-slate-600">{tw.catalogHint}</p>
+      <p className="text-sm text-muted">{tw.catalogHint}</p>
       {!canCatalog && <Notice tone="info">{tw.catalogAdminOnly}</Notice>}
       <div className="flex flex-wrap items-center gap-3">
         <StatusBadge tone={unmatched.length ? 'warn' : 'ok'}>{tw.matchedCount(done, rows.length)}</StatusBadge>

@@ -141,13 +141,13 @@ export function UserFormDialog({
         />
 
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1.5 text-sm font-medium text-slate-700">{t.users.role}</legend>
+          <legend className="mb-1.5 text-sm font-medium text-muted">{t.users.role}</legend>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {roles.map((role) => (
               <label
                 key={role}
                 className={`flex min-h-11 cursor-pointer items-center justify-center rounded-xl border px-2 text-center text-sm font-medium ${
-                  values.role === role ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white text-slate-800'
+                  values.role === role ? 'border-brand bg-brand text-white' : 'border-line bg-paper text-ink'
                 }`}
               >
                 <input
@@ -167,8 +167,8 @@ export function UserFormDialog({
 
         {showObjects && (
           <fieldset className="flex flex-col gap-2">
-            <legend className="mb-1 text-sm font-medium text-slate-700">{t.users.objects}</legend>
-            <p className="text-xs text-slate-500">{t.users.objectsHint}</p>
+            <legend className="mb-1 text-sm font-medium text-muted">{t.users.objects}</legend>
+            <p className="text-xs text-muted">{t.users.objectsHint}</p>
             {objects.length === 0 ? (
               <Notice tone="warn">{t.users.noObjects}</Notice>
             ) : (
@@ -176,7 +176,7 @@ export function UserFormDialog({
                 {objects.map((o) => (
                   <label
                     key={o.id}
-                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-slate-300 px-3"
+                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-line px-3"
                   >
                     <input
                       type="checkbox"

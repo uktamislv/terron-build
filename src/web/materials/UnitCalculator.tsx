@@ -21,10 +21,10 @@ export function UnitCalculator({ material }: { material: Material }) {
   if (!unit) return null
 
   return (
-    <section aria-label={tc.title} className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3">
+    <section aria-label={tc.title} className="flex flex-col gap-3 rounded-xl bg-canvas p-3">
       <div>
-        <h3 className="font-semibold text-slate-900">{tc.title}</h3>
-        <p className="text-xs text-slate-500">{tc.hint}</p>
+        <h3 className="font-semibold text-ink">{tc.title}</h3>
+        <p className="text-xs text-muted">{tc.hint}</p>
       </div>
       <TextField
         label={tc.qty}
@@ -34,7 +34,7 @@ export function UnitCalculator({ material }: { material: Material }) {
         error={qty.trim() && !check.ok ? tc.errQty : null}
       />
       <fieldset>
-        <legend className="mb-1.5 text-sm font-medium text-slate-700">{tc.unit}</legend>
+        <legend className="mb-1.5 text-sm font-medium text-muted">{tc.unit}</legend>
         <div className="flex flex-wrap gap-2">
           {material.units.map((u) => (
             <button
@@ -43,7 +43,7 @@ export function UnitCalculator({ material }: { material: Material }) {
               aria-pressed={u.id === unit.id}
               onClick={() => setUnitId(u.id)}
               className={`min-h-11 rounded-xl border px-3 text-sm font-medium ${
-                u.id === unit.id ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white text-slate-800'
+                u.id === unit.id ? 'border-brand bg-brand text-white' : 'border-line bg-paper text-ink'
               }`}
             >
               {unitLabel(u)}
@@ -51,9 +51,9 @@ export function UnitCalculator({ material }: { material: Material }) {
           ))}
         </div>
       </fieldset>
-      <p className="text-sm text-slate-700">
+      <p className="text-sm text-muted">
         {tc.result}:{' '}
-        <output aria-label={tc.result} className="text-lg font-semibold text-brand-dark">
+        <output aria-label={tc.result} className="text-lg font-semibold text-navy">
           {result !== null ? `${formatQty(result)} ${material.base_unit}` : '—'}
         </output>
       </p>

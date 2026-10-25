@@ -266,8 +266,11 @@ describe('/movements — O‘tkazmalar', () => {
     fireEvent.click(await screen.findByRole('tab', { name: t.ombor.tabTransfers }))
     const rows = await screen.findAllByTestId('transfer-row')
     expect(within(rows[0] as HTMLElement).getByTestId('transfer-diff')).toHaveTextContent('-10 kg')
-    expect(within(rows[0] as HTMLElement).queryByRole('button', { name: tt.cancel })).not.toBeInTheDocument()
-    fireEvent.click(within(rows[1] as HTMLElement).getByRole('button', { name: tt.cancel }))
+    // Qabul qilingan o'tkazmada amal yo'q — "⋯" menyusi ham yo'q
+    expect(within(rows[0] as HTMLElement).queryByRole('button', { name: t.ui.actions })).not.toBeInTheDocument()
+    expect(within(rows[1] as HTMLElement).queryByRole('button', { name: tt.cancel })).not.toBeInTheDocument()
+    fireEvent.click(within(rows[1] as HTMLElement).getByRole('button', { name: t.ui.actions }))
+    fireEvent.click(within(rows[1] as HTMLElement).getByRole('menuitem', { name: tt.cancel }))
     const dialog = await screen.findByRole('dialog', { name: tt.cancelTitle })
     fireEvent.change(within(dialog).getByLabelText(tt.cancelReason), { target: { value: 'Xato obyekt' } })
     fireEvent.click(within(dialog).getByRole('button', { name: tt.cancel }))
@@ -280,6 +283,7 @@ describe('/movements — O‘tkazmalar', () => {
     fireEvent.click(await screen.findByRole('tab', { name: t.ombor.tabTransfers }))
     await screen.findAllByTestId('transfer-row')
     expect(screen.queryByRole('button', { name: tt.cancel })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t.ui.actions })).not.toBeInTheDocument()
   })
 })
 

@@ -61,33 +61,33 @@ export function AliasesSection({
   return (
     <section aria-label={ta.title} className="flex flex-col gap-3">
       <div>
-        <h3 className="font-semibold text-slate-900">{ta.title}</h3>
-        <p className="text-xs text-slate-500">{ta.hint}</p>
+        <h3 className="font-semibold text-ink">{ta.title}</h3>
+        <p className="text-xs text-muted">{ta.hint}</p>
       </div>
       {error && <Notice>{error}</Notice>}
       {material.aliases.length === 0 ? (
-        <p className="text-sm text-slate-500">{ta.empty}</p>
+        <p className="text-sm text-muted">{ta.empty}</p>
       ) : (
         <ul className="flex flex-wrap gap-2">
           {material.aliases.map((a) => (
             <li
               key={a.id}
-              className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white pl-3 text-sm"
+              className="flex min-h-11 items-center gap-2 rounded-xl border border-line bg-paper pl-3 text-sm"
             >
               <span
                 title={ta.langNames[a.lang]}
-                className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold uppercase text-slate-600"
+                className="rounded bg-canvas px-1.5 py-0.5 text-xs font-semibold uppercase text-muted"
               >
                 {ta.langs[a.lang]}
               </span>
-              <span className="text-slate-900">{a.alias}</span>
+              <span className="text-ink">{a.alias}</span>
               {canManage ? (
                 <button
                   type="button"
                   aria-label={`${t.materials.delete}: ${a.alias}`}
                   disabled={busy}
                   onClick={() => void run(() => softDeleteMaterialAlias(a.id))}
-                  className="inline-flex size-11 items-center justify-center rounded-lg text-slate-500 hover:bg-danger/5 hover:text-danger disabled:opacity-60"
+                  className="inline-flex size-11 items-center justify-center rounded-lg text-muted hover:bg-danger-bg hover:text-danger disabled:opacity-60"
                 >
                   <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                     <path d="M6 6l12 12M18 6L6 18" />
@@ -111,13 +111,13 @@ export function AliasesSection({
             error={aliasError}
           />
           <fieldset className="flex flex-col gap-1.5">
-            <legend className="mb-1.5 text-sm font-medium text-slate-700">{ta.lang}</legend>
+            <legend className="mb-1.5 text-sm font-medium text-muted">{ta.lang}</legend>
             <div className="flex gap-2">
               {ALIAS_LANGS.map((l) => (
                 <label
                   key={l}
                   className={`flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-xl border px-3 text-sm font-medium ${
-                    lang === l ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white text-slate-800'
+                    lang === l ? 'border-brand bg-brand text-white' : 'border-line bg-paper text-ink'
                   }`}
                 >
                   <input

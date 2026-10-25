@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Button, Notice, Spinner } from '@/components/ui'
+import { ArrowLeft, Building2, CalendarDays, FileSpreadsheet, GitCompare, Rows3, Upload } from 'lucide-react'
+import { Badge, Button, DataTable, EmptyState, EntryRow, FilterBar, Money, Notice, PageHeader, SkeletonRows } from '@/components/ui'
 import { listEstimateItems, listEstimates, setCurrentEstimate } from '@/data/estimatesRepo'
 import { listObjects } from '@/data/objectsRepo'
 import type { Estimate, EstimateItem, ObjectRow } from '@/data/types'
@@ -9,8 +9,8 @@ import { diffEstimates, type DiffResult } from '@/domain/estimate'
 import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
-import { formatDate, formatSum } from '@/lib/format'
-import { RetryNotice, SelectField } from '../fields'
+import { formatDate } from '@/lib/format'
+import { RetryNotice, SelectField } from '@/components/ui'
 import { DiffView } from '../estimates/DiffView'
 import { EstimateItemsTable } from '../estimates/EstimateItemsTable'
 import { ImportWizard } from '../estimates/ImportWizard'
@@ -54,16 +54,31 @@ function VersionView({
 
   return (
     <section aria-label={estimate.title} className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="min-w-0">
-          <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-brand-dark">
-            {te.version(estimate.version)} · {estimate.title}
-            {estimate.is_current && <StatusBadge tone="ok">{te.current}</StatusBadge>}
+      <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-line bg-paper p-4 md:p-5">
+        <div className="flex min-w-0 flex-col gap-2">
+          <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-ink">
+            <span className="rounded-lg bg-ice px-2 py-0.5 text-sm text-navy">{te.version(estimate.version)}</span>
+            {estimate.title}
+            {estimate.is_current && <Badge tone="ok">{te.current}</Badge>}
           </h2>
-          <p className="text-sm text-slate-600">
-            {estimate.estimate_date ? formatDate(estimate.estimate_date) : formatDate(estimate.created_at)}
-            {estimate.source_file_name ? ` · ${estimate.source_file_name}` : ''} · {te.rowsCount(estimate.item_count)} ·{' '}
-            {te.total}: <b>{formatSum(estimate.total_sum)}</b>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
+            <span className="tabular inline-flex items-center gap-1.5">
+              <CalendarDays aria-hidden className="size-4" strokeWidth={1.75} />
+              {estimate.estimate_date ? formatDate(estimate.estimate_date) : formatDate(estimate.created_at)}
+            </span>
+            {estimate.source_file_name && (
+              <span className="inline-flex items-center gap-1.5">
+                <FileSpreadsheet aria-hidden className="size-4" strokeWidth={1.75} />
+                {estimate.source_file_name}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5">
+              <Rows3 aria-hidden className="size-4" strokeWidth={1.75} />
+              {te.rowsCount(estimate.item_count)}
+            </span>
+          </div>
+          <p className="flex items-baseline gap-2 text-sm text-muted">
+            {te.total}: <Money value={estimate.total_sum} size="lg" />
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -72,13 +87,13 @@ function VersionView({
               {te.makeCurrent}
             </Button>
           )}
-          <Button variant="secondary" onClick={onBack}>
+          <Button variant="secondary" icon={<ArrowLeft aria-hidden className="size-5" strokeWidth={1.75} />} onClick={onBack}>
             {te.backToList}
           </Button>
         </div>
       </div>
       {error && <RetryNotice message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
-      {!items && !error && <Spinner />}
+      {!items && !error && <SkeletonRows rows={4} />}
       {items && <EstimateItemsTable items={items} />}
     </section>
   )
@@ -114,8 +129,11 @@ function ComparePanel({ estimates }: { estimates: readonly Estimate[] }) {
     </option>
   ))
   return (
-    <section aria-label={te.compareTitle} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-      <h2 className="font-semibold text-slate-900">{te.compareTitle}</h2>
+    <section aria-label={te.compareTitle} className="flex flex-col gap-3 rounded-2xl border border-line bg-paper p-4 md:p-5">
+      <h2 className="flex items-center gap-2 text-base font-semibold text-ink md:text-lg">
+        <GitCompare aria-hidden className="size-5 text-brand" strokeWidth={1.75} />
+        {te.compareTitle}
+      </h2>
       <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
         <SelectField label={te.compareFrom} value={fromId} onChange={(v) => { setFromId(v); setDiff(null) }}>
           {options}
@@ -196,7 +214,7 @@ export function EstimatesPage() {
 
   if (view.kind === 'import' && objects) {
     return (
-      <div className="mx-auto max-w-7xl">
+      <div>
         <ImportWizard
           companyId={me.company_id}
           objects={objects}
@@ -219,34 +237,41 @@ export function EstimatesPage() {
   const confirming = confirmId ? list.find((e) => e.id === confirmId) : undefined
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-brand-dark">{te.title}</h1>
-        {canManage && objects && objects.length > 0 && (
-          <Button onClick={() => setView({ kind: 'import' })}>{te.upload}</Button>
-        )}
-      </div>
-      {!canManage && <p className="text-sm text-slate-600">{te.readOnly}</p>}
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={te.title}
+        icon={<FileSpreadsheet strokeWidth={1.75} />}
+        description={!canManage ? te.readOnly : undefined}
+        actions={
+          canManage &&
+          objects &&
+          objects.length > 0 && (
+            <Button icon={<Upload aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => setView({ kind: 'import' })}>
+              {te.upload}
+            </Button>
+          )
+        }
+      />
 
-      {objects && objects.length === 0 && <p className="text-slate-600">{te.noObjects}</p>}
+      {objects && objects.length === 0 && <EmptyState icon={<Building2 strokeWidth={1.5} />} title={te.noObjects} />}
       {objects && objects.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 md:w-96">
-          <SelectField
-            label={te.object}
-            value={objectId}
-            onChange={(v) => {
-              setObjectId(v)
-              setEstimates(null)
-              setView({ kind: 'list' })
-            }}
-          >
-            {objects.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </SelectField>
-        </div>
+        <FilterBar
+          filters={[
+            {
+              kind: 'select',
+              key: 'object',
+              label: te.object,
+              value: objectId,
+              onChange: (v) => {
+                setObjectId(v)
+                setEstimates(null)
+                setView({ kind: 'list' })
+              },
+              options: objects.map((o) => ({ value: o.id, label: o.name })),
+              emptyValue: objectId,
+            },
+          ]}
+        />
       )}
 
       {error && <RetryNotice message={error} onRetry={reload} />}
@@ -261,7 +286,7 @@ export function EstimatesPage() {
           onConfirm={() => void makeCurrent(confirming.id)}
         />
       )}
-      {(!objects || (objectId && !estimates)) && !error && <Spinner />}
+      {(!objects || (objectId && !estimates)) && !error && <SkeletonRows rows={3} />}
 
       {opened && (
         <VersionView
@@ -276,63 +301,70 @@ export function EstimatesPage() {
         />
       )}
 
-      {!opened && estimates && estimates.length === 0 && <p className="text-slate-600">{te.empty}</p>}
+      {!opened && estimates && estimates.length === 0 && (
+        <EmptyState icon={<FileSpreadsheet strokeWidth={1.5} />} title={te.empty} />
+      )}
       {!opened && list.length > 0 && (
         <>
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-            <table className="w-full text-left text-sm" aria-label={te.versions}>
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 font-medium">{te.colVersion}</th>
-                  <th className="px-3 py-2 font-medium">{te.colDate}</th>
-                  <th className="px-3 py-2 font-medium">{te.colTitle}</th>
-                  <th className="px-3 py-2 font-medium">{te.colFile}</th>
-                  <th className="px-3 py-2 text-right font-medium">{te.colRows}</th>
-                  <th className="px-3 py-2 text-right font-medium">{te.colTotal}</th>
-                  <th className="px-3 py-2 font-medium">{te.colStatus}</th>
-                  <th className="px-3 py-2 font-medium">{te.colActions}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((e) => (
-                  <tr key={e.id} data-testid="estimate-version" className="border-t border-slate-100 align-top">
-                    <td className="whitespace-nowrap px-3 py-2 font-medium">{te.version(e.version)}</td>
-                    <td className="whitespace-nowrap px-3 py-2">
-                      {formatDate(e.estimate_date ?? e.created_at)}
-                    </td>
-                    <td className="px-3 py-2">{e.title}</td>
-                    <td className="px-3 py-2 text-slate-600">{e.source_file_name ?? '—'}</td>
-                    <td className="px-3 py-2 text-right">{e.item_count}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">{formatSum(e.total_sum)}</td>
-                    <td className="px-3 py-2">{e.is_current && <StatusBadge tone="ok">{te.current}</StatusBadge>}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="ghost" onClick={() => setView({ kind: 'version', id: e.id })}>
-                          {te.open}
-                        </Button>
-                        {canManage && !e.is_current && (
-                          <Button
-                            variant="secondary"
-                            disabled={busy}
-                            onClick={() => {
-                              setActionError(null)
-                              setConfirmId(e.id)
-                            }}
-                          >
-                            {te.makeCurrent}
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption={te.versions}
+            rows={list}
+            rowKey={(e) => e.id}
+            rowTestId="estimate-version"
+            columns={[
+              { key: 'v', header: te.colVersion, cell: (e) => <span className="font-semibold whitespace-nowrap">{te.version(e.version)}</span> },
+              { key: 'date', header: te.colDate, cell: (e) => <span className="tabular whitespace-nowrap">{formatDate(e.estimate_date ?? e.created_at)}</span> },
+              { key: 'title', header: te.colTitle, cell: (e) => <span className="font-medium text-ink">{e.title}</span> },
+              { key: 'file', header: te.colFile, cell: (e) => <span className="text-muted">{e.source_file_name ?? '—'}</span> },
+              { key: 'rows', header: te.colRows, align: 'right', cell: (e) => e.item_count },
+              { key: 'total', header: te.colTotal, align: 'right', cell: (e) => <Money value={e.total_sum} size="sm" /> },
+              { key: 'status', header: te.colStatus, cell: (e) => e.is_current && <Badge tone="ok">{te.current}</Badge> },
+              { key: 'actions', header: te.colActions, srHeader: true, cell: (e) => versionActions(e) },
+            ]}
+            renderMobile={(e) => (
+              <EntryRow
+                kind={e.is_current ? 'ok' : 'neutral'}
+                icon={<FileSpreadsheet className="size-[18px]" strokeWidth={1.75} />}
+                title={`${te.version(e.version)} — ${e.title}`}
+                badge={e.is_current && <Badge tone="ok">{te.current}</Badge>}
+                meta={
+                  <>
+                    <span className="tabular">{formatDate(e.estimate_date ?? e.created_at)}</span>
+                    <span>{te.rowsCount(e.item_count)}</span>
+                  </>
+                }
+                trailing={<Money value={e.total_sum} size="sm" />}
+                actions={versionActions(e)}
+              />
+            )}
+          />
           {list.length > 1 && <ComparePanel key={objectId} estimates={list} />}
         </>
       )}
       {!opened && objectId && list.some((e) => e.is_current) && <NormUsageTable key={objectId} objectId={objectId} />}
     </div>
   )
+
+  function versionActions(e: Estimate) {
+    return (
+      <div className="flex flex-wrap justify-end gap-1">
+        <Button variant="ghost" size="sm" onClick={() => setView({ kind: 'version', id: e.id })}>
+          {te.open}
+        </Button>
+        {canManage && !e.is_current && (
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              setActionError(null)
+              setConfirmId(e.id)
+            }}
+          >
+            {te.makeCurrent}
+          </Button>
+        )}
+      </div>
+    )
+  }
 }

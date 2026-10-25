@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Spinner } from '@/components/ui'
+import { Gauge } from 'lucide-react'
+import { Badge, EmptyState, Qty, RetryNotice, Spinner } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
 import { listNormUsage } from '@/data/normsRepo'
 import type { Material, NormUsage } from '@/data/types'
@@ -9,10 +9,8 @@ import { evaluateNorm, usagePct, type NormStatus } from '@/domain/norms'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { exportFileName, exportWorkbook } from '@/lib/excelExport'
-import { formatQty } from '@/lib/format'
 import { ExportButton } from '../ExportButton'
 import { normsSheet } from '../exports'
-import { RetryNotice } from '../fields'
 import { NormProgress } from './NormProgress'
 
 const tn = t.norms
@@ -62,12 +60,20 @@ export function NormUsageTable({ objectId }: { objectId: string }) {
       .sort((a, b) => ORDER[a.status] - ORDER[b.status] || a.name.localeCompare(b.name))
   }, [rows, materials])
 
+  const qty = (v: string, unit: string, danger = false) => <Qty value={v} unit={unit} size="sm" tone={danger ? 'danger' : undefined} />
+  const th = 'sticky top-0 border-b border-line bg-canvas px-3 py-2.5 text-xs font-semibold whitespace-nowrap text-muted first:pl-4 last:pr-4'
+
   return (
-    <section aria-label={tn.title} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="font-semibold text-slate-900">{tn.title}</h2>
-          <p className="text-sm text-slate-600">{tn.hint}</p>
+    <section aria-label={tn.title} className="flex flex-col rounded-2xl border border-line bg-paper">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-3 md:px-5">
+        <div className="flex items-start gap-3">
+          <span aria-hidden className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-ice text-brand">
+            <Gauge className="size-5" strokeWidth={1.75} />
+          </span>
+          <div>
+            <h2 className="text-base font-semibold text-ink md:text-lg">{tn.title}</h2>
+            <p className="text-sm text-muted">{tn.hint}</p>
+          </div>
         </div>
         {view.length > 0 && (
           <ExportButton
@@ -77,64 +83,67 @@ export function NormUsageTable({ objectId }: { objectId: string }) {
           />
         )}
       </div>
-      {error && <RetryNotice message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
-      {!rows && !error && <Spinner />}
-      {rows && view.length === 0 && <p className="text-sm text-slate-600">{tn.empty}</p>}
-      {view.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-3 py-2 font-medium">{tn.colMaterial}</th>
-                <th className="px-3 py-2 text-right font-medium">{tn.colNorm}</th>
-                <th className="px-3 py-2 text-right font-medium">{tn.colAllowed}</th>
-                <th className="px-3 py-2 text-right font-medium">{tn.colConsumed}</th>
-                <th className="px-3 py-2 text-right font-medium">{tn.colRemaining}</th>
-                <th className="px-3 py-2 font-medium">{tn.colUsage}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {view.map((r) => {
-                const bad = r.status !== 'ok'
-                return (
-                  <tr key={r.material_id} data-testid="norm-row" data-status={r.status} className="border-t border-slate-100">
-                    <td className={`px-3 py-2 font-medium ${bad ? 'text-danger' : ''}`}>
-                      {r.name}
-                      {r.status === 'over' && (
-                        <span className="ml-2">
-                          <StatusBadge tone="danger">{tn.over}</StatusBadge>
-                        </span>
-                      )}
-                      {r.status === 'not_in_estimate' && (
-                        <span className="ml-2">
-                          <StatusBadge tone="warn">{tn.notInEstimate}</StatusBadge>
-                        </span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      {formatQty(r.norm_qty_base)} {r.unit}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      {formatQty(r.allowed_qty_base)} {r.unit}
-                    </td>
-                    <td className={`whitespace-nowrap px-3 py-2 text-right ${bad ? 'font-semibold text-danger' : ''}`}>
-                      {formatQty(r.consumed_qty_base)} {r.unit}
-                    </td>
-                    <td
-                      className={`whitespace-nowrap px-3 py-2 text-right ${isNegative(r.remaining_qty_base) ? 'font-semibold text-danger' : ''}`}
+      <div className="flex flex-col gap-3 p-4 md:p-5">
+        {error && <RetryNotice message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
+        {!rows && !error && <Spinner />}
+        {rows && view.length === 0 && <EmptyState compact icon={<Gauge strokeWidth={1.5} />} title={tn.empty} />}
+        {view.length > 0 && (
+          <div className="overflow-x-auto rounded-xl border border-line">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr>
+                  <th scope="col" className={`${th} text-left`}>
+                    {tn.colMaterial}
+                  </th>
+                  <th scope="col" className={`${th} text-right`}>
+                    {tn.colNorm}
+                  </th>
+                  <th scope="col" className={`${th} text-right`}>
+                    {tn.colAllowed}
+                  </th>
+                  <th scope="col" className={`${th} text-right`}>
+                    {tn.colConsumed}
+                  </th>
+                  <th scope="col" className={`${th} text-right`}>
+                    {tn.colRemaining}
+                  </th>
+                  <th scope="col" className={`${th} min-w-40 text-left`}>
+                    {tn.colUsage}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.map((r) => {
+                  const bad = r.status !== 'ok'
+                  return (
+                    <tr
+                      key={r.material_id}
+                      data-testid="norm-row"
+                      data-status={r.status}
+                      className="border-b border-line/70 transition-colors last:border-0 hover:bg-ice/35"
                     >
-                      {formatQty(r.remaining_qty_base)} {r.unit}
-                    </td>
-                    <td className="px-3 py-2">
-                      <NormProgress pct={r.usage_pct ?? usagePct(r.consumed_qty_base, r.allowed_qty_base)} label={r.name} />
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                      <td className="px-3 py-2.5 pl-4">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className={`font-medium ${bad ? 'text-danger' : 'text-ink'}`}>{r.name}</span>
+                          {r.status === 'over' && <Badge tone="danger">{tn.over}</Badge>}
+                          {r.status === 'not_in_estimate' && <Badge tone="warn">{tn.notInEstimate}</Badge>}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right">{qty(r.norm_qty_base, r.unit)}</td>
+                      <td className="px-3 py-2.5 text-right">{qty(r.allowed_qty_base, r.unit)}</td>
+                      <td className="px-3 py-2.5 text-right">{qty(r.consumed_qty_base, r.unit, bad)}</td>
+                      <td className="px-3 py-2.5 text-right">{qty(r.remaining_qty_base, r.unit, isNegative(r.remaining_qty_base))}</td>
+                      <td className="px-3 py-2.5 pr-4">
+                        <NormProgress pct={r.usage_pct ?? usagePct(r.consumed_qty_base, r.allowed_qty_base)} label={r.name} />
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </section>
   )
 }

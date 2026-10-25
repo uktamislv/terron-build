@@ -83,7 +83,11 @@ describe('/materials — ro‘yxat va qidiruv', () => {
     expect(await screen.findByText('Sement M500')).toBeInTheDocument()
     expect(list().getByText('Qum')).toBeInTheDocument()
     expect(list().queryByText('Kafel')).not.toBeInTheDocument()
-    expect(list().getByText(`m³ · ${tm.wasteShort} 2,5% · 2 ${tm.unitsCount}`)).toBeInTheDocument()
+    // Meta alohida bo'laklarda (belgi + matn): asosiy birlik, isrof, birliklar soni
+    const qum = within(list().getByRole('button', { name: /Qum/ }))
+    expect(qum.getByText('m³')).toBeInTheDocument()
+    expect(qum.getByText(`${tm.wasteShort} 2,5%`)).toBeInTheDocument()
+    expect(qum.getByText(`2 ${tm.unitsCount}`)).toBeInTheDocument()
   })
 
   it('muqobil nom bo‘yicha topadi (katta-kichik harfga qaramay)', async () => {

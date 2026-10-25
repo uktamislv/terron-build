@@ -1,9 +1,9 @@
 // Smeta sahifalari uchun umumiy klasslar va yordamchilar.
 
-/** Tanlash tugmasi (chip) klasslari — 44 px. */
+/** Tanlash tugmasi (chip) klasslari — 44 px. Tanlangan — to'liq ko'k (tanlov aniq ko'rinsin). */
 export function chipClass(selected: boolean): string {
-  return `inline-flex min-h-11 items-center justify-center rounded-xl border px-3 text-sm font-medium ${
-    selected ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'
+  return `inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold transition-colors ${
+    selected ? 'border-brand bg-brand text-white' : 'border-line bg-paper text-ink hover:border-brand/40 hover:bg-ice/50'
   }`
 }
 

@@ -197,7 +197,7 @@ describe('/tg/purchase — haydovchi, bitta obyekt', () => {
     const el = await screen.findByTestId('cash-balance')
     expect(el).toHaveTextContent('-150 000 so‘m')
     expect(el).toHaveAttribute('data-negative', 'true')
-    expect(el.className).toContain('text-danger')
+    expect(el.querySelector('[data-negative]')).toHaveClass('text-danger')
   })
 
   it('narx yuqori (RPC "high") — sariq ogohlantirish, foiz va o‘rtacha yo‘q; saqlanadi', async () => {
@@ -244,7 +244,7 @@ describe('/tg/purchase — haydovchi, bitta obyekt', () => {
     const box = screen.getByTestId('base-qty')
     expect(box).toHaveTextContent('= 150 kg')
     expect(box).toHaveAttribute('data-emphasized', 'true')
-    expect(box.className).toContain('text-3xl')
+    expect(within(box).getByText('150')).toHaveClass('text-4xl')
   })
 
   it('summa bo‘sh yoki noto‘g‘ri — xato, saqlanmaydi', async () => {
@@ -410,7 +410,8 @@ describe('/tg/mine — xaridlar ham', () => {
     // Xarid (05:00) kirimdan (04:00) yangi — birinchi
     expect(items[0]).toHaveTextContent('Sement')
     expect(items[0]).toHaveTextContent('1 250 000 so‘m')
-    expect(within(items[0] as HTMLElement).getByLabelText(t.tg.mine.purchase)).toBeInTheDocument()
+    // Tur nomi qatorda ko'rinadigan matn sifatida (belgi — dekorativ)
+    expect(within(items[0] as HTMLElement).getByText(t.tg.mine.purchase)).toBeInTheDocument()
     expect(purchasesRepo.listMyPurchases).toHaveBeenCalledWith('p-prorab', 50)
 
     fireEvent.click(items[0] as HTMLElement)

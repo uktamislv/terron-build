@@ -1,5 +1,5 @@
 import type { InventoryStatus, RequestStatus, TransferStatus } from '@/data/types'
-import type { BadgeTone } from './StatusBadge'
+import type { BadgeTone } from '@/components/ui'
 
 export const REQUEST_TONE: Record<RequestStatus, BadgeTone> = {
   kutilmoqda: 'warn',

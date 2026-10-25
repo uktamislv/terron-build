@@ -1,11 +1,11 @@
 // Import ustasining 7-qadami: tekshirish — jami, ogohlantirishlar, avvalgi versiya bilan farq.
 import { useMemo, useState } from 'react'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Notice, Spinner } from '@/components/ui'
+import { Badge, DataTable, EntryRow, Money, Notice, Qty, Spinner } from '@/components/ui'
 import { diffEstimates, type DiffItem } from '@/domain/estimate'
 import { t } from '@/i18n'
 import { formatQty, formatSum } from '@/lib/format'
-import { Pager } from '../fields'
+import { Pager } from '@/components/ui'
+import type { ReviewWarning } from './wizardModel'
 import { DiffView } from './DiffView'
 import { Stat } from './parts'
 import { pageSlice } from './styles'
@@ -60,11 +60,11 @@ export function ReviewStep({
         </Notice>
       )}
       {plan.aliases.length > 0 && (
-        <section aria-label={tw.newAliases} className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4">
-          <h3 className="font-semibold text-slate-900">
+        <section aria-label={tw.newAliases} className="flex flex-col gap-2 rounded-xl border border-line bg-paper p-4">
+          <h3 className="font-semibold text-ink">
             {tw.newAliases}: {plan.aliases.length}
           </h3>
-          <ul className="flex flex-col gap-1 text-sm text-slate-700">
+          <ul className="flex flex-col gap-1 text-sm text-muted">
             {plan.aliases.map((a) => (
               <li key={`${a.materialKey}|${a.alias}`}>
                 «{a.alias}» → <b>{a.materialName}</b>
@@ -75,56 +75,67 @@ export function ReviewStep({
       )}
 
       <section aria-label={te.diff.title} className="flex flex-col gap-2">
-        <h3 className="font-semibold text-slate-900">{te.diff.title}</h3>
+        <h3 className="font-semibold text-ink">{te.diff.title}</h3>
         {prevError && <Notice>{prevError}</Notice>}
         {prevItems === null && !prevError && <Spinner />}
-        {prevItems === 'none' && <p className="text-sm text-slate-600">{te.diff.noPrev}</p>}
+        {prevItems === 'none' && <p className="text-sm text-muted">{te.diff.noPrev}</p>}
         {diff && <DiffView diff={diff} />}
       </section>
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm" aria-label={tw.steps.review}>
-          <thead className="bg-slate-50 text-slate-600">
-            <tr>
-              <th className="px-3 py-2 font-medium">{te.colRow}</th>
-              <th className="px-3 py-2 font-medium">{te.colName}</th>
-              <th className="px-3 py-2 font-medium">{te.colMaterial}</th>
-              <th className="px-3 py-2 font-medium">{te.colUnit}</th>
-              <th className="px-3 py-2 text-right font-medium">{te.colQty}</th>
-              <th className="px-3 py-2 text-right font-medium">{te.colBase}</th>
-              <th className="px-3 py-2 text-right font-medium">{te.colPrice}</th>
-              <th className="px-3 py-2 text-right font-medium">{te.colSum}</th>
-              <th className="px-3 py-2 font-medium">{tw.reviewWarnings}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageSlice(plan.rows, current, PAGE_SIZE).map((r) => (
-              <tr key={r.item.rowNumber} className="border-t border-slate-100 align-top">
-                <td className="px-3 py-2 text-slate-500">{r.item.rowNumber}</td>
-                <td className="px-3 py-2">{r.item.name}</td>
-                <td className="px-3 py-2">
-                  {r.itemType === 'ish' ? <StatusBadge tone="neutral">{te.types.ish}</StatusBadge> : r.materialName}
-                </td>
-                <td className="px-3 py-2">{r.unitText}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right">{formatQty(r.item.qty)}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right">
-                  {r.qtyBase !== null ? `${formatQty(r.qtyBase)} ${r.baseUnit ?? ''}` : '—'}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-right">{r.item.price !== null ? formatSum(r.item.price) : '—'}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right">{formatSum(r.sum)}</td>
-                <td className="px-3 py-2">
-                  {r.warnings.map((w) => (
-                    <span key={w} className="mr-1 inline-block">
-                      <StatusBadge tone="warn">{tw.warnings[w]}</StatusBadge>
-                    </span>
-                  ))}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {plan.rows.length > PAGE_SIZE && <Pager page={current} pageSize={PAGE_SIZE} total={plan.rows.length} onPage={setPage} />}
+      <DataTable
+        caption={tw.steps.review}
+        rows={pageSlice(plan.rows, current, PAGE_SIZE)}
+        rowKey={(r) => String(r.item.rowNumber)}
+        columns={[
+          { key: 'row', header: te.colRow, cell: (r) => <span className="tabular text-muted">{r.item.rowNumber}</span> },
+          { key: 'name', header: te.colName, cell: (r) => <span className="font-medium text-ink">{r.item.name}</span> },
+          {
+            key: 'material',
+            header: te.colMaterial,
+            cell: (r) => (r.itemType === 'ish' ? <Badge tone="neutral">{te.types.ish}</Badge> : r.materialName),
+          },
+          { key: 'unit', header: te.colUnit, cell: (r) => r.unitText },
+          { key: 'qty', header: te.colQty, align: 'right', cell: (r) => <Qty value={r.item.qty} size="sm" /> },
+          {
+            key: 'base',
+            header: te.colBase,
+            align: 'right',
+            cell: (r) => (r.qtyBase !== null ? <Qty value={r.qtyBase} unit={r.baseUnit} size="sm" /> : '—'),
+          },
+          { key: 'price', header: te.colPrice, align: 'right', cell: (r) => (r.item.price !== null ? <Money value={r.item.price} size="sm" /> : '—') },
+          { key: 'sum', header: te.colSum, align: 'right', cell: (r) => <Money value={r.sum} size="sm" /> },
+          { key: 'warn', header: tw.reviewWarnings, cell: (r) => <Warnings list={r.warnings} /> },
+        ]}
+        renderMobile={(r) => (
+          <EntryRow
+            kind={r.warnings.length > 0 ? 'warn' : r.itemType === 'ish' ? 'neutral' : 'chiqim'}
+            icon={false}
+            title={r.item.name}
+            badge={r.itemType === 'ish' ? <Badge tone="neutral">{te.types.ish}</Badge> : undefined}
+            meta={
+              <>
+                {r.itemType !== 'ish' && r.materialName && <span>{r.materialName}</span>}
+                {r.warnings.length > 0 && <Warnings list={r.warnings} />}
+              </>
+            }
+            trailing={<Qty value={r.item.qty} unit={r.unitText} />}
+            trailingMeta={<Money value={r.sum} size="sm" />}
+          />
+        )}
+        footer={plan.rows.length > PAGE_SIZE && <Pager page={current} pageSize={PAGE_SIZE} total={plan.rows.length} onPage={setPage} />}
+      />
     </div>
+  )
+}
+
+function Warnings({ list }: { list: readonly ReviewWarning[] }) {
+  return (
+    <span className="flex flex-wrap gap-1">
+      {list.map((w) => (
+        <Badge key={w} tone="warn">
+          {tw.warnings[w]}
+        </Badge>
+      ))}
+    </span>
   )
 }

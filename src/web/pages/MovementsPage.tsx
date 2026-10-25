@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { ArrowLeftRight, ClipboardCheck, List, Package, Warehouse } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
-import { Notice } from '@/components/ui'
+import { Notice, PageHeader, Tabs, type TabItem } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { listProfiles } from '@/data/profilesRepo'
@@ -17,15 +18,34 @@ import { initialMovementFilters } from '../movements/movementFilters'
 import { paramOneOf } from '../urlFilters'
 
 const to = t.ombor
-type Tab = 'movements' | 'stock' | 'transfers' | 'inventory'
-const TABS: readonly Tab[] = ['movements', 'stock', 'transfers', 'inventory']
+export type OmborTab = 'movements' | 'stock' | 'transfers' | 'inventory'
+const TABS: readonly OmborTab[] = ['movements', 'stock', 'transfers', 'inventory']
+const ic = { strokeWidth: 1.75, 'aria-hidden': true } as const
+
+const OMBOR_TABS: readonly TabItem<OmborTab>[] = [
+  { key: 'movements', label: to.tabMovements, icon: <List {...ic} /> },
+  { key: 'stock', label: to.tabStock, icon: <Package {...ic} /> },
+  { key: 'transfers', label: to.tabTransfers, icon: <ArrowLeftRight {...ic} /> },
+  { key: 'inventory', label: to.tabInventory, icon: <ClipboardCheck {...ic} /> },
+]
+
+/** Ombor sahifasi qobig'i: sarlavha va bo'limlar (ko'rgazmada ham ishlatiladi). */
+export function OmborShell({ tab, onTab, children }: { tab: OmborTab; onTab: (tab: OmborTab) => void; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader title={to.title} icon={<Warehouse strokeWidth={1.75} />} />
+      <Tabs label={to.title} items={OMBOR_TABS} value={tab} onChange={onTab} />
+      {children}
+    </div>
+  )
+}
 
 /** Ombor: harakatlar jadvali va qoldiq. Ko'rinish RLS bilan cheklanadi. */
 export function MovementsPage() {
   const { profile: me } = useAuth()
   const [params] = useSearchParams()
   // Bosh sahifa havolalari: ?tab=transfers, ?type=kirim&from=...&to=...&object=...
-  const [tab, setTab] = useState<Tab>(() => paramOneOf(params, 'tab', TABS, 'movements') || 'movements')
+  const [tab, setTab] = useState<OmborTab>(() => paramOneOf(params, 'tab', TABS, 'movements') || 'movements')
   const [initialFilters] = useState(() => initialMovementFilters(params))
   const [objects, setObjects] = useState<ObjectRow[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
@@ -52,32 +72,9 @@ export function MovementsPage() {
   if (!me) return null
   // O'chirish va tiklash — faqat admin (movements_update RLS)
   const isAdmin = can(me.role, 'restore_records')
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'movements', label: to.tabMovements },
-    { key: 'stock', label: to.tabStock },
-    { key: 'transfers', label: to.tabTransfers },
-    { key: 'inventory', label: to.tabInventory },
-  ]
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-5">
-      <h1 className="text-2xl font-bold text-brand-dark">{to.title}</h1>
-      <div role="tablist" aria-label={to.title} className="grid max-w-2xl grid-cols-2 gap-1 sm:grid-cols-4 rounded-xl bg-slate-100 p-1">
-        {tabs.map((x) => (
-          <button
-            key={x.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === x.key}
-            onClick={() => setTab(x.key)}
-            className={`min-h-11 rounded-lg px-3 text-sm font-medium ${
-              tab === x.key ? 'bg-white text-brand shadow-sm' : 'text-slate-600'
-            }`}
-          >
-            {x.label}
-          </button>
-        ))}
-      </div>
+    <OmborShell tab={tab} onTab={setTab}>
       {refError && <Notice>{refError}</Notice>}
       {tab === 'transfers' && <TransfersTab objects={objects} canManage={can(me.role, 'manage_transfers')} />}
       {tab === 'inventory' && <InventoryTab objects={objects} canApply={can(me.role, 'apply_inventory')} />}
@@ -92,6 +89,6 @@ export function MovementsPage() {
         />
       )}
       {tab === 'stock' && <StockTab objects={objects} materials={materials} />}
-    </div>
+    </OmborShell>
   )
 }

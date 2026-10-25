@@ -1,6 +1,6 @@
 // Import ustasining 1–4 qadamlari: fayl, varaq va sarlavha, ustunlar, qatorlar.
 import { useId, useState, type ChangeEvent } from 'react'
-import { StatusBadge, type BadgeTone } from '@/components/StatusBadge'
+import { StatusBadge, type BadgeTone } from '@/components/ui'
 import { Button, Notice, Spinner, TextField } from '@/components/ui'
 import type { EstimateImportTemplate, ObjectRow } from '@/data/types'
 import { cellText } from '@/domain/estimate'
@@ -8,7 +8,7 @@ import type { ParsedRow } from '@/domain/estimate'
 import { ESTIMATE_FIELDS, REQUIRED_FIELDS, type Cell, type ColumnMapping, type EstimateField } from '@/domain/estimate'
 import { t } from '@/i18n'
 import { formatDateTime, formatQty, formatSum } from '@/lib/format'
-import { DateField, Pager, SelectField } from '../fields'
+import { DateField, Pager, SelectField } from '@/components/ui'
 import { Checkbox } from './parts'
 import { ACCEPTED_EXTENSIONS, type ReadError, type SheetData } from './readWorkbook'
 import { chipClass, pageSlice } from './styles'
@@ -74,7 +74,7 @@ export function FileStep({
       </SelectField>
       {showErrors && !objectId && <p className="text-xs text-danger">{tw.needObject}</p>}
       <div className="flex flex-col gap-1.5">
-        <label htmlFor={fileId} className="text-sm font-medium text-slate-700">
+        <label htmlFor={fileId} className="text-sm font-medium text-ink">
           {tw.file}
         </label>
         <input
@@ -82,9 +82,9 @@ export function FileStep({
           type="file"
           accept={ACCEPTED_EXTENSIONS.join(',')}
           onChange={onChange}
-          className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm file:mr-3 file:min-h-9 file:rounded-lg file:border-0 file:bg-brand-light file:px-3 file:font-medium file:text-brand-dark"
+          className="min-h-24 w-full cursor-pointer rounded-xl border-2 border-dashed border-line bg-canvas px-4 py-6 text-sm text-muted hover:border-brand/40 file:mr-3 file:min-h-11 file:rounded-xl file:border-0 file:bg-brand file:px-4 file:font-semibold file:text-white"
         />
-        <p className="text-xs text-slate-500">{tw.fileHint}</p>
+        <p className="text-xs text-muted">{tw.fileHint}</p>
       </div>
       {reading && <Spinner label={tw.reading} />}
       {readError && <Notice>{tw.fileErrors[readError]}</Notice>}
@@ -137,7 +137,7 @@ export function SheetStep({
     <div className="flex flex-col gap-4">
       {sheets.length > 1 && (
         <fieldset>
-          <legend className="mb-1.5 text-sm font-medium text-slate-700">{tw.sheet}</legend>
+          <legend className="mb-1.5 text-sm font-medium text-ink">{tw.sheet}</legend>
           <div className="flex flex-wrap gap-2">
             {sheets.map((s, i) => (
               <button key={s.name} type="button" aria-pressed={i === sheetIndex} className={chipClass(i === sheetIndex)} onClick={() => onSheet(i)}>
@@ -149,20 +149,20 @@ export function SheetStep({
       )}
       {headerRow !== null && headerAuto && <Notice tone="ok">{tw.headerDetected(headerRow + 1)}</Notice>}
       {headerRow === null && <Notice tone="warn">{tw.headerNotFound}</Notice>}
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-line bg-paper">
         <table className="w-full text-left text-xs" aria-label={tw.previewRows}>
           <tbody>
             {rows.map((r, i) => {
               const selected = i === headerRow
               return (
-                <tr key={i} className={`border-t border-slate-100 ${selected ? 'bg-brand-light font-semibold text-brand-dark' : ''}`}>
+                <tr key={i} className={`border-t border-line ${selected ? 'bg-ice font-semibold text-navy' : ''}`}>
                   <td className="w-14 px-1 py-1">
                     <button
                       type="button"
                       aria-pressed={selected}
                       aria-label={tw.headerPick(i + 1)}
                       onClick={() => onHeader(i)}
-                      className={`min-h-11 w-12 rounded-lg border text-xs ${selected ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white'}`}
+                      className={`min-h-11 w-12 rounded-lg border text-xs ${selected ? 'border-brand bg-brand text-white' : 'border-line bg-paper'}`}
                     >
                       {i + 1}
                     </button>
@@ -214,9 +214,9 @@ export function ColumnsStep({
   return (
     <div className="flex flex-col gap-4">
       {template && (
-        <div className="flex flex-col gap-2 rounded-xl border border-ok/20 bg-ok/5 px-4 py-3 text-sm text-ok" role="status">
+        <div className="flex flex-col gap-2 rounded-xl border border-ok/20 bg-ok-bg px-4 py-3 text-sm text-ok" role="status">
           {source === 'template' && <span className="font-medium">{tw.templateApplied}</span>}
-          <span className="text-slate-700">
+          <span className="text-muted">
             {tw.templateInfo(
               template.name,
               template.created_by_name ?? '',
@@ -256,15 +256,15 @@ export function ColumnsStep({
       </div>
       {missing.length > 0 && <Notice tone="warn">{tw.missingFields(missing.map((f) => tw.fields[f]).join(', '))}</Notice>}
       {duplicateColumns(mapping) && <Notice tone="warn">{tw.duplicateColumn}</Notice>}
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-xl border border-line bg-paper">
         <table className="w-full text-left text-xs" aria-label={tw.sample}>
-          <thead className="bg-slate-50 text-slate-600">
+          <thead className="bg-canvas text-muted">
             <tr>
               {Array.from({ length: cols }, (_, c) => {
                 const f = fieldOf(c)
                 return (
-                  <th key={c} className={`px-2 py-2 align-bottom font-medium ${f ? 'bg-brand-light text-brand-dark' : ''}`}>
-                    <span className="block text-[11px] text-slate-500">{columnLetter(c)}</span>
+                  <th key={c} className={`px-2 py-2 align-bottom font-medium ${f ? 'bg-ice text-navy' : ''}`}>
+                    <span className="block text-[11px] text-muted">{columnLetter(c)}</span>
                     {f && <span className="block font-semibold">{tw.fields[f]}</span>}
                     <span className="block max-w-48 truncate">{cellText(header[c])}</span>
                   </th>
@@ -274,9 +274,9 @@ export function ColumnsStep({
           </thead>
           <tbody>
             {sample.map((r, i) => (
-              <tr key={i} className="border-t border-slate-100">
+              <tr key={i} className="border-t border-line">
                 {Array.from({ length: cols }, (_, c) => (
-                  <td key={c} className={`max-w-48 truncate px-2 py-1 ${fieldOf(c) ? 'bg-brand-light/40' : ''}`}>
+                  <td key={c} className={`max-w-48 truncate px-2 py-1 ${fieldOf(c) ? 'bg-ice/40' : ''}`}>
                     {cellText(r[c])}
                   </td>
                 ))}
@@ -307,7 +307,7 @@ function FixForm({ row, initial, onSave, onCancel }: { row: ParsedRow; initial: 
         setSubmitted(true)
         if (valid) onSave(fix)
       }}
-      className="mt-2 flex flex-col gap-3 rounded-xl border border-brand/30 bg-brand-light/40 p-3"
+      className="mt-2 flex flex-col gap-3 rounded-xl border border-brand/30 bg-ice/40 p-3"
     >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <TextField label={tw.fixName} value={fix.name} onChange={(e) => set({ name: e.target.value })} />
@@ -371,7 +371,7 @@ export function RowsStep({
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-slate-700">{tw.rowsSummary(summary.items, summary.skipped, summary.invalid)}</p>
+      <p className="text-sm text-muted">{tw.rowsSummary(summary.items, summary.skipped, summary.invalid)}</p>
       {summary.invalid > 0 && <Notice tone="warn">{tw.unresolvedRows(summary.invalid)}</Notice>}
       <Checkbox
         label={tw.onlyProblems}
@@ -390,18 +390,18 @@ export function RowsStep({
             ...(r.kind === 'invalid' && !r.name ? [tw.rowErrors.name_missing] : []),
           ]
           return (
-            <li key={r.rowNumber} data-testid={`row-${r.rowNumber}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <li key={r.rowNumber} data-testid={`row-${r.rowNumber}`} className="rounded-xl border border-line bg-paper px-3 py-2">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="w-12 text-slate-500">{r.rowNumber}</span>
+                <span className="w-12 text-muted">{r.rowNumber}</span>
                 <StatusBadge tone={ROW_TONES[st]}>{tw.kinds[st]}</StatusBadge>
                 {hidden.has(r.rowNumber) && (
                   <span title={tw.hiddenHint}>
                     <StatusBadge tone="warn">{tw.hidden}</StatusBadge>
                   </span>
                 )}
-                <span className="min-w-0 flex-1 font-medium text-slate-900">{fix?.name || r.name || '—'}</span>
+                <span className="min-w-0 flex-1 font-medium text-ink">{fix?.name || r.name || '—'}</span>
                 {r.kind !== 'section' && r.kind !== 'total' && (
-                  <span className="text-slate-700">
+                  <span className="text-muted">
                     {r.qty !== null ? formatQty(r.qty) : '—'} {r.unit} · {r.price !== null ? formatSum(r.price) : '—'}
                   </span>
                 )}

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '@/auth/authContext'
 import { MovementPhoto } from '@/components/MovementPhoto'
-import { StatusBadge } from '@/components/StatusBadge'
 import { REQUEST_TONE, TRANSFER_TONE } from '@/components/statusTones'
-import { Notice, Spinner } from '@/components/ui'
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Camera, ClipboardList, Scale, ShoppingCart } from 'lucide-react'
+import { Badge, EmptyState, EntryRow, type EntryKind, Money, PageHeader, Qty, sameQty, SkeletonRows } from '@/components/ui'
 import { listMyMovements } from '@/data/movementsRepo'
 import { listMyPurchases } from '@/data/purchasesRepo'
 import { listMyRequests } from '@/data/requestsRepo'
@@ -14,6 +14,7 @@ import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatDate, formatDateTime, formatQty, formatSum } from '@/lib/format'
 import { haptic } from '../telegram'
+import { BackLink, DetailList, LoadError } from '../ui'
 import { useBackButton } from '../useTelegramButtons'
 
 const tm = t.tg.mine
@@ -39,16 +40,27 @@ function baseQty(m: Pick<Movement, 'qty_base' | 'base_unit'>): string {
   return `${formatQty(m.qty_base)} ${m.base_unit ?? ''}`.trim()
 }
 
-/** Kirim — yashil "+", chiqim — "−", xarid — "🛒", boshqalari — "±". */
-function typeMark(e: Entry): { sign: string; tone: string; label: string } {
-  if (e.kind === 'request') return { sign: '📝', tone: 'bg-warn/10 text-warn', label: tm.request }
-  if (e.kind === 'transfer') return { sign: '⇄', tone: 'bg-brand-light text-brand', label: tm.transfer }
-  if (e.kind === 'purchase') return { sign: '🛒', tone: 'bg-brand-light text-brand-dark', label: tm.purchase }
+const ic = 'size-[18px]'
+
+/** Yozuv turi: chiziq rangi, belgi va nom (kirim — yashil, chiqim — ko'k, xarid — navy, o'tkazma — kulrang-ko'k). */
+function typeMark(e: Entry): { kind: EntryKind; icon: ReactNode; label: string } {
+  if (e.kind === 'request') return { kind: 'warn', icon: <ClipboardList className={ic} strokeWidth={1.75} />, label: tm.request }
+  if (e.kind === 'transfer') return { kind: 'transfer', icon: <ArrowLeftRight className={ic} strokeWidth={1.75} />, label: tm.transfer }
+  if (e.kind === 'purchase') return { kind: 'xarid', icon: <ShoppingCart className={ic} strokeWidth={1.75} />, label: tm.purchase }
   const m = e.row
   const label = t.movements.types[m.type]
-  if (m.type === 'kirim' || m.type === 'transfer_in') return { sign: '+', tone: 'bg-ok/10 text-ok', label }
-  if (m.type === 'chiqim' || m.type === 'transfer_out') return { sign: '−', tone: 'bg-brand-light text-brand', label }
-  return { sign: '±', tone: 'bg-warn/10 text-warn', label }
+  if (m.type === 'kirim' || m.type === 'transfer_in') return { kind: 'kirim', icon: <ArrowDownLeft className={ic} strokeWidth={2} />, label }
+  if (m.type === 'chiqim' || m.type === 'transfer_out') return { kind: 'chiqim', icon: <ArrowUpRight className={ic} strokeWidth={2} />, label }
+  return { kind: 'warn', icon: <Scale className={ic} strokeWidth={1.75} />, label }
+}
+
+/** Kiritilgan birlik asosiy bilan bir xil — "= ..." takrorlanmaydi (umumiy qoida: `sameQty`). */
+function sameAsBase(m: Pick<Movement, 'qty_input' | 'unit_input' | 'unit_variant' | 'qty_base' | 'base_unit'>): boolean {
+  return sameQty({ value: m.qty_input, unit: unitOf(m) }, { value: m.qty_base, unit: m.base_unit })
+}
+
+function unitOf(m: Pick<Movement, 'unit_input' | 'unit_variant'>): string {
+  return unitLabel({ unit: m.unit_input, variant: m.unit_variant })
 }
 
 /** Xarid mening nomimga boshqa odam (admin) tomonidan kiritilgan. */
@@ -120,67 +132,64 @@ export function MinePage() {
     const r = open.row
     return (
       <article className="flex flex-col gap-4" aria-label={tm.detail}>
-        <button type="button" onClick={close} className="min-h-11 self-start text-sm font-medium text-brand">
-          ← {t.common.back}
-        </button>
-        <div className="flex items-center gap-3">
-          <span className={`inline-flex size-11 items-center justify-center rounded-full text-xl font-bold ${mark.tone}`}>
-            {mark.sign}
-          </span>
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900">{mark.label}</h1>
-            {r.deleted_at && <StatusBadge tone="danger">{t.movements.deleted}</StatusBadge>}
-            {open.kind === 'purchase' && byOther(open.row, profile.id) && (
-              <StatusBadge tone="info">{tm.enteredByOther}</StatusBadge>
-            )}
-          </div>
+        <BackLink label={t.common.back} onClick={close} />
+        <DetailHeader mark={mark}>
+          {r.deleted_at && <Badge tone="danger">{t.movements.deleted}</Badge>}
+          {open.kind === 'purchase' && byOther(open.row, profile.id) && <Badge tone="info">{tm.enteredByOther}</Badge>}
+        </DetailHeader>
+        <div className="flex flex-col gap-1 rounded-xl border border-line bg-paper px-4 py-3">
+          <span className="text-sm text-muted">{r.material_name}</span>
+          {open.kind === 'purchase' ? (
+            <Money value={open.row.total_amount} size="hero" />
+          ) : (
+            <Qty value={r.qty_input} unit={unitOf(r)} size="hero" />
+          )}
         </div>
-        <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-2 text-sm">
-          <dt className="text-slate-500">{tm.material}</dt>
-          <dd className="font-medium text-slate-900">{r.material_name}</dd>
-          <dt className="text-slate-500">{tm.qty}</dt>
-          <dd className="font-medium text-slate-900">
-            {inputQty(r)} <span className="text-slate-500">(= {baseQty(r)})</span>
+        <DetailList>
+          <dt>{tm.material}</dt>
+          <dd className="font-medium">{r.material_name}</dd>
+          <dt>{tm.qty}</dt>
+          <dd className="tabular font-medium">
+            {inputQty(r)}
+            {!sameAsBase(r) && <span className="text-muted"> (= {baseQty(r)})</span>}
           </dd>
           {open.kind === 'purchase' && (
             <>
-              <dt className="text-slate-500">{tm.sum}</dt>
-              <dd className="font-semibold text-slate-900">{formatSum(open.row.total_amount)}</dd>
-              <dt className="text-slate-500">{tm.unitPrice}</dt>
-              <dd className="text-slate-900">
-                {formatSum(open.row.unit_price)} / {unitLabel({ unit: open.row.unit_input, variant: open.row.unit_variant })}
+              <dt>{tm.sum}</dt>
+              <dd className="tabular font-semibold">{formatSum(open.row.total_amount)}</dd>
+              <dt>{tm.unitPrice}</dt>
+              <dd className="tabular">
+                {formatSum(open.row.unit_price)} / {unitOf(open.row)}
               </dd>
               {open.row.supplier_name && (
                 <>
-                  <dt className="text-slate-500">{tm.supplier}</dt>
-                  <dd className="text-slate-900">{open.row.supplier_name}</dd>
+                  <dt>{tm.supplier}</dt>
+                  <dd>{open.row.supplier_name}</dd>
                 </>
               )}
             </>
           )}
-          <dt className="text-slate-500">{tm.object}</dt>
-          <dd className="text-slate-900">{r.object_name}</dd>
-          <dt className="text-slate-500">{tm.time}</dt>
-          <dd className="text-slate-900">
-            {formatDateTime(open.kind === 'purchase' ? open.row.purchased_at : open.row.occurred_at)}
-          </dd>
+          <dt>{tm.object}</dt>
+          <dd>{r.object_name}</dd>
+          <dt>{tm.time}</dt>
+          <dd className="tabular">{formatDateTime(open.kind === 'purchase' ? open.row.purchased_at : open.row.occurred_at)}</dd>
           {r.note && (
             <>
-              <dt className="text-slate-500">{t.movements.note}</dt>
-              <dd className="whitespace-pre-wrap text-slate-900">{r.note}</dd>
+              <dt>{t.movements.note}</dt>
+              <dd className="whitespace-pre-wrap">{r.note}</dd>
             </>
           )}
-        </dl>
+        </DetailList>
         {open.kind === 'purchase' ? (
           open.row.receipt_photo_path ? (
             <MovementPhoto path={open.row.receipt_photo_path} alt={tm.receipt} />
           ) : (
-            <p className="text-sm text-slate-500">{tm.noReceipt}</p>
+            <p className="text-sm text-muted">{tm.noReceipt}</p>
           )
         ) : open.row.photo_path ? (
           <MovementPhoto path={open.row.photo_path} alt={t.movements.photo} />
         ) : (
-          <p className="text-sm text-slate-500">{t.movements.noPhoto}</p>
+          <p className="text-sm text-muted">{t.movements.noPhoto}</p>
         )}
       </article>
     )
@@ -188,79 +197,53 @@ export function MinePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold text-brand-dark">{tm.title}</h1>
-      {error && (
-        <Notice>
-          {error}{' '}
-          <button
-            type="button"
-            className="ml-1 inline-flex min-h-11 items-center px-1 font-semibold underline"
-            onClick={() => setReloadKey((k) => k + 1)}
-          >
-            {t.common.retry}
-          </button>
-        </Notice>
-      )}
-      {!rows && !error && <Spinner />}
-      {rows && rows.length === 0 && <p className="text-slate-600">{tm.empty}</p>}
+      <PageHeader title={tm.title} />
+      {error && <LoadError message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
+      {!rows && !error && <SkeletonRows rows={4} />}
+      {rows && rows.length === 0 && <EmptyState icon={<ClipboardList strokeWidth={1.5} />} title={tm.empty} />}
       {rows && rows.length > 0 && (
         <ul className="flex flex-col gap-2" aria-label={tm.title}>
           {rows.map((e) => {
-            if (isPlan(e)) {
-              return (
-                <li key={e.key}>
-                  <PlanRow
-                    entry={e}
-                    onOpen={() => {
-                      haptic.tap()
-                      setOpenKey(e.key)
-                    }}
-                  />
-                </li>
-              )
+            const openRow = () => {
+              haptic.tap()
+              setOpenKey(e.key)
             }
+            if (isPlan(e)) return <PlanRow key={e.key} entry={e} onOpen={openRow} />
             const mark = typeMark(e)
             const r = e.row
             const hasPhoto = e.kind === 'purchase' ? Boolean(e.row.receipt_photo_path) : Boolean(e.row.photo_path)
             return (
-              <li key={e.key}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    haptic.tap()
-                    setOpenKey(e.key)
-                  }}
-                  className={`flex min-h-16 w-full items-center gap-3 rounded-2xl border border-slate-200 p-3 text-left ${
-                    r.deleted_at ? 'opacity-60' : ''
-                  }`}
-                >
-                  <span
-                    aria-label={mark.label}
-                    className={`inline-flex size-10 shrink-0 items-center justify-center rounded-full text-lg font-bold ${mark.tone}`}
-                  >
-                    {mark.sign}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-semibold text-slate-900">{r.material_name}</span>
-                    <span className="block text-sm text-slate-700">
-                      {inputQty(r)}{' '}
-                      <span className="text-slate-500">
-                        · {e.kind === 'purchase' ? formatSum(e.row.total_amount) : baseQty(r)}
-                      </span>
-                    </span>
-                    <span className="block truncate text-xs text-slate-500">
-                      {r.object_name} · {formatDateTime(e.kind === 'purchase' ? e.row.purchased_at : e.row.occurred_at)}
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 flex-col items-end gap-1">
-                    {hasPhoto && <span aria-label={t.movements.hasPhoto}>📷</span>}
-                    {r.deleted_at && <StatusBadge tone="danger">{t.movements.deleted}</StatusBadge>}
-                    {e.kind === 'purchase' && byOther(e.row, profile.id) && (
-                      <StatusBadge tone="info">{tm.enteredByOther}</StatusBadge>
+              <EntryRow
+                key={e.key}
+                as="li"
+                kind={mark.kind}
+                icon={mark.icon}
+                deleted={Boolean(r.deleted_at)}
+                title={r.material_name ?? ''}
+                badge={
+                  <>
+                    {hasPhoto && (
+                      <Camera role="img" aria-label={t.movements.hasPhoto} className="size-4 text-muted" strokeWidth={1.75} />
                     )}
-                  </span>
-                </button>
-              </li>
+                    {r.deleted_at && <Badge tone="danger">{t.movements.deleted}</Badge>}
+                    {e.kind === 'purchase' && byOther(e.row, profile.id) && <Badge tone="info">{tm.enteredByOther}</Badge>}
+                  </>
+                }
+                meta={
+                  <>
+                    <span>
+                      <span className="font-medium text-ink/80">{mark.label}</span>
+                      <span>{r.object_name}</span>
+                    </span>
+                    <span className="tabular">{formatDateTime(e.kind === 'purchase' ? e.row.purchased_at : e.row.occurred_at)}</span>
+                  </>
+                }
+                trailing={
+                  e.kind === 'purchase' ? <Money value={e.row.total_amount} /> : <Qty value={r.qty_input} unit={unitOf(r)} />
+                }
+                trailingMeta={e.kind === 'purchase' ? inputQty(r) : sameAsBase(r) ? undefined : `= ${baseQty(r)}`}
+                onClick={openRow}
+              />
             )
           })}
         </ul>
@@ -269,11 +252,35 @@ export function MinePage() {
   )
 }
 
+function DetailHeader({ mark, children }: { mark: ReturnType<typeof typeMark>; children?: ReactNode }) {
+  const tone: Record<EntryKind, string> = {
+    kirim: 'bg-ok-bg text-ok',
+    ok: 'bg-ok-bg text-ok',
+    chiqim: 'bg-ice text-brand',
+    xarid: 'bg-ice text-navy',
+    transfer: 'bg-canvas text-transfer',
+    warn: 'bg-warn-bg text-warn',
+    danger: 'bg-danger-bg text-danger',
+    neutral: 'bg-canvas text-muted',
+  }
+  return (
+    <div className="flex items-center gap-3">
+      <span aria-hidden className={`inline-flex size-12 shrink-0 items-center justify-center rounded-xl [&>svg]:size-6 ${tone[mark.kind]}`}>
+        {mark.icon}
+      </span>
+      <div className="flex flex-col items-start gap-1">
+        <h1 className="text-xl font-semibold text-ink">{mark.label}</h1>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function planStatus(e: PlanEntry) {
   return e.kind === 'request' ? (
-    <StatusBadge tone={REQUEST_TONE[e.row.status]}>{t.requests.statuses[e.row.status]}</StatusBadge>
+    <Badge tone={REQUEST_TONE[e.row.status]}>{t.requests.statuses[e.row.status]}</Badge>
   ) : (
-    <StatusBadge tone={TRANSFER_TONE[e.row.status]}>{t.transfers.statuses[e.row.status]}</StatusBadge>
+    <Badge tone={TRANSFER_TONE[e.row.status]}>{t.transfers.statuses[e.row.status]}</Badge>
   )
 }
 
@@ -287,26 +294,24 @@ function PlanRow({ entry, onOpen }: { entry: PlanEntry; onOpen: () => void }) {
   const mark = typeMark(entry)
   const r = entry.row
   return (
-    <button
-      type="button"
+    <EntryRow
+      as="li"
+      kind={mark.kind}
+      icon={mark.icon}
+      title={r.material_name ?? ''}
+      badge={planStatus(entry)}
+      meta={
+        <>
+          <span>
+            <span className="font-medium text-ink/80">{mark.label}</span>
+            <span>{planPlace(entry)}</span>
+          </span>
+          <span className="tabular">{formatDateTime(r.created_at)}</span>
+        </>
+      }
+      trailing={<Qty value={r.qty_input} unit={unitOf(r)} />}
       onClick={onOpen}
-      className="flex min-h-16 w-full items-center gap-3 rounded-2xl border border-slate-200 p-3 text-left"
-    >
-      <span
-        aria-label={mark.label}
-        className={`inline-flex size-10 shrink-0 items-center justify-center rounded-full text-lg font-bold ${mark.tone}`}
-      >
-        {mark.sign}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-semibold text-slate-900">{r.material_name}</span>
-        <span className="block text-sm text-slate-700">{inputQty(r)}</span>
-        <span className="block truncate text-xs text-slate-500">
-          {planPlace(entry)} · {formatDateTime(r.created_at)}
-        </span>
-      </span>
-      <span className="shrink-0">{planStatus(entry)}</span>
-    </button>
+    />
   )
 }
 
@@ -316,73 +321,68 @@ function PlanDetail({ entry, onClose }: { entry: PlanEntry; onClose: () => void 
   const r = entry.row
   return (
     <article className="flex flex-col gap-4" aria-label={tm.detail}>
-      <button type="button" onClick={onClose} className="min-h-11 self-start text-sm font-medium text-brand">
-        ← {t.common.back}
-      </button>
-      <div className="flex items-center gap-3">
-        <span className={`inline-flex size-11 items-center justify-center rounded-full text-xl font-bold ${mark.tone}`}>
-          {mark.sign}
-        </span>
-        <div className="flex flex-col items-start gap-1">
-          <h1 className="text-lg font-semibold text-slate-900">{mark.label}</h1>
-          {planStatus(entry)}
-        </div>
+      <BackLink label={t.common.back} onClick={onClose} />
+      <DetailHeader mark={mark}>{planStatus(entry)}</DetailHeader>
+      <div className="flex flex-col gap-1 rounded-xl border border-line bg-paper px-4 py-3">
+        <span className="text-sm text-muted">{r.material_name}</span>
+        <Qty value={r.qty_input} unit={unitOf(r)} size="hero" />
       </div>
-      <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-2 text-sm">
-        <dt className="text-slate-500">{tm.material}</dt>
-        <dd className="font-medium text-slate-900">{r.material_name}</dd>
-        <dt className="text-slate-500">{tm.qty}</dt>
-        <dd className="font-medium text-slate-900">
-          {inputQty(r)} <span className="text-slate-500">(= {baseQty(r)})</span>
+      <DetailList>
+        <dt>{tm.material}</dt>
+        <dd className="font-medium">{r.material_name}</dd>
+        <dt>{tm.qty}</dt>
+        <dd className="tabular font-medium">
+          {inputQty(r)}
+            {!sameAsBase(r) && <span className="text-muted"> (= {baseQty(r)})</span>}
         </dd>
         {entry.kind === 'request' ? (
           <>
-            <dt className="text-slate-500">{tm.object}</dt>
-            <dd className="text-slate-900">{entry.row.object_name}</dd>
+            <dt>{tm.object}</dt>
+            <dd>{entry.row.object_name}</dd>
             {entry.row.needed_by && (
               <>
-                <dt className="text-slate-500">{tm.neededBy}</dt>
-                <dd className="text-slate-900">{formatDate(`${entry.row.needed_by}T12:00:00+05:00`)}</dd>
+                <dt>{tm.neededBy}</dt>
+                <dd className="tabular">{formatDate(`${entry.row.needed_by}T12:00:00+05:00`)}</dd>
               </>
             )}
             {entry.row.decision_note && (
               <>
-                <dt className="text-slate-500">{tm.decisionNote}</dt>
-                <dd className="whitespace-pre-wrap text-slate-900">{entry.row.decision_note}</dd>
+                <dt>{tm.decisionNote}</dt>
+                <dd className="whitespace-pre-wrap">{entry.row.decision_note}</dd>
               </>
             )}
           </>
         ) : (
           <>
-            <dt className="text-slate-500">{tm.from}</dt>
-            <dd className="text-slate-900">{entry.row.from_object_name ?? t.tg.incoming.otherObject}</dd>
-            <dt className="text-slate-500">{tm.to}</dt>
-            <dd className="text-slate-900">{entry.row.to_object_name ?? t.tg.incoming.otherObject}</dd>
+            <dt>{tm.from}</dt>
+            <dd>{entry.row.from_object_name ?? t.tg.incoming.otherObject}</dd>
+            <dt>{tm.to}</dt>
+            <dd>{entry.row.to_object_name ?? t.tg.incoming.otherObject}</dd>
             {entry.row.received_qty_base !== null && (
               <>
-                <dt className="text-slate-500">{tm.received}</dt>
-                <dd className="text-slate-900">
+                <dt>{tm.received}</dt>
+                <dd className="tabular">
                   {formatQty(entry.row.received_qty_base)} {entry.row.base_unit ?? ''}
                 </dd>
               </>
             )}
             {entry.row.cancel_reason && (
               <>
-                <dt className="text-slate-500">{tm.decisionNote}</dt>
-                <dd className="whitespace-pre-wrap text-slate-900">{entry.row.cancel_reason}</dd>
+                <dt>{tm.decisionNote}</dt>
+                <dd className="whitespace-pre-wrap">{entry.row.cancel_reason}</dd>
               </>
             )}
           </>
         )}
-        <dt className="text-slate-500">{tm.time}</dt>
-        <dd className="text-slate-900">{formatDateTime(r.created_at)}</dd>
+        <dt>{tm.time}</dt>
+        <dd className="tabular">{formatDateTime(r.created_at)}</dd>
         {r.note && (
           <>
-            <dt className="text-slate-500">{t.movements.note}</dt>
-            <dd className="whitespace-pre-wrap text-slate-900">{r.note}</dd>
+            <dt>{t.movements.note}</dt>
+            <dd className="whitespace-pre-wrap">{r.note}</dd>
           </>
         )}
-      </dl>
+      </DetailList>
     </article>
   )
 }

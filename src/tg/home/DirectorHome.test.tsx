@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { AuthContext, type AuthState } from '@/auth/authContext'
 import * as reportsRepo from '@/data/reportsRepo'
 import type { NormOverviewRow } from '@/data/reportsRepo'
@@ -44,6 +45,7 @@ vi.mock('@/data/alertsRepo', () => ({
   ),
 }))
 
+vi.mock('@/data/movementsRepo', () => ({ listMyMovements: vi.fn(async () => []) }))
 vi.mock('../telegram', () => ({
   getWebApp: () => null,
   haptic: { tap: vi.fn(), success: vi.fn(), error: vi.fn(), select: vi.fn() },
@@ -68,9 +70,11 @@ const NORMS = [norm('A', 'm1', '100', '50'), norm('A', 'm2', '100', '150'), norm
 function renderAs(role: Role) {
   const value = { profile: makeProfile(role) } as unknown as AuthState
   render(
-    <AuthContext.Provider value={value}>
-      <TgHomePage />
-    </AuthContext.Provider>,
+    <MemoryRouter>
+      <AuthContext.Provider value={value}>
+        <TgHomePage />
+      </AuthContext.Provider>
+    </MemoryRouter>,
   )
 }
 
@@ -112,7 +116,7 @@ describe('Mini App direktor bosh ekrani', () => {
     const [first] = await screen.findAllByTestId('tg-object-usage')
     fireEvent.click(first as HTMLElement)
     const mats = await screen.findAllByTestId('tg-material-usage')
-    expect(mats.map((m) => within(m).getByRole('progressbar').getAttribute('aria-label'))).toEqual(['Material m2', 'Material m1'])
+    expect(mats.map((m) => within(m).getByRole('meter').getAttribute('aria-label'))).toEqual(['Material m2', 'Material m1'])
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.reports.tg.backToObjects) }))
     expect(await screen.findAllByTestId('tg-object-usage')).toHaveLength(2)
   })
@@ -120,6 +124,9 @@ describe('Mini App direktor bosh ekrani', () => {
   it('boshqa rollar — oddiy salomlashish ekrani', () => {
     renderAs('prorab')
     expect(screen.getByText(`${t.tg.hello}, Test prorab!`)).toBeInTheDocument()
+    // Ikki katta harakat plitkasi — kirim/chiqim ekraniga
+    expect(screen.getByRole('link', { name: new RegExp(t.movements.types.kirim) })).toHaveAttribute('href', '/tg/movement')
+    expect(screen.getByRole('link', { name: new RegExp(t.movements.types.chiqim) })).toHaveAttribute('href', '/tg/movement')
     expect(reportsRepo.getDashboardSummary).not.toHaveBeenCalled()
   })
 })

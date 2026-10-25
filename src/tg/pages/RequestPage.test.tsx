@@ -192,7 +192,8 @@ describe('/tg/request — So‘rov', () => {
     expect(await screen.findByText(t.errors.network)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: tr.save }))
-    expect(await screen.findByText(`✓ ${tr.saved('3', 'qop', 'Sement')}`, { exact: false })).toBeInTheDocument()
+    // Tasdiq: ✓ belgisi (Lucide) va matn — role="status"
+    expect((await screen.findByText(tr.saved('3', 'qop', 'Sement'), { exact: false })).closest('[role="status"]')).toBeInTheDocument()
 
     const calls = vi.mocked(requestsRepo.createRequest).mock.calls
     expect(calls).toHaveLength(2)

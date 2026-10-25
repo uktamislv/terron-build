@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Button, Modal, Notice, Spinner, TextField } from '@/components/ui'
+import { Building2, CalendarDays, MapPin, Pencil, Plus, UserPlus, Users } from 'lucide-react'
+import { Badge, Button, EmptyState, Modal, Notice, PageHeader, RetryNotice, SkeletonRows, TextField } from '@/components/ui'
 import { addObjectMember, listObjectMembers, removeObjectMember } from '@/data/objectMembersRepo'
 import { createObject, listObjects, updateObject } from '@/data/objectsRepo'
 import { listProfiles } from '@/data/profilesRepo'
@@ -75,13 +75,13 @@ function ObjectFormDialog({
         />
         <TextField label={t.objects.address} value={address} onChange={(e) => setAddress(e.target.value)} />
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1.5 text-sm font-medium text-slate-700">{t.objects.status}</legend>
+          <legend className="mb-1.5 text-sm font-medium text-muted">{t.objects.status}</legend>
           <div className="grid grid-cols-3 gap-2">
             {OBJECT_STATUSES.map((s) => (
               <label
                 key={s}
                 className={`flex min-h-11 cursor-pointer items-center justify-center rounded-xl border px-2 text-center text-sm font-medium ${
-                  status === s ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white text-slate-800'
+                  status === s ? 'border-brand bg-brand text-white' : 'border-line bg-paper text-ink'
                 }`}
               >
                 <input
@@ -151,16 +151,16 @@ function MembersDialog({
       <div className="flex flex-col gap-4">
         {error && <Notice>{error}</Notice>}
         {members.length === 0 ? (
-          <p className="text-sm text-slate-600">{t.objects.noMembers}</p>
+          <p className="text-sm text-muted">{t.objects.noMembers}</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {members.map((m) => {
               const p = profileById.get(m.profile_id)
               return (
-                <li key={m.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-1">
+                <li key={m.id} className="flex items-center justify-between gap-2 rounded-xl border border-line px-3 py-1">
                   <span className="min-w-0 text-sm">
                     <span className="font-medium">{p?.full_name ?? '—'}</span>
-                    {p && <span className="text-slate-500"> · {t.roles[p.role]}</span>}
+                    {p && <span className="text-muted"> · {t.roles[p.role]}</span>}
                   </span>
                   <Button variant="ghost" disabled={busy} onClick={() => void run(() => removeObjectMember(m.id))}>
                     {t.objects.removeMember}
@@ -173,14 +173,14 @@ function MembersDialog({
         {candidates.length > 0 && (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
             <div className="flex flex-1 flex-col gap-1.5">
-              <label htmlFor={selectId} className="text-sm font-medium text-slate-700">
+              <label htmlFor={selectId} className="text-sm font-medium text-muted">
                 {t.objects.selectUser}
               </label>
               <select
                 id={selectId}
                 value={selected}
                 onChange={(e) => setSelected(e.target.value)}
-                className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-base"
+                className="min-h-11 rounded-xl border border-line bg-paper px-3 text-base"
               >
                 <option value="">—</option>
                 {candidates.map((p) => (
@@ -234,45 +234,66 @@ export function ObjectsPage() {
   const membersObject = dialog?.kind === 'members' ? data?.objects.find((o) => o.id === dialog.objectId) : undefined
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-brand-dark">{t.objects.title}</h1>
-        {canManage && <Button onClick={() => setDialog({ kind: 'create' })}>{t.objects.add}</Button>}
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={t.objects.title}
+        icon={<Building2 strokeWidth={1.75} />}
+        actions={
+          canManage && (
+            <Button icon={<Plus aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => setDialog({ kind: 'create' })}>
+              {t.objects.add}
+            </Button>
+          )
+        }
+      />
 
-      {error && (
-        <Notice>
-          {error}{' '}
-          <button type="button" className="font-semibold underline" onClick={reload}>
-            {t.common.retry}
-          </button>
-        </Notice>
-      )}
-      {!data && !error && <Spinner />}
-      {data && data.objects.length === 0 && <p className="text-slate-600">{t.objects.empty}</p>}
+      {error && <RetryNotice message={error} onRetry={reload} />}
+      {!data && !error && <SkeletonRows rows={3} />}
+      {data && data.objects.length === 0 && <EmptyState icon={<Building2 strokeWidth={1.5} />} title={t.objects.empty} />}
 
       {data && data.objects.length > 0 && (
         <ul className="grid gap-3 lg:grid-cols-2" aria-label={t.objects.title}>
           {data.objects.map((o) => {
             const count = data.members.filter((m) => m.object_id === o.id).length
             return (
-              <li key={o.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-900">{o.name}</p>
-                    <p className="text-sm text-slate-600">{o.address || '—'}</p>
+              <li key={o.id} className="flex flex-col gap-3 rounded-xl border border-line bg-paper p-4">
+                <div className="flex items-start gap-3">
+                  <span aria-hidden className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-ice text-brand">
+                    <Building2 className="size-5" strokeWidth={1.75} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-ink">{o.name}</p>
+                    <p className="flex items-center gap-1 text-sm text-muted">
+                      <MapPin aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
+                      {o.address || '—'}
+                    </p>
                   </div>
-                  <StatusBadge tone={statusTone[o.status]}>{t.objects.statuses[o.status]}</StatusBadge>
+                  <Badge tone={statusTone[o.status]}>{t.objects.statuses[o.status]}</Badge>
                 </div>
-                <p className="text-sm text-slate-500">
-                  {t.objects.members}: {count} · {formatDate(o.created_at)}
-                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Users aria-hidden className="size-4" strokeWidth={1.75} />
+                    {t.objects.members}: <span className="tabular font-semibold text-ink">{count}</span>
+                  </span>
+                  <span className="tabular inline-flex items-center gap-1.5">
+                    <CalendarDays aria-hidden className="size-4" strokeWidth={1.75} />
+                    {formatDate(o.created_at)}
+                  </span>
+                </div>
                 {canManage && (
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="secondary" onClick={() => setDialog({ kind: 'edit', object: o })}>
+                  <div className="flex flex-wrap gap-2 border-t border-line pt-3">
+                    <Button
+                      variant="secondary"
+                      icon={<Pencil aria-hidden className="size-4" strokeWidth={1.75} />}
+                      onClick={() => setDialog({ kind: 'edit', object: o })}
+                    >
                       {t.common.edit}
                     </Button>
-                    <Button variant="secondary" onClick={() => setDialog({ kind: 'members', objectId: o.id })}>
+                    <Button
+                      variant="secondary"
+                      icon={<UserPlus aria-hidden className="size-4" strokeWidth={1.75} />}
+                      onClick={() => setDialog({ kind: 'members', objectId: o.id })}
+                    >
                       {t.objects.members}
                     </Button>
                   </div>

@@ -69,10 +69,12 @@ describe('Mini App pastki menyu', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/tg/purchase'))
   })
 
-  it('prorab — Kirim/chiqim, Xarid, So‘rov, Yozuvlarim', async () => {
+  it('prorab — Bosh, Kirim/chiqim, Xarid, So‘rov, Yozuvlarim', async () => {
     await openAs('prorab')
     expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual([
-      t.tg.nav.movement,
+      t.tg.nav.home,
+      // Menyuda qisqa yorliq — bir qatorga sig'adi
+      t.tg.navShort.movement,
       t.tg.nav.purchase,
       t.tg.nav.request,
       t.tg.nav.mine,

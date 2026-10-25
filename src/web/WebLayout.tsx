@@ -1,97 +1,165 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { KeyRound, LogOut, Menu, X } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { ChangePasswordForm } from '@/auth/ChangePasswordForm'
-import { Modal } from '@/components/ui'
+import { BrandMark, cx, IconButton, Modal, useOverlay } from '@/components/ui'
+
 import { t } from '@/i18n'
 import { webNavForRole } from './nav'
+import { webNavIcons } from './navIcons'
 
-export function WebLayout() {
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '·'
+}
+
+/** Telefon/planshet: ochiq yon menyu — Esc, fokus tuzog'i. */
+function DrawerBehaviour({ target, onClose }: { target: RefObject<HTMLElement | null>; onClose: () => void }) {
+  useOverlay(target, onClose)
+  return null
+}
+
+/**
+ * Veb panel: navy yon menyu (≥ 1280 — keng, 1024–1279 — faqat belgilar + tooltip, < 1024 — varaq),
+ * pastda foydalanuvchi bloki. Kontent chapga tekislangan, maksimal 1280 px.
+ */
+export function WebLayout({ children }: { children?: ReactNode } = {}) {
   const [open, setOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
   const closePassword = useCallback(() => setPasswordOpen(false), [])
+  const closeMenu = useCallback(() => setOpen(false), [])
   const { profile, signOut } = useAuth()
   const nav = profile ? webNavForRole(profile.role) : []
+  const aside = useRef<HTMLElement>(null)
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-canvas [--header-h:3.5rem] lg:[--header-h:0px]">
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 transform overflow-y-auto bg-brand-dark text-white transition-transform lg:static lg:translate-x-0 ${
-          open ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        ref={aside}
+        tabIndex={-1}
+        className={cx(
+          'fixed inset-y-0 left-0 z-40 flex w-72 flex-col bg-navy text-white outline-none transition-[transform,visibility] duration-200',
+          'lg:sticky lg:top-0 lg:z-30 lg:h-screen lg:w-[76px] lg:translate-x-0 xl:w-64',
+          open ? 'visible translate-x-0 shadow-float' : 'invisible -translate-x-full lg:visible',
+        )}
       >
-        <div className="flex h-16 items-center px-5 text-lg font-bold">{t.app.name}</div>
-        <nav aria-label={t.app.name} className="flex flex-col gap-1 px-3 pb-6">
+        <div className="flex h-16 shrink-0 items-center gap-3 px-5 lg:justify-center lg:px-0 xl:justify-start xl:px-5">
+          <BrandMark className="size-9 shrink-0 rounded-[10px] ring-1 ring-white/15" />
+          <span className="text-base font-semibold tracking-tight lg:hidden xl:inline">{t.app.name}</span>
+          {open && (
+            <IconButton
+              label={t.common.closeMenu}
+              variant="onDark"
+              className="ml-auto lg:hidden"
+              icon={<X className="size-5" strokeWidth={1.75} />}
+              onClick={closeMenu}
+            />
+          )}
+        </div>
+        <nav
+          aria-label={t.app.name}
+          className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2 lg:overflow-visible lg:px-3 xl:overflow-y-auto"
+        >
           {nav.map((item) => (
             <NavLink
               key={item.key}
               to={item.to}
               end={item.to === '/'}
-              onClick={() => setOpen(false)}
+              onClick={closeMenu}
               className={({ isActive }) =>
-                `flex min-h-11 items-center rounded-lg px-3 text-sm font-medium ${
-                  isActive ? 'bg-brand text-white' : 'text-white/80 hover:bg-white/10 hover:text-white'
-                }`
+                cx(
+                  'group relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors lg:justify-center lg:px-0 xl:justify-start xl:px-3',
+                  isActive ? 'bg-ice/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white',
+                )
               }
             >
-              {item.label}
+              {({ isActive }) => (
+                <>
+                  <span
+                    aria-hidden
+                    className={cx('absolute top-2 bottom-2 -left-3 w-1 rounded-r-full', isActive ? 'bg-[#7FA2FF]' : 'bg-transparent')}
+                  />
+                  {webNavIcons[item.key]}
+                  <span
+                    className={cx(
+                      'truncate',
+                      // 1024–1279: tooltip
+                      'lg:pointer-events-none lg:absolute lg:left-full lg:z-50 lg:ml-3 lg:hidden lg:rounded-lg lg:bg-ink lg:px-2.5 lg:py-1.5 lg:text-xs lg:whitespace-nowrap lg:shadow-float',
+                      'lg:group-hover:block lg:group-focus-visible:block',
+                      'xl:pointer-events-auto xl:static xl:ml-0 xl:block xl:bg-transparent xl:p-0 xl:text-sm xl:shadow-none',
+                    )}
+                  >
+                    {item.label}
+                  </span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
+        {profile && (
+          <div className="shrink-0 border-t border-white/10 p-3">
+            <div className="flex items-center gap-3 px-1 py-2 lg:justify-center xl:justify-start">
+              <span
+                aria-hidden
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-semibold"
+              >
+                {initials(profile.full_name)}
+              </span>
+              <div className="min-w-0 leading-tight lg:sr-only xl:not-sr-only">
+                <p className="truncate text-sm font-semibold">{profile.full_name}</p>
+                <p className="truncate text-xs text-white/60">{t.roles[profile.role]}</p>
+              </div>
+            </div>
+            <div className="mt-1 flex gap-1 lg:flex-col xl:flex-row">
+              <button
+                type="button"
+                title={t.password.change}
+                onClick={() => setPasswordOpen(true)}
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-2 text-sm text-white/75 hover:bg-white/10 hover:text-white"
+              >
+                <KeyRound aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
+                <span className="lg:sr-only xl:not-sr-only">{t.password.change}</span>
+              </button>
+              <button
+                type="button"
+                title={t.common.signOut}
+                onClick={() => void signOut()}
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-2 text-sm text-white/75 hover:bg-white/10 hover:text-white"
+              >
+                <LogOut aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
+                <span className="lg:sr-only xl:not-sr-only">{t.common.signOut}</span>
+              </button>
+            </div>
+          </div>
+        )}
       </aside>
+      {open && <DrawerBehaviour target={aside} onClose={closeMenu} />}
 
       {open && (
         <button
           type="button"
+          tabIndex={-1}
           aria-label={t.common.closeMenu}
-          className="fixed inset-0 z-20 bg-black/40 lg:hidden"
-          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-30 animate-fade-in bg-navy/40 lg:hidden"
+          onClick={closeMenu}
         />
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:px-8">
-          <button
-            type="button"
-            aria-label={t.common.openMenu}
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-brand-dark hover:bg-brand-light lg:hidden"
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-paper/95 px-2 backdrop-blur lg:hidden">
+          <IconButton
+            label={t.common.openMenu}
+            aria-expanded={open}
+            icon={<Menu className="size-6" strokeWidth={1.75} />}
+            className="text-ink"
             onClick={() => setOpen(true)}
-          >
-            <svg viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <span className="hidden truncate font-semibold text-brand-dark md:block">{t.app.tagline}</span>
-          <div className="ml-auto flex min-w-0 items-center gap-3">
-            {profile && (
-              <div className="min-w-0 text-right leading-tight">
-                <p className="truncate text-sm font-semibold text-slate-900">{profile.full_name}</p>
-                <p className="truncate text-xs text-slate-500">{t.roles[profile.role]}</p>
-              </div>
-            )}
-            <button
-              type="button"
-              aria-label={t.password.change}
-              onClick={() => setPasswordOpen(true)}
-              className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-lg px-2 text-sm font-medium text-brand hover:bg-brand-light"
-            >
-              <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <circle cx="8" cy="15" r="4" />
-                <path d="M11 12l9-9M17 6l3 3M15 8l2 2" />
-              </svg>
-              <span className="hidden xl:inline">{t.password.change}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => void signOut()}
-              className="inline-flex min-h-11 shrink-0 items-center rounded-lg px-3 text-sm font-medium text-brand hover:bg-brand-light"
-            >
-              {t.common.signOut}
-            </button>
-          </div>
+          />
+          <BrandMark className="size-7 shrink-0" />
+          <span className="truncate text-base font-semibold text-ink">{t.app.name}</span>
         </header>
-        <main className="flex-1 p-4 lg:p-8">
-          <Outlet />
+        <main className="w-full max-w-[1280px] flex-1 px-4 py-4 md:px-6 md:py-6 lg:px-8 lg:py-8">
+          {children ?? <Outlet />}
         </main>
       </div>
       {passwordOpen && (

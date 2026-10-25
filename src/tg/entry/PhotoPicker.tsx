@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, type ChangeEvent } from 'react'
-import { Button, Notice, Spinner } from '@/components/ui'
+import { Camera, Image as ImageIcon, LoaderCircle, Trash2 } from 'lucide-react'
+import { Button, Notice } from '@/components/ui'
 import { t } from '@/i18n'
 
 const tm = t.tg.movement
@@ -71,14 +72,15 @@ export function PhotoPicker({
         onChange={onInput}
       />
       {photo ? (
-        <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-2">
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-paper p-2">
           {preview ? (
             <img src={preview} alt={tm.photoSelected} className="size-14 rounded-lg object-cover" />
           ) : (
-            <span className="text-sm text-slate-700">{tm.photoSelected}</span>
+            <span className="text-sm text-muted">{tm.photoSelected}</span>
           )}
-          <span className="flex-1 truncate text-sm text-slate-600">{photo.name}</span>
-          <button type="button" onClick={onRemove} className="min-h-11 rounded-lg px-3 text-sm font-medium text-danger">
+          <span className="flex-1 truncate text-sm text-muted">{photo.name}</span>
+          <button type="button" onClick={onRemove} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-danger hover:bg-danger-bg">
+            <Trash2 aria-hidden className="size-4" strokeWidth={1.75} />
             {tm.removePhoto}
           </button>
         </div>
@@ -88,16 +90,18 @@ export function PhotoPicker({
             type="button"
             disabled={busy}
             onClick={() => cameraRef.current?.click()}
-            className="min-h-12 rounded-xl border border-dashed border-slate-300 text-base text-slate-700 active:bg-slate-50 disabled:opacity-60"
+            className="inline-flex min-h-13 items-center justify-center gap-2 rounded-xl border border-dashed border-muted/40 bg-paper text-base font-medium text-ink active:bg-ice disabled:opacity-60"
           >
+            <Camera aria-hidden className="size-5 text-muted" strokeWidth={1.75} />
             {tm.takePhoto}
           </button>
           <button
             type="button"
             disabled={busy}
             onClick={() => galleryRef.current?.click()}
-            className="min-h-12 rounded-xl border border-dashed border-slate-300 text-base text-slate-700 active:bg-slate-50 disabled:opacity-60"
+            className="inline-flex min-h-13 items-center justify-center gap-2 rounded-xl border border-dashed border-muted/40 bg-paper text-base font-medium text-ink active:bg-ice disabled:opacity-60"
           >
+            <ImageIcon aria-hidden className="size-5 text-muted" strokeWidth={1.75} />
             {tm.fromGallery}
           </button>
         </div>
@@ -126,9 +130,14 @@ export function PhotoField({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <span className="text-sm font-medium text-ink">{label}</span>
       <PhotoPicker photo={photo} busy={busy} onPick={onPick} onRemove={onRemove} />
-      {preparing && <Spinner label={tm.preparingPhoto} />}
+      {preparing && (
+        <p role="status" className="flex items-center gap-2 text-sm text-muted">
+          <LoaderCircle aria-hidden className="size-4 animate-spin" strokeWidth={2} />
+          {tm.preparingPhoto}
+        </p>
+      )}
       {notice && <Notice tone="warn">{notice}</Notice>}
     </div>
   )
@@ -147,8 +156,8 @@ export function PhotoErrorBox({
   onWithoutPhoto: () => void
 }) {
   return (
-    <div role="alert" className="flex flex-col gap-2 rounded-xl border border-danger/20 bg-danger/5 p-3">
-      <p className="text-sm text-danger">{message}</p>
+    <div role="alert" className="flex flex-col gap-3 rounded-xl border border-danger/20 bg-danger-bg p-3">
+      <p className="text-sm font-medium text-danger">{message}</p>
       <div className="grid grid-cols-2 gap-2">
         <Button variant="secondary" disabled={busy} onClick={onRetry}>
           {t.common.retry}

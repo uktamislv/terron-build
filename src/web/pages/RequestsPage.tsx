@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
-import { StatusBadge } from '@/components/StatusBadge'
 import { REQUEST_TONE } from '@/components/statusTones'
-import { Button, Notice, Spinner } from '@/components/ui'
+import { Check, ClipboardList, ShoppingCart, X } from 'lucide-react'
+import { Badge, Button, DataTable, EmptyState, EntryRow, FilterBar, Notice, PageHeader, Pager, Qty, RetryNotice, Spinner } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
 import { listNormUsage } from '@/data/normsRepo'
 import { listObjects } from '@/data/objectsRepo'
@@ -29,11 +29,11 @@ import { requestNormState } from '@/lib/requestNorm'
 import { ExportButton } from '../ExportButton'
 import { requestsSheet } from '../exports'
 import { paramId, paramOneOf } from '../urlFilters'
-import { Pager, RetryNotice, SelectField } from '../fields'
 import { NormProgress } from '../norms/NormProgress'
 import { PurchasedDialog, RejectDialog } from '../requests/RequestDialogs'
 
 const tp = t.requestsPage
+const ic = { className: 'size-5', strokeWidth: 1.75, 'aria-hidden': true } as const
 
 type StatusFilter = 'all' | RequestStatus
 
@@ -66,8 +66,8 @@ function EstimateCell({ request, objectNorms }: { request: MaterialRequest; obje
   const other =
     norm && OPEN.includes(request.status) ? sub(norm.requested_open_qty_base, request.qty_base) : norm?.requested_open_qty_base
   const state = requestNormState(objectNorms, request.material_id, request.qty_base, other)
-  if (state.kind === 'no_estimate') return <StatusBadge tone="neutral">{tp.noEstimate}</StatusBadge>
-  if (state.kind === 'not_in_estimate' || !norm) return <StatusBadge tone="warn">{tp.notInEstimate}</StatusBadge>
+  if (state.kind === 'no_estimate') return <Badge tone="neutral">{tp.noEstimate}</Badge>
+  if (state.kind === 'not_in_estimate' || !norm) return <Badge tone="warn">{tp.notInEstimate}</Badge>
   return (
     <div className="flex flex-col gap-1">
       {state.kind === 'over' ? (
@@ -75,7 +75,7 @@ function EstimateCell({ request, objectNorms }: { request: MaterialRequest; obje
           {tp.normOver(`${formatQty(state.overQty)} ${unit}`.trim())}
         </span>
       ) : (
-        <span data-testid="norm-left" className="text-sm text-slate-700">
+        <span data-testid="norm-left" className="text-sm text-muted">
           {tp.normLeft(`${formatQty(state.available)} ${unit}`.trim())}
         </span>
       )}
@@ -169,181 +169,204 @@ export function RequestsPage() {
   const canPurchase = can(me.role, 'mark_request_purchased')
   const showActions = canApprove || canPurchase
 
-  const actions = (r: MaterialRequest) => (
-    <div className="flex flex-wrap gap-2">
-      {canApprove && r.status === 'kutilmoqda' && (
-        <>
-          <Button disabled={busyId === r.id} onClick={() => void act(r.id, () => approveRequest(r.id))}>
-            {tp.approve}
-          </Button>
+  const actions = (r: MaterialRequest) => {
+    const approve = canApprove && r.status === 'kutilmoqda'
+    const purchase = canPurchase && r.status === 'tasdiqlandi'
+    if (!approve && !purchase) return null
+    return (
+      <div className="flex flex-wrap justify-end gap-1">
+        {approve && (
+          <>
+            <Button size="sm" icon={<Check {...ic} />} disabled={busyId === r.id} onClick={() => void act(r.id, () => approveRequest(r.id))}>
+              {tp.approve}
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-danger! hover:bg-danger-bg!"
+              size="sm"
+              icon={<X {...ic} />}
+              disabled={busyId === r.id}
+              onClick={() => {
+                setActionError(null)
+                setRejecting(r)
+              }}
+            >
+              {tp.reject}
+            </Button>
+          </>
+        )}
+        {purchase && (
           <Button
-            variant="danger"
+            variant="secondary"
+            size="sm"
+            icon={<ShoppingCart {...ic} />}
             disabled={busyId === r.id}
             onClick={() => {
               setActionError(null)
-              setRejecting(r)
+              setPurchasing(r)
             }}
           >
-            {tp.reject}
+            {tp.purchased}
           </Button>
-        </>
-      )}
-      {canPurchase && r.status === 'tasdiqlandi' && (
-        <Button
-          variant="secondary"
-          disabled={busyId === r.id}
-          onClick={() => {
-            setActionError(null)
-            setPurchasing(r)
-          }}
-        >
-          {tp.purchased}
-        </Button>
-      )}
-    </div>
-  )
+        )}
+      </div>
+    )
+  }
 
-  const qtyText = (r: MaterialRequest) => `${formatQty(r.qty_input)} ${unitLabel({ unit: r.unit_input, variant: r.unit_variant })}`
-  const statusCell = (r: MaterialRequest) => (
-    <span className="flex flex-col items-start gap-1">
-      <StatusBadge tone={REQUEST_TONE[r.status]}>{t.requests.statuses[r.status]}</StatusBadge>
+  const inputUnit = (r: MaterialRequest) => unitLabel({ unit: r.unit_input, variant: r.unit_variant })
+  const statusBadge = (r: MaterialRequest) => <Badge tone={REQUEST_TONE[r.status]}>{t.requests.statuses[r.status]}</Badge>
+  const decision = (r: MaterialRequest) => (
+    <>
       {r.decision_note && (
-        <span className="text-xs text-slate-600">
+        <span className="text-xs text-muted">
           {tp.decisionNote}: {r.decision_note}
         </span>
       )}
-      {r.decided_by_name && r.status !== 'kutilmoqda' && (
-        <span className="text-xs text-slate-500">{tp.decidedBy(r.decided_by_name)}</span>
-      )}
-    </span>
+      {r.decided_by_name && r.status !== 'kutilmoqda' && <span className="text-xs text-muted">{tp.decidedBy(r.decided_by_name)}</span>}
+    </>
   )
   const neededText = (r: MaterialRequest) => (r.needed_by ? formatDate(`${r.needed_by}T12:00:00+05:00`) : '—')
+  const estimate = (r: MaterialRequest) => (norms ? <EstimateCell request={r} objectNorms={norms.get(r.object_id) ?? []} /> : null)
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h1 className="text-2xl font-bold text-brand-dark">{tp.title}</h1>
-        <ExportButton
-          run={async (signal) => {
-            const rows = await listAllRequests(toFilters(form), signal)
-            await exportWorkbook({
-              fileName: exportFileName(t.excel.sections.requests),
-              sheets: [requestsSheet(rows)],
-              signal,
-            })
-          }}
-        />
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={tp.title}
+        icon={<ClipboardList strokeWidth={1.75} />}
+        actions={
+          <ExportButton
+            run={async (signal) => {
+              const rows = await listAllRequests(toFilters(form), signal)
+              await exportWorkbook({
+                fileName: exportFileName(t.excel.sections.requests),
+                sheets: [requestsSheet(rows)],
+                signal,
+              })
+            }}
+          />
+        }
+      />
 
-      <form
-        aria-label={t.ombor.filters}
-        onSubmit={(e) => e.preventDefault()}
-        className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-3"
-      >
-        <SelectField label={tp.filterStatus} value={form.status} onChange={(v) => update({ status: v as StatusFilter })}>
-          {REQUEST_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {t.requests.statuses[s]}
-            </option>
-          ))}
-          <option value="all">{tp.all}</option>
-        </SelectField>
-        <SelectField label={tp.filterObject} value={form.objectId} onChange={(v) => update({ objectId: v })}>
-          <option value="">{tp.all}</option>
-          {objects.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </SelectField>
-        <SelectField label={tp.filterMaterial} value={form.materialId} onChange={(v) => update({ materialId: v })}>
-          <option value="">{tp.all}</option>
-          {sortedMaterials.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </SelectField>
-      </form>
+      <FilterBar
+        label={t.ombor.filters}
+        onClear={() => update(EMPTY)}
+        filters={[
+          {
+            kind: 'select',
+            key: 'status',
+            label: tp.filterStatus,
+            value: form.status,
+            emptyValue: EMPTY.status,
+            onChange: (v) => update({ status: v as StatusFilter }),
+            options: [...REQUEST_STATUSES.map((s) => ({ value: s, label: t.requests.statuses[s] })), { value: 'all', label: tp.all }],
+          },
+          {
+            kind: 'select',
+            key: 'object',
+            label: tp.filterObject,
+            value: form.objectId,
+            onChange: (v) => update({ objectId: v }),
+            options: [{ value: '', label: tp.all }, ...objects.map((o) => ({ value: o.id, label: o.name }))],
+          },
+          {
+            kind: 'select',
+            key: 'material',
+            label: tp.filterMaterial,
+            value: form.materialId,
+            onChange: (v) => update({ materialId: v }),
+            options: [{ value: '', label: tp.all }, ...sortedMaterials.map((m) => ({ value: m.id, label: m.name }))],
+          },
+        ]}
+      />
 
       {error && <RetryNotice message={error} onRetry={reload} />}
       {actionError && !rejecting && !purchasing && <Notice>{actionError}</Notice>}
       {!data && !error && <Spinner />}
-      {data && data.rows.length === 0 && <p className="text-slate-600">{tp.empty}</p>}
 
-      {data && data.rows.length > 0 && (
-        <>
-          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white md:block">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 font-medium">{tp.colDate}</th>
-                  <th className="px-3 py-2 font-medium">{tp.colObject}</th>
-                  <th className="px-3 py-2 font-medium">{tp.colMaterial}</th>
-                  <th className="px-3 py-2 text-right font-medium">{tp.colQty}</th>
-                  <th className="px-3 py-2 font-medium">{tp.colNeeded}</th>
-                  <th className="px-3 py-2 font-medium">{tp.colAuthor}</th>
-                  <th className="px-3 py-2 font-medium">
-                    {tp.colEstimate}
-                    <span className="block text-xs font-normal text-slate-500">{tp.currentHint}</span>
-                  </th>
-                  <th className="px-3 py-2 font-medium">{tp.colStatus}</th>
-                  {showActions && <th className="px-3 py-2 font-medium">{tp.colActions}</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((r) => (
-                  <tr key={r.id} data-testid="request-row" className="border-t border-slate-100 align-top">
-                    <td className="whitespace-nowrap px-3 py-2">{formatDateTime(r.created_at)}</td>
-                    <td className="px-3 py-2">{r.object_name ?? '—'}</td>
-                    <td className="px-3 py-2 font-medium">{r.material_name ?? '—'}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      {qtyText(r)}
-                      <span className="block text-xs text-slate-500">
-                        = {formatQty(r.qty_base)} {r.base_unit ?? ''}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2">{neededText(r)}</td>
-                    <td className="px-3 py-2">
-                      {r.created_by_name ?? '—'}
-                      {r.note && <span className="block text-xs text-slate-500">{r.note}</span>}
-                    </td>
-                    <td className="px-3 py-2">
-                      {norms && <EstimateCell request={r} objectNorms={norms.get(r.object_id) ?? []} />}
-                    </td>
-                    <td className="px-3 py-2">{statusCell(r)}</td>
-                    {showActions && <td className="px-3 py-2">{actions(r)}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <ul className="flex flex-col gap-3 md:hidden" aria-label={tp.title}>
-            {data.rows.map((r) => (
-              <li key={r.id} className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold text-slate-900">
-                    {r.material_name} · {qtyText(r)}
-                  </p>
-                  {statusCell(r)}
-                </div>
-                <p className="text-sm text-slate-600">
-                  {r.object_name ?? '—'} · {r.created_by_name ?? '—'} · {formatDateTime(r.created_at)}
-                </p>
-                {r.needed_by && (
-                  <p className="text-sm text-slate-600">
-                    {tp.colNeeded}: {neededText(r)}
-                  </p>
-                )}
-                {norms && <EstimateCell request={r} objectNorms={norms.get(r.object_id) ?? []} />}
-                {showActions && actions(r)}
-              </li>
-            ))}
-          </ul>
-
-          <Pager page={page} pageSize={REQUESTS_PAGE_SIZE} total={data.total} onPage={setPage} />
-        </>
+      {data && (
+        <DataTable
+          caption={tp.title}
+          rows={data.rows}
+          rowKey={(r) => r.id}
+          rowTestId="request-row"
+          empty={<EmptyState icon={<ClipboardList strokeWidth={1.5} />} title={tp.empty} />}
+          columns={[
+            { key: 'date', header: tp.colDate, cell: (r) => <span className="tabular whitespace-nowrap text-muted">{formatDateTime(r.created_at)}</span> },
+            { key: 'object', header: tp.colObject, cell: (r) => r.object_name ?? '—' },
+            { key: 'material', header: tp.colMaterial, cell: (r) => <span className="font-medium text-ink">{r.material_name ?? '—'}</span> },
+            {
+              key: 'qty',
+              header: tp.colQty,
+              align: 'right',
+              cell: (r) => (
+                <span className="flex flex-col items-end">
+                  <Qty value={r.qty_input} unit={inputUnit(r)} size="sm" />
+                  <Qty value={r.qty_base} unit={r.base_unit} size="sm" tone="muted" />
+                </span>
+              ),
+            },
+            { key: 'needed', header: tp.colNeeded, cell: (r) => <span className="tabular whitespace-nowrap">{neededText(r)}</span> },
+            {
+              key: 'author',
+              header: tp.colAuthor,
+              cell: (r) => (
+                <span className="flex flex-col">
+                  {r.created_by_name ?? '—'}
+                  {r.note && <span className="text-xs text-muted">{r.note}</span>}
+                </span>
+              ),
+            },
+            {
+              key: 'estimate',
+              header: (
+                <span className="flex flex-col">
+                  {tp.colEstimate}
+                  <span className="text-xs font-normal">{tp.currentHint}</span>
+                </span>
+              ),
+              className: 'min-w-44',
+              cell: estimate,
+            },
+            {
+              key: 'status',
+              header: tp.colStatus,
+              cell: (r) => (
+                <span className="flex flex-col items-start gap-1">
+                  {statusBadge(r)}
+                  {decision(r)}
+                </span>
+              ),
+            },
+            showActions && { key: 'actions', header: tp.colActions, srHeader: true, cell: actions },
+          ]}
+          renderMobile={(r) => (
+            <EntryRow
+              kind={r.status === 'rad' ? 'danger' : r.status === 'xarid_qilindi' ? 'ok' : r.status === 'tasdiqlandi' ? 'chiqim' : 'warn'}
+              icon={<ClipboardList className="size-[18px]" strokeWidth={1.75} />}
+              title={r.material_name ?? '—'}
+              badge={statusBadge(r)}
+              meta={
+                <>
+                  <span>{r.object_name ?? '—'}</span>
+                  <span>{r.created_by_name ?? '—'}</span>
+                  <span className="tabular">{formatDateTime(r.created_at)}</span>
+                  {r.needed_by && (
+                    <span>
+                      {tp.colNeeded}: {neededText(r)}
+                    </span>
+                  )}
+                  {decision(r)}
+                  {norms && <span className="mt-1 flex-col !items-stretch">{estimate(r)}</span>}
+                </>
+              }
+              qty={{ value: r.qty_input, unit: inputUnit(r) }}
+              baseQty={{ value: r.qty_base, unit: r.base_unit }}
+              qtySize="lg"
+              actions={showActions ? actions(r) : undefined}
+            />
+          )}
+          footer={<Pager page={page} pageSize={REQUESTS_PAGE_SIZE} total={data.total} onPage={setPage} />}
+        />
       )}
 
       {rejecting && (

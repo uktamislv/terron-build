@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { Button, Modal, Notice, Spinner } from '@/components/ui'
+import { ClipboardCheck, ClipboardList, Plus, TriangleAlert } from 'lucide-react'
+import { BottomSheet, Button, Notice, PageHeader, SkeletonRows } from '@/components/ui'
 import {
   createCount,
   listCandidateMaterials,
@@ -23,6 +24,7 @@ import { UnitChips } from '../entry/UnitChips'
 import { useEntryData } from '../entry/useEntryData'
 import { CountMaterialList } from '../inventory/CountMaterialList'
 import { getWebApp, haptic } from '../telegram'
+import { LoadError, SavedBanner } from '../ui'
 import { useBackButton, useMainButton } from '../useTelegramButtons'
 
 const ti = t.tg.inventory
@@ -119,7 +121,7 @@ function CountItemForm({
       {qtyBase !== null && <BaseQtyBox qtyBase={qtyBase} unit={unit} baseUnit={material.base_unit} />}
       {error && <Notice>{error}</Notice>}
       {!insideTelegram && (
-        <Button className="min-h-12 text-base" onClick={onMain} disabled={saving}>
+        <Button size="lg" onClick={onMain} loading={saving}>
           {saving ? t.common.saving : ti.save}
         </Button>
       )}
@@ -228,28 +230,16 @@ function CountSession({
   const notCounted = [...relevant].filter((id) => !countedIds.has(id)).length
   return (
     <div className="flex flex-col gap-4">
-      {error && (
-        <Notice>
-          {error}
-          <button
-            type="button"
-            className="ml-1 inline-flex min-h-11 items-center px-1 font-semibold underline"
-            onClick={() => setReloadKey((k) => k + 1)}
-          >
-            {t.common.retry}
-          </button>
-        </Notice>
-      )}
-      {!items && !error && <Spinner />}
+      {error && <LoadError message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
+      {!items && !error && <SkeletonRows rows={3} />}
       {items && (
         <>
-          <p className="text-sm text-slate-600">{ti.hint}</p>
+          <p className="text-sm text-muted">{ti.hint}</p>
           {savedText && (
-            <div role="status" className="rounded-2xl border border-ok/30 bg-ok/5 p-3 font-semibold text-ok">
-              ✓ {savedText}
-            </div>
+            <SavedBanner>{savedText}</SavedBanner>
           )}
-          <p data-testid="counted-count" className="font-semibold text-brand-dark">
+          <p data-testid="counted-count" className="flex items-center gap-2 text-base font-semibold text-ink">
+            <ClipboardCheck aria-hidden className="size-5 text-ok" strokeWidth={1.75} />
             {ti.counted(n)}
           </p>
           <CountMaterialList
@@ -264,7 +254,7 @@ function CountSession({
           />
           <Button
             variant="primary"
-            className="min-h-12 text-base"
+            size="lg"
             onClick={() => {
               setSubmitError(null)
               setConfirming(true)
@@ -275,26 +265,34 @@ function CountSession({
         </>
       )}
       {confirming && (
-        <Modal title={ti.confirmTitle} onClose={() => setConfirming(false)}>
-          <div className="flex flex-col gap-4">
-            <p className="text-base text-slate-800">{n === 0 ? ti.nothingCounted : ti.confirmText(n)}</p>
+        <BottomSheet
+          title={ti.confirmTitle}
+          onClose={() => setConfirming(false)}
+          footer={
+            <>
+              <Button variant="secondary" size="lg" className="flex-1" onClick={() => setConfirming(false)}>
+                {t.common.cancel}
+              </Button>
+              <Button size="lg" className="flex-1" disabled={n === 0} loading={submitting} onClick={() => void finish()}>
+                {submitting ? t.common.saving : ti.confirm}
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-4 px-2 pb-1">
+            <p className="text-base text-ink">{n === 0 ? ti.nothingCounted : ti.confirmText(n)}</p>
             {notCounted > 0 && (
-              <div data-testid="not-counted" className="rounded-xl border border-warn/30 bg-warn/5 px-4 py-3 text-sm text-warn">
-                <p className="font-semibold">{ti.notCounted(notCounted)}</p>
-                <p>{ti.notCountedWarn}</p>
+              <div data-testid="not-counted" className="flex gap-2.5 rounded-xl border border-warn/25 bg-warn-bg px-4 py-3 text-sm text-warn">
+                <TriangleAlert aria-hidden className="mt-0.5 size-5 shrink-0" strokeWidth={1.75} />
+                <div>
+                  <p className="font-semibold">{ti.notCounted(notCounted)}</p>
+                  <p>{ti.notCountedWarn}</p>
+                </div>
               </div>
             )}
             {submitError && <Notice>{submitError}</Notice>}
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="secondary" onClick={() => setConfirming(false)}>
-                {t.common.cancel}
-              </Button>
-              <Button disabled={n === 0 || submitting} onClick={() => void finish()}>
-                {submitting ? t.common.saving : ti.confirm}
-              </Button>
-            </div>
           </div>
-        </Modal>
+        </BottomSheet>
       )}
     </div>
   )
@@ -363,16 +361,9 @@ export function InventoryPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold text-brand-dark">{ti.title}</h1>
-      {error && (
-        <Notice>
-          {error}
-          <button type="button" className="ml-1 inline-flex min-h-11 items-center px-1 font-semibold underline" onClick={reload}>
-            {t.common.retry}
-          </button>
-        </Notice>
-      )}
-      {!error && (!objects || !materials) && <Spinner />}
+      <PageHeader title={ti.title} />
+      {error && <LoadError message={error} onRetry={reload} />}
+      {!error && (!objects || !materials) && <SkeletonRows rows={3} />}
       {objects && objects.length === 0 && <Notice tone="warn">{ti.noObjects}</Notice>}
 
       {objects && objects.length > 0 && materials && (
@@ -401,12 +392,14 @@ export function InventoryPage() {
           {phase.kind === 'start' && object && !picking && (
             <section className="flex flex-col gap-3">
               {draftError && <Notice>{draftError}</Notice>}
-              {!drafts && !draftError && <Spinner />}
+              {!drafts && !draftError && <SkeletonRows rows={1} />}
               {drafts?.map((d) => (
                 <Button
                   key={d.id}
                   variant="secondary"
-                  className="min-h-14 text-base"
+                  size="lg"
+                  className="justify-start whitespace-normal text-left"
+                  icon={<ClipboardList aria-hidden className="size-5 shrink-0 text-muted" strokeWidth={1.75} />}
                   onClick={() => {
                     haptic.tap()
                     setPhase({ kind: 'count', count: d })
@@ -415,7 +408,12 @@ export function InventoryPage() {
                   {ti.continueDraft(formatDateTime(d.created_at), d.item_count)}
                 </Button>
               ))}
-              <Button className="min-h-14 text-base" disabled={starting} onClick={() => void startNew()}>
+              <Button
+                size="lg"
+                loading={starting}
+                icon={<Plus aria-hidden className="size-5" strokeWidth={2} />}
+                onClick={() => void startNew()}
+              >
                 {starting ? t.common.saving : ti.newCount}
               </Button>
             </section>
@@ -433,12 +431,18 @@ export function InventoryPage() {
           )}
 
           {phase.kind === 'result' && (
-            <section role="status" className="flex flex-col gap-3 rounded-2xl border border-ok/30 bg-ok/5 p-4">
-              <p className="text-lg font-semibold text-ok">✓ {ti.resultTitle}</p>
-              <p data-testid="inventory-result" className="text-base text-slate-800">
+            <section role="status" className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-paper px-5 py-8 text-center">
+              <span
+                aria-hidden
+                className={`inline-flex size-16 items-center justify-center rounded-full ${phase.shortage ? 'bg-warn-bg text-warn' : 'bg-ok-bg text-ok'}`}
+              >
+                {phase.shortage ? <TriangleAlert className="size-8" strokeWidth={1.5} /> : <ClipboardCheck className="size-8" strokeWidth={1.5} />}
+              </span>
+              <p className="text-lg font-semibold text-ink">{ti.resultTitle}</p>
+              <p data-testid="inventory-result" className="max-w-xs text-base text-muted">
                 {phase.shortage ? ti.resultShortage : ti.resultOk}
               </p>
-              <Button variant="secondary" onClick={backToStart}>
+              <Button variant="secondary" size="lg" className="mt-2 self-stretch" onClick={backToStart}>
                 {ti.again}
               </Button>
             </section>

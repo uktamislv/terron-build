@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Notice, Spinner } from '@/components/ui'
+import { ChevronRight, PackageOpen } from 'lucide-react'
+import { Button, EntryRow, Notice, Qty, SkeletonRows } from '@/components/ui'
 import { listIncomingTransfers, receiveTransfer } from '@/data/transfersRepo'
 import type { Transfer } from '@/data/types'
 import { cmp } from '@/domain/decimal'
@@ -10,6 +11,7 @@ import { errorText } from '@/i18n/errorText'
 import { formatDateTime, formatQty } from '@/lib/format'
 import { NoteField, QtyField } from '../entry/QtyField'
 import { getWebApp, haptic } from '../telegram'
+import { BackLink, DetailList, SavedBanner, SectionTitle } from '../ui'
 import { useBackButton, useMainButton } from '../useTelegramButtons'
 
 const ti = t.tg.incoming
@@ -71,18 +73,17 @@ function ReceiveForm({ transfer, onDone }: { transfer: Transfer; onDone: (text: 
 
   return (
     <section aria-label={transfer.material_name ?? ti.title} className="flex flex-col gap-4">
-      <div className="rounded-2xl border border-slate-200 p-4">
-        <p className="text-lg font-semibold text-slate-900">{transfer.material_name}</p>
-        <dl className="mt-2 grid grid-cols-[auto,1fr] gap-x-4 gap-y-1 text-sm">
-          <dt className="text-slate-500">{ti.from}</dt>
-          <dd className="text-slate-900">{transfer.from_object_name ?? ti.otherObject}</dd>
-          <dt className="text-slate-500">{ti.to}</dt>
-          <dd className="text-slate-900">{transfer.to_object_name ?? '—'}</dd>
-          <dt className="text-slate-500">{ti.sent}</dt>
-          <dd data-testid="incoming-sent" className="font-semibold text-slate-900">
+      <p className="text-xl leading-tight font-semibold text-ink">{transfer.material_name}</p>
+      <DetailList>
+          <dt>{ti.from}</dt>
+          <dd>{transfer.from_object_name ?? ti.otherObject}</dd>
+          <dt>{ti.to}</dt>
+          <dd>{transfer.to_object_name ?? '—'}</dd>
+          <dt>{ti.sent}</dt>
+          <dd data-testid="incoming-sent" className="tabular font-semibold">
             {formatQty(transfer.qty_input)} {unit}
             {transfer.base_unit && (
-              <span className="font-normal text-slate-500">
+              <span className="font-normal text-muted">
                 {' '}
                 (= {formatQty(transfer.qty_base)} {transfer.base_unit})
               </span>
@@ -90,12 +91,11 @@ function ReceiveForm({ transfer, onDone }: { transfer: Transfer; onDone: (text: 
           </dd>
           {transfer.created_by_name && (
             <>
-              <dt className="text-slate-500">{ti.sentBy}</dt>
-              <dd className="text-slate-900">{transfer.created_by_name}</dd>
+              <dt>{ti.sentBy}</dt>
+              <dd>{transfer.created_by_name}</dd>
             </>
           )}
-        </dl>
-      </div>
+      </DetailList>
       <QtyField
         label={`${ti.receivedQty}, ${unit}`}
         value={qty}
@@ -107,7 +107,7 @@ function ReceiveForm({ transfer, onDone }: { transfer: Transfer; onDone: (text: 
       />
       <Button
         variant="secondary"
-        className="min-h-12 text-base"
+        size="lg"
         onClick={() => {
           haptic.select()
           setQty(formatQty(transfer.qty_input).replace(/\s/g, ''))
@@ -120,7 +120,7 @@ function ReceiveForm({ transfer, onDone }: { transfer: Transfer; onDone: (text: 
       <NoteField label={t.tg.movement.note} value={note} onChange={setNote} />
       {error && <Notice>{error}</Notice>}
       {!insideTelegram && (
-        <Button className="min-h-12 text-base" onClick={onMain} disabled={saving}>
+        <Button size="lg" onClick={onMain} loading={saving}>
           {saving ? t.common.saving : ti.receive}
         </Button>
       )}
@@ -189,55 +189,51 @@ export function IncomingTransfers({
           setDoneText(null)
           onOpenChange(true)
         }}
-        className="flex min-h-12 items-center justify-between gap-2 rounded-2xl border border-warn/30 bg-warn/5 px-4 text-left font-semibold text-warn"
+        className="flex min-h-13 items-center gap-3 rounded-xl border border-warn/30 bg-warn-bg px-4 text-left font-semibold text-warn"
       >
-        <span>📦 {ti.banner(rows.length)}</span>
-        <span aria-hidden>›</span>
+        <PackageOpen aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
+        <span className="flex-1">{ti.banner(rows.length)}</span>
+        <ChevronRight aria-hidden className="size-5 shrink-0" strokeWidth={2} />
       </button>
     )
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-brand-dark">{ti.title}</h2>
-        <button type="button" onClick={back} className="min-h-11 px-2 text-sm font-medium text-brand">
-          ← {selected ? t.common.back : ti.back}
-        </button>
-      </div>
+      <BackLink label={selected ? t.common.back : ti.back} onClick={back} />
+      <SectionTitle className="text-xl">{ti.title}</SectionTitle>
       {doneText && (
-        <div role="status" className="rounded-2xl border border-ok/30 bg-ok/5 p-4 font-semibold text-ok">
-          ✓ {doneText}
-        </div>
+        <SavedBanner>{doneText}</SavedBanner>
       )}
       {selected ? (
         <ReceiveForm key={selected.id} transfer={selected} onDone={onDone} />
       ) : (
         <>
           {error && <Notice>{error}</Notice>}
-          {!rows && !error && <Spinner />}
-          {rows && rows.length === 0 && <p className="text-slate-600">{ti.empty}</p>}
+          {!rows && !error && <SkeletonRows rows={2} />}
+          {rows && rows.length === 0 && <p className="text-sm text-muted">{ti.empty}</p>}
           {rows && rows.length > 0 && (
             <ul className="flex flex-col gap-2" aria-label={ti.title}>
               {rows.map((r) => (
                 <li key={r.id}>
-                  <button
-                    type="button"
+                  <EntryRow
+                    kind="transfer"
+                    title={r.material_name ?? ''}
+                    meta={
+                      <>
+                        <span>
+                          {r.from_object_name ?? ti.otherObject} → {r.to_object_name ?? '—'}
+                        </span>
+                        <span className="tabular">{formatDateTime(r.created_at)}</span>
+                      </>
+                    }
+                    trailing={<Qty value={r.qty_input} unit={transferUnit(r)} size="lg" />}
                     onClick={() => {
                       haptic.tap()
                       setDoneText(null)
                       setSelectedId(r.id)
                     }}
-                    className="flex min-h-16 w-full flex-col items-start rounded-2xl border border-slate-200 p-3 text-left"
-                  >
-                    <span className="font-semibold text-slate-900">
-                      {r.material_name} · {formatQty(r.qty_input)} {transferUnit(r)}
-                    </span>
-                    <span className="text-sm text-slate-600">
-                      {r.from_object_name ?? ti.otherObject} → {r.to_object_name ?? '—'}
-                    </span>
-                    <span className="text-xs text-slate-500">{formatDateTime(r.created_at)}</span>
-                  </button>
+                  />
                 </li>
               ))}
             </ul>

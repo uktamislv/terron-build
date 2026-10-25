@@ -8,7 +8,7 @@ import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatSum } from '@/lib/format'
 import { uuid } from '@/lib/uuid'
-import { SelectField } from '../fields'
+import { SelectField } from '@/components/ui'
 import { issuedAtIso, todayTashkent } from './cashDates'
 
 const tc = t.cash
@@ -108,7 +108,7 @@ export function IssueAdvanceDialog({
           onChange={(e) => setDate(e.target.value)}
         />
         <div className="flex flex-col gap-1.5">
-          <label htmlFor={noteId} className="text-sm font-medium text-slate-700">
+          <label htmlFor={noteId} className="text-sm font-medium text-ink">
             {tc.note}
           </label>
           <textarea
@@ -116,13 +116,13 @@ export function IssueAdvanceDialog({
             rows={2}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            className="min-h-11 rounded-xl border border-line bg-paper px-3 py-2 text-base outline-none focus:border-brand focus:ring-3 focus:ring-brand/15"
           />
         </div>
-        <p className="text-xs text-slate-500">{tc.amountLockedHint}</p>
+        <p className="text-xs text-muted">{tc.amountLockedHint}</p>
         {error && <Notice>{error}</Notice>}
         {mismatch && (
-          <div role="alert" className="flex flex-col gap-2 rounded-xl border border-warn/30 bg-warn/5 p-3">
+          <div role="alert" className="flex flex-col gap-2 rounded-xl border border-warn/25 bg-warn-bg p-3">
             <p className="text-sm text-warn">
               {tc.previousDiffers(formatSum(mismatch.amount), mismatch.recipient_name ?? '')}
             </p>

@@ -16,8 +16,8 @@ function priceText(p: string | null): string {
 function ItemLine({ item }: { item: DiffItem }) {
   return (
     <li className="flex flex-wrap justify-between gap-2 px-3 py-2 text-sm">
-      <span className="font-medium text-slate-900">{item.name}</span>
-      <span className="text-slate-700">
+      <span className="font-medium text-ink">{item.name}</span>
+      <span className="text-muted">
         {qtyText(item.qty, item.unit)} · {priceText(item.price)}
       </span>
     </li>
@@ -27,11 +27,11 @@ function ItemLine({ item }: { item: DiffItem }) {
 function ChangeLine({ c }: { c: DiffChange }) {
   return (
     <li className="flex flex-col gap-1 px-3 py-2 text-sm">
-      <span className="font-medium text-slate-900">{c.name}</span>
-      <span className="text-slate-700">
+      <span className="font-medium text-ink">{c.name}</span>
+      <span className="text-muted">
         {td.qty}: {qtyText(c.qtyBefore, c.unitBefore)} → <b>{qtyText(c.qtyAfter, c.unitAfter)}</b>
       </span>
-      <span className="text-slate-700">
+      <span className="text-muted">
         {td.price}: {priceText(c.priceBefore)} → <b>{priceText(c.priceAfter)}</b>
       </span>
     </li>
@@ -56,12 +56,12 @@ function Section({
     <section
       aria-label={title}
       data-tone={tone}
-      className={`rounded-2xl border border-l-4 border-slate-200 ${border} bg-white`}
+      className={`rounded-xl border border-l-4 border-line ${border} bg-paper`}
     >
       <h4 className={`px-3 pt-3 font-semibold ${text}`}>
         {title}: {count}
       </h4>
-      <ul className="divide-y divide-slate-100">{children}</ul>
+      <ul className="divide-y divide-line">{children}</ul>
     </section>
   )
 }
@@ -71,16 +71,16 @@ export function DiffView({ diff }: { diff: DiffResult }) {
   const none = diff.added.length + diff.removed.length + diff.changed.length === 0
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-700">
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted">
         <span>
-          {td.totalBefore}: <b>{formatSum(diff.totalBefore)}</b>
+          {td.totalBefore}: <b className="tabular text-ink">{formatSum(diff.totalBefore)}</b>
         </span>
         <span>
-          {td.totalAfter}: <b>{formatSum(diff.totalAfter)}</b>
+          {td.totalAfter}: <b className="tabular text-ink">{formatSum(diff.totalAfter)}</b>
         </span>
         <span>{td.unchanged(diff.unchangedCount)}</span>
       </div>
-      {none && <p className="text-sm text-slate-600">{td.none}</p>}
+      {none && <p className="text-sm text-muted">{td.none}</p>}
       <Section title={td.added} tone="ok" count={diff.added.length}>
         {diff.added.map((i) => (
           <ItemLine key={i.key} item={i} />

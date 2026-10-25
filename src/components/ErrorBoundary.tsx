@@ -3,7 +3,8 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { useRouteError } from 'react-router-dom'
 import { t } from '@/i18n'
 import { isChunkLoadError } from '@/lib/chunkErrors'
-import { Button } from './ui'
+import { RefreshCw } from 'lucide-react'
+import { Button, EmptyState } from '@/components/ui'
 
 function reloadPage() {
   window.location.reload()
@@ -13,10 +14,17 @@ function reloadPage() {
 export function AppErrorScreen({ error }: { error: unknown }) {
   const chunk = isChunkLoadError(error)
   return (
-    <div role="alert" className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-6 text-center">
-      <h1 className="text-xl font-semibold text-brand-dark">{chunk ? t.appError.chunkTitle : t.appError.title}</h1>
-      <p className="max-w-md text-sm text-slate-600">{chunk ? t.appError.chunkText : t.appError.text}</p>
-      <Button onClick={reloadPage}>{t.appError.reload}</Button>
+    <div className="flex min-h-[60vh] items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <EmptyState
+          tone={chunk ? 'default' : 'danger'}
+          titleAs="h1"
+          icon={chunk ? <RefreshCw strokeWidth={1.5} /> : undefined}
+          title={chunk ? t.appError.chunkTitle : t.appError.title}
+          text={chunk ? t.appError.chunkText : t.appError.text}
+          action={<Button onClick={reloadPage}>{t.appError.reload}</Button>}
+        />
+      </div>
     </div>
   )
 }

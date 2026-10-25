@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Material } from '@/data/types'
 import { normalizeAlias } from '@/domain/aliases'
 import { t } from '@/i18n'
+import { MaterialTile, SearchBox } from '../ui'
 
 const tm = t.tg.movement
 const ti = t.tg.inventory
@@ -38,33 +39,13 @@ export function CountMaterialList({
 
   return (
     <section className="flex flex-col gap-3" aria-label={tm.chooseMaterial}>
-      <input
-        type="search"
-        aria-label={tm.search}
-        placeholder={tm.search}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        className="min-h-12 rounded-xl border border-slate-300 px-3 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-      />
-      {visible.length === 0 && <p className="text-sm text-slate-600">{tm.notFound}</p>}
+      <SearchBox label={tm.search} value={query} onChange={setQuery} />
+      {visible.length === 0 && <p className="text-sm text-muted">{tm.notFound}</p>}
       <div className="grid grid-cols-2 gap-2">
         {visible.map((m) => {
           const counted = countedIds.has(m.id)
           return (
-            <button
-              key={m.id}
-              type="button"
-              data-counted={counted ? 'true' : undefined}
-              onClick={() => onPick(m)}
-              className={`flex min-h-16 flex-col items-start justify-center rounded-2xl border px-3 py-2 text-left active:bg-brand-light ${
-                counted ? 'border-ok/40 bg-ok/5' : 'border-slate-200 bg-white'
-              }`}
-            >
-              <span className="text-base font-semibold leading-tight text-slate-900">{m.name}</span>
-              <span className={`text-xs ${counted ? 'font-medium text-ok' : 'text-slate-500'}`}>
-                {counted ? ti.countedMark : m.base_unit}
-              </span>
-            </button>
+            <MaterialTile key={m.id} name={m.name} sub={counted ? ti.countedMark : m.base_unit} done={counted} onClick={() => onPick(m)} />
           )
         })}
       </div>
@@ -72,7 +53,7 @@ export function CountMaterialList({
         <button
           type="button"
           onClick={() => setShowAll((v) => !v)}
-          className="min-h-11 self-start px-1 text-sm font-medium text-brand"
+          className="min-h-11 self-start rounded-lg px-3 text-sm font-semibold text-brand hover:bg-ice"
         >
           {showAll ? ti.showRelevant : ti.showAll}
         </button>

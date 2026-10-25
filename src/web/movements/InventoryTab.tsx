@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { StatusBadge } from '@/components/StatusBadge'
 import { INVENTORY_TONE } from '@/components/statusTones'
-import { Button, Modal, Notice, Spinner } from '@/components/ui'
+import { ArrowLeft, ChevronRight, ClipboardCheck, Wrench } from 'lucide-react'
+import { Badge, Button, DataTable, EmptyState, EntryRow, FilterBar, Modal, Money, Notice, Pager, Qty, RetryNotice, Spinner } from '@/components/ui'
 import { listAlerts } from '@/data/alertsRepo'
 import { COUNTS_PAGE_SIZE, applyAdjustments, getCount, getCountDetails, listCountItems, listCounts } from '@/data/inventoryRepo'
 import type { Alert, InventoryCount, InventoryDetailRow, ObjectRow } from '@/data/types'
@@ -10,7 +10,6 @@ import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatDateTime, formatQty, formatSum } from '@/lib/format'
 import { alertDetailText } from '../alerts/alertDetails'
-import { Pager, RetryNotice, SelectField } from '../fields'
 
 const ti = t.ombor.inventory
 
@@ -91,7 +90,7 @@ function CountDetail({ countId, canApply, onBack }: { countId: string; canApply:
   }
 
   const diffCell = (d: string | null, unit: string) => {
-    if (d === null) return <span className="text-slate-400">—</span>
+    if (d === null) return <span className="text-muted">—</span>
     if (isZero(d)) return <span className="text-ok">0</span>
     const short = cmp(d, '0') < 0
     return (
@@ -105,36 +104,16 @@ function CountDetail({ countId, canApply, onBack }: { countId: string; canApply:
 
   return (
     <section className="flex flex-col gap-4" aria-label={count ? ti.detailTitle(count.object_name ?? '', formatDateTime(count.created_at)) : undefined}>
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex flex-col gap-1">
-          {count && (
-            <>
-              <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-brand-dark">
-                {ti.detailTitle(count.object_name ?? '—', formatDateTime(count.created_at))}
-                <StatusBadge tone={INVENTORY_TONE[count.status]}>{t.inventory.statuses[count.status]}</StatusBadge>
-                {count.applied_at && <StatusBadge tone="ok">{ti.applied}</StatusBadge>}
-              </h2>
-              {count.created_by_name && <p className="text-sm text-slate-600">{count.created_by_name}</p>}
-              {count.applied_at && <p className="text-sm text-ok">{ti.appliedAt(formatDateTime(count.applied_at))}</p>}
-              {submitted && (
-                <p className="text-sm text-slate-700">
-                  {ti.shortageCount(shortageCount)} · {ti.surplusCount(surplusCount)}
-                  {total !== null && (
-                    <>
-                      {' '}
-                      · <b data-testid="inventory-total">{ti.totalShortage(formatSum(total))}</b>
-                    </>
-                  )}
-                </p>
-              )}
-            </>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col gap-3 rounded-2xl border border-line bg-paper p-4 md:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-5" strokeWidth={1.75} />} onClick={onBack} className="-ml-2">
+            {ti.back}
+          </Button>
           {canApply && submitted && count && !count.applied_at && (
             <Button
               disabled={diffCount === 0}
               title={diffCount === 0 ? ti.applyNothing : undefined}
+              icon={<Wrench aria-hidden className="size-5" strokeWidth={1.75} />}
               onClick={() => {
                 setApplyError(null)
                 setConfirming(true)
@@ -143,10 +122,29 @@ function CountDetail({ countId, canApply, onBack }: { countId: string; canApply:
               {ti.apply}
             </Button>
           )}
-          <Button variant="secondary" onClick={onBack}>
-            {ti.back}
-          </Button>
         </div>
+        {count && (
+          <div className="flex flex-col gap-1">
+            <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-ink md:text-xl">
+              {ti.detailTitle(count.object_name ?? '—', formatDateTime(count.created_at))}
+              <Badge tone={INVENTORY_TONE[count.status]}>{t.inventory.statuses[count.status]}</Badge>
+              {count.applied_at && <Badge tone="ok">{ti.applied}</Badge>}
+            </h2>
+            {count.created_by_name && <p className="text-sm text-muted">{count.created_by_name}</p>}
+            {count.applied_at && <p className="text-sm text-ok">{ti.appliedAt(formatDateTime(count.applied_at))}</p>}
+          </div>
+        )}
+        {count && submitted && (
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="rounded-xl bg-danger-bg px-3 py-2 text-sm font-semibold text-danger">{ti.shortageCount(shortageCount)}</div>
+            <div className="rounded-xl bg-warn-bg px-3 py-2 text-sm font-semibold text-warn">{ti.surplusCount(surplusCount)}</div>
+            {total !== null && (
+              <div data-testid="inventory-total" className="tabular rounded-xl bg-canvas px-3 py-2 text-sm font-semibold text-ink">
+                {ti.totalShortage(formatSum(total))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {error && <RetryNotice message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
@@ -158,69 +156,62 @@ function CountDetail({ countId, canApply, onBack }: { countId: string; canApply:
         </Notice>
       )}
       {rows && view.length > 0 && (
-        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-3 py-2 font-medium">{ti.colMaterial}</th>
-                {submitted && <th className="px-3 py-2 text-right font-medium">{ti.colExpected}</th>}
-                <th className="px-3 py-2 text-right font-medium">{ti.colCounted}</th>
-                {submitted && <th className="px-3 py-2 text-right font-medium">{ti.colDiff}</th>}
-                {submitted && <th className="px-3 py-2 text-right font-medium">{ti.colValue}</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {view.map((r) => {
-                const unit = r.base_unit ?? ''
-                const isShort = r.diff !== null && cmp(r.diff, '0') < 0
-                return (
-                  <tr key={r.material_id} data-testid="inventory-item" className="border-t border-slate-100">
-                    <td className="px-3 py-2 font-medium">{r.material_name ?? '—'}</td>
-                    {submitted && (
-                      <td className="whitespace-nowrap px-3 py-2 text-right">
-                        {r.qty_expected !== null ? `${formatQty(r.qty_expected)} ${unit}` : '—'}
-                      </td>
-                    )}
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      {r.qty_counted !== null ? (
-                        `${formatQty(r.qty_counted)} ${unit}`
-                      ) : (
-                        <StatusBadge tone="warn">{ti.notCountedMark}</StatusBadge>
-                      )}
-                    </td>
-                    {submitted && <td className="whitespace-nowrap px-3 py-2 text-right">{diffCell(r.diff, unit)}</td>}
-                    {submitted && (
-                      <td className="whitespace-nowrap px-3 py-2 text-right">
-                        {r.shortage_value !== null ? (
-                          <span className="font-semibold text-danger">{formatSum(r.shortage_value)}</span>
-                        ) : isShort ? (
-                          <span className="text-xs text-slate-500">{ti.noPrice}</span>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          caption={ti.colMaterial}
+          rows={view}
+          rowKey={(r) => r.material_id}
+          rowTestId="inventory-item"
+          columns={[
+            { key: 'material', header: ti.colMaterial, cell: (r) => <span className="font-medium text-ink">{r.material_name ?? '—'}</span> },
+            submitted && {
+              key: 'expected',
+              header: ti.colExpected,
+              align: 'right',
+              cell: (r) => (r.qty_expected !== null ? <Qty value={r.qty_expected} unit={r.base_unit} size="sm" tone="muted" /> : '—'),
+            },
+            {
+              key: 'counted',
+              header: ti.colCounted,
+              align: 'right',
+              cell: (r) =>
+                r.qty_counted !== null ? <Qty value={r.qty_counted} unit={r.base_unit} size="sm" /> : <Badge tone="warn">{ti.notCountedMark}</Badge>,
+            },
+            submitted && { key: 'diff', header: ti.colDiff, align: 'right', cell: (r) => diffCell(r.diff, r.base_unit ?? '') },
+            submitted && {
+              key: 'value',
+              header: ti.colValue,
+              align: 'right',
+              cell: (r) =>
+                r.shortage_value !== null ? (
+                  <Money value={r.shortage_value} size="sm" tone="danger" />
+                ) : r.diff !== null && cmp(r.diff, '0') < 0 ? (
+                  <span className="text-xs text-muted">{ti.noPrice}</span>
+                ) : (
+                  '—'
+                ),
+            },
+          ]}
+        />
       )}
 
       {confirming && (
-        <Modal title={ti.applyTitle} onClose={() => setConfirming(false)}>
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-slate-700">{ti.applyText(diffCount)}</p>
-            {applyError && <Notice>{applyError}</Notice>}
-            <div className="flex justify-end gap-2">
+        <Modal
+          title={ti.applyTitle}
+          onClose={() => setConfirming(false)}
+          footer={
+            <>
               <Button variant="secondary" onClick={() => setConfirming(false)}>
                 {t.common.cancel}
               </Button>
-              <Button disabled={busy} onClick={() => void apply()}>
+              <Button loading={busy} onClick={() => void apply()}>
                 {ti.apply}
               </Button>
-            </div>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-muted">{ti.applyText(diffCount)}</p>
+            {applyError && <Notice>{applyError}</Notice>}
           </div>
         </Modal>
       )}
@@ -265,67 +256,81 @@ export function InventoryTab({ objects, canApply }: { objects: ObjectRow[]; canA
     )
   }
 
+  const statusBadges = (c: InventoryCount) => (
+    <span className="flex flex-wrap gap-1">
+      <Badge tone={INVENTORY_TONE[c.status]}>{t.inventory.statuses[c.status]}</Badge>
+      {c.applied_at && <Badge tone="ok">{ti.applied}</Badge>}
+    </span>
+  )
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:max-w-sm">
-        <SelectField
-          label={ti.colObject}
-          value={objectId}
-          onChange={(v) => {
-            setObjectId(v)
-            setPage(0)
-          }}
-        >
-          <option value="">{t.ombor.all}</option>
-          {objects.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </SelectField>
-      </div>
+      <FilterBar
+        label={t.ombor.filters}
+        onClear={() => {
+          setObjectId('')
+          setPage(0)
+        }}
+        filters={[
+          {
+            kind: 'select',
+            key: 'object',
+            label: ti.colObject,
+            value: objectId,
+            onChange: (v) => {
+              setObjectId(v)
+              setPage(0)
+            },
+            options: [{ value: '', label: t.ombor.all }, ...objects.map((o) => ({ value: o.id, label: o.name }))],
+          },
+        ]}
+      />
       {error && <RetryNotice message={error} onRetry={reload} />}
       {!data && !error && <Spinner />}
-      {data && data.rows.length === 0 && <p className="text-slate-600">{ti.empty}</p>}
-      {data && data.rows.length > 0 && (
-        <>
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 font-medium">{ti.colDate}</th>
-                  <th className="px-3 py-2 font-medium">{ti.colObject}</th>
-                  <th className="px-3 py-2 font-medium">{ti.colAuthor}</th>
-                  <th className="px-3 py-2 text-right font-medium">{ti.colItems}</th>
-                  <th className="px-3 py-2 font-medium">{ti.colStatus}</th>
-                  <th className="px-3 py-2 font-medium">{ti.colActions}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((c) => (
-                  <tr key={c.id} data-testid="inventory-count" className="border-t border-slate-100 align-top">
-                    <td className="whitespace-nowrap px-3 py-2">{formatDateTime(c.created_at)}</td>
-                    <td className="px-3 py-2">{c.object_name ?? '—'}</td>
-                    <td className="px-3 py-2">{c.created_by_name ?? '—'}</td>
-                    <td className="px-3 py-2 text-right">{c.item_count}</td>
-                    <td className="px-3 py-2">
-                      <span className="flex flex-wrap gap-1">
-                        <StatusBadge tone={INVENTORY_TONE[c.status]}>{t.inventory.statuses[c.status]}</StatusBadge>
-                        {c.applied_at && <StatusBadge tone="ok">{ti.applied}</StatusBadge>}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Button variant="ghost" onClick={() => setOpenId(c.id)}>
-                        {ti.open}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <Pager page={page} pageSize={COUNTS_PAGE_SIZE} total={data.total} onPage={setPage} />
-        </>
+      {data && (
+        <DataTable
+          caption={t.ombor.tabInventory}
+          rows={data.rows}
+          rowKey={(c) => c.id}
+          rowTestId="inventory-count"
+          empty={<EmptyState icon={<ClipboardCheck strokeWidth={1.5} />} title={ti.empty} />}
+          columns={[
+            { key: 'date', header: ti.colDate, cell: (c) => <span className="tabular whitespace-nowrap">{formatDateTime(c.created_at)}</span> },
+            { key: 'object', header: ti.colObject, cell: (c) => <span className="font-medium text-ink">{c.object_name ?? '—'}</span> },
+            { key: 'author', header: ti.colAuthor, cell: (c) => c.created_by_name ?? '—' },
+            { key: 'items', header: ti.colItems, align: 'right', cell: (c) => c.item_count },
+            { key: 'status', header: ti.colStatus, cell: statusBadges },
+            {
+              key: 'actions',
+              header: ti.colActions,
+              srHeader: true,
+              cell: (c) => (
+                <Button variant="ghost" size="sm" onClick={() => setOpenId(c.id)}>
+                  {ti.open}
+                  <ChevronRight aria-hidden className="size-5" strokeWidth={1.75} />
+                </Button>
+              ),
+            },
+          ]}
+          renderMobile={(c) => (
+            <EntryRow
+              kind={c.applied_at ? 'ok' : c.status === 'draft' ? 'neutral' : 'warn'}
+              icon={<ClipboardCheck className="size-[18px]" strokeWidth={1.75} />}
+              title={c.object_name ?? '—'}
+              badge={statusBadges(c)}
+              meta={
+                <>
+                  <span className="tabular">{formatDateTime(c.created_at)}</span>
+                  {c.created_by_name && <span>{c.created_by_name}</span>}
+                </>
+              }
+              trailing={<span className="tabular text-lg font-semibold">{c.item_count}</span>}
+              trailingMeta={ti.colItems}
+              onClick={() => setOpenId(c.id)}
+            />
+          )}
+          footer={<Pager page={page} pageSize={COUNTS_PAGE_SIZE} total={data.total} onPage={setPage} />}
+        />
       )}
     </div>
   )

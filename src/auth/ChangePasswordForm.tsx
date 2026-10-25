@@ -58,7 +58,7 @@ export function ChangePasswordForm({ onDone }: { onDone?: () => void }) {
         onChange={(e) => setRepeat(e.target.value)}
         error={errors.repeat}
       />
-      <Button type="submit" disabled={saving}>
+      <Button type="submit" size="lg" loading={saving}>
         {saving ? t.common.saving : t.password.submit}
       </Button>
     </form>

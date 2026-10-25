@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import type { DraftErrorCode } from '@/domain/movements'
 import { t } from '@/i18n'
+import { bigInputClass } from './styles'
 
 /** Katta miqdor maydoni (Mini App formalari uchun umumiy). */
 export function QtyField({
@@ -17,19 +18,18 @@ export function QtyField({
   const id = useId()
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-slate-700">
+      <label htmlFor={id} className="text-sm font-medium text-ink">
         {label}
       </label>
       <input
         id={id}
         inputMode="decimal"
         autoComplete="off"
+        placeholder="0"
         value={value}
         aria-invalid={error ? true : undefined}
         onChange={(e) => onChange(e.target.value)}
-        className={`min-h-14 rounded-xl border px-4 text-2xl font-semibold outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 ${
-          error ? 'border-danger' : 'border-slate-300'
-        }`}
+        className={bigInputClass(Boolean(error))}
       />
       {error && <p className="text-sm text-danger">{t.tg.movement.errors.qty[error]}</p>}
     </div>
@@ -51,7 +51,7 @@ export function NoteField({
   const id = useId()
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-slate-700">
+      <label htmlFor={id} className="text-sm font-medium text-ink">
         {label}
       </label>
       <textarea
@@ -60,18 +60,18 @@ export function NoteField({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+        className="min-h-11 rounded-xl border border-line bg-paper px-3 py-2 text-base outline-none placeholder:text-muted/70 focus:border-brand focus:ring-3 focus:ring-brand/15"
       />
     </div>
   )
 }
 
-/** "Material · O'zgartirish" sarlavhasi. */
+/** Tanlangan material sarlavhasi va "O'zgartirish". */
 export function MaterialHeader({ name, onChange }: { name: string; onChange: () => void }) {
   return (
     <div className="flex min-h-11 items-center justify-between gap-2">
-      <p className="text-lg font-semibold text-slate-900">{name}</p>
-      <button type="button" onClick={onChange} className="min-h-11 px-2 text-sm font-medium text-brand">
+      <p className="min-w-0 text-xl leading-tight font-semibold text-ink">{name}</p>
+      <button type="button" onClick={onChange} className="min-h-11 shrink-0 rounded-lg px-3 text-sm font-semibold text-brand hover:bg-ice">
         {t.tg.movement.change}
       </button>
     </div>

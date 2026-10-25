@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { Button, Notice, Spinner } from '@/components/ui'
+import { Notice, PageHeader, SkeletonRows } from '@/components/ui'
 import { getMyBalance } from '@/data/cashRepo'
 import { errorCodeOf } from '@/data/errors'
 import { listMaterials } from '@/data/materialsRepo'
@@ -10,23 +10,22 @@ import { createSupplier, listSuppliers, supplierKey } from '@/data/suppliersRepo
 import type { Material, ObjectRow, Supplier } from '@/data/types'
 import { getMyMaterialUsage } from '@/data/usageRepo'
 import { formatSumInput, parseSumInput } from '@/domain/cash'
-import { cmp, isNegative, isZero, round } from '@/domain/decimal'
+import { cmp, isZero, round } from '@/domain/decimal'
 import { defaultObjectId, rankMaterials, validateMovementDraft, type UsageStat } from '@/domain/movements'
 import { purchasePrices, toBaseQty, unitLabel, validateQtyInput } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatQty, formatSum } from '@/lib/format'
 import { uuid } from '@/lib/uuid'
-import { BaseQtyBox } from '../entry/BaseQtyBox'
 import { MaterialGrid } from '../entry/MaterialGrid'
 import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
-import { PhotoErrorBox, PhotoField } from '../entry/PhotoPicker'
-import { UnitChips } from '../entry/UnitChips'
 import { usePhotoDraft } from '../entry/usePhotoDraft'
 import { loadLastObject, saveLastObject } from '../movement/prefs'
 import { loadRecentSuppliers, rememberSupplier } from '../purchase/prefs'
-import { SupplierPicker, type SupplierChoice } from '../purchase/SupplierPicker'
+import { BalanceCard, PurchaseDetails, type PurchaseFieldErrors } from '../purchase/PurchaseDetails'
+import type { SupplierChoice } from '../purchase/SupplierPicker'
 import { getWebApp, haptic } from '../telegram'
+import { LoadError, SavedBanner } from '../ui'
 import { useBackButton, useMainButton } from '../useTelegramButtons'
 
 const tm = t.tg.movement
@@ -36,15 +35,7 @@ const PRICE_CHECK_DELAY_MS = 400
 
 type Step = 'object' | 'material' | 'details'
 type QtyErrorKey = keyof typeof tm.errors.qty
-interface FieldErrors {
-  object?: boolean
-  unit?: boolean
-  qty?: QtyErrorKey
-  sum?: 'sumRequired' | 'sumInvalid'
-  supplier?: boolean
-}
-
-const retryClass = 'ml-1 inline-flex min-h-11 items-center px-1 font-semibold underline'
+type FieldErrors = PurchaseFieldErrors
 
 /** Kursordan oldingi "muhim" belgilar (raqam, vergul, nuqta) soni — formatlashdan keyin kursorni tiklash uchun. */
 function caretAfterFormat(raw: string, caret: number, formatted: string): number {
@@ -346,42 +337,15 @@ export function PurchasePage() {
 
   if (!profile) return null
 
-  const negative = balance?.value != null && isNegative(balance.value)
-
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold text-brand-dark">{tp.title}</h1>
-      <div className="rounded-2xl bg-brand-light px-4 py-3">
-        {balance === null ? (
-          <span className="text-sm text-slate-600">{t.common.loading}</span>
-        ) : balance.failed || balance.value === null ? (
-          <span className="text-sm text-slate-600">{tp.balanceUnknown}</span>
-        ) : (
-          <p
-            data-testid="cash-balance"
-            data-negative={negative ? 'true' : undefined}
-            className={`text-2xl font-bold ${negative ? 'text-danger' : 'text-brand-dark'}`}
-          >
-            {tp.balance}: {formatSum(balance.value)}
-          </p>
-        )}
-      </div>
+      <PageHeader title={tp.title} />
+      <BalanceCard balance={balance} />
 
-      {savedText && (
-        <div role="status" className="rounded-2xl border border-ok/30 bg-ok/5 p-4 text-ok">
-          <p className="font-semibold">✓ {savedText}</p>
-        </div>
-      )}
+      {savedText && <SavedBanner>{savedText}</SavedBanner>}
 
-      {loadError && (
-        <Notice>
-          {loadError}
-          <button type="button" className={retryClass} onClick={() => setReloadKey((k) => k + 1)}>
-            {t.common.retry}
-          </button>
-        </Notice>
-      )}
-      {!loadError && (!objects || !materials) && <Spinner />}
+      {loadError && <LoadError message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />}
+      {!loadError && (!objects || !materials) && <SkeletonRows rows={3} />}
       {objects && objects.length === 0 && <Notice tone="warn">{tm.noObjects}</Notice>}
 
       {objects && objects.length > 0 && materials && (
@@ -395,144 +359,50 @@ export function PurchasePage() {
           {step === 'material' && <MaterialGrid materials={ranked} onPick={chooseMaterial} />}
 
           {step === 'details' && material && (
-            <section className="flex flex-col gap-4" aria-label={material.name}>
-              <div className="flex min-h-11 items-center justify-between gap-2">
-                <p className="text-lg font-semibold text-slate-900">{material.name}</p>
-                <button
-                  type="button"
-                  onClick={() => setMaterialId(null)}
-                  className="min-h-11 px-2 text-sm font-medium text-brand"
-                >
-                  {tm.change}
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="purchase-qty" className="text-sm font-medium text-slate-700">
-                  {tm.qty}
-                </label>
-                <input
-                  id="purchase-qty"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  value={qty}
-                  aria-invalid={fieldErrors.qty ? true : undefined}
-                  onChange={(e) => {
-                    setQty(e.target.value)
-                    setFieldErrors((er) => ({ ...er, qty: undefined }))
-                  }}
-                  className={`min-h-14 rounded-xl border px-4 text-2xl font-semibold outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 ${
-                    fieldErrors.qty ? 'border-danger' : 'border-slate-300'
-                  }`}
-                />
-                {fieldErrors.qty && <p className="text-sm text-danger">{tm.errors.qty[fieldErrors.qty]}</p>}
-              </div>
-
-              <UnitChips
-                units={material.units}
-                selectedId={unitId}
-                onPick={(id) => {
-                  haptic.select()
-                  setUnitId(id)
-                  setFieldErrors((er) => ({ ...er, unit: undefined }))
-                }}
-              />
-              {fieldErrors.unit && <p className="text-sm text-danger">{tm.errors.unit}</p>}
-
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="purchase-sum" className="text-sm font-medium text-slate-700">
-                  {tp.sum}
-                </label>
-                <input
-                  id="purchase-sum"
-                  ref={sumRef}
-                  inputMode="numeric"
-                  autoComplete="off"
-                  value={sum}
-                  aria-invalid={fieldErrors.sum ? true : undefined}
-                  onChange={(e) => onSumChange(e.target.value, e.target.selectionStart)}
-                  className={`min-h-14 rounded-xl border px-4 text-2xl font-semibold outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 ${
-                    fieldErrors.sum ? 'border-danger' : 'border-slate-300'
-                  }`}
-                />
-                {fieldErrors.sum && <p className="text-sm text-danger">{tp.errors[fieldErrors.sum]}</p>}
-              </div>
-
-              {(qtyBase !== null || pricePerBase !== null) && (
-                <BaseQtyBox qtyBase={qtyBase} unit={unit} baseUnit={material.base_unit}>
-                  {pricePerBase !== null && (
-                    <p className="text-base font-semibold text-slate-900">
-                      {tp.perBase(material.base_unit, formatSum(round(pricePerBase, 2)))}
-                    </p>
-                  )}
-                </BaseQtyBox>
-              )}
-              {priceVerdict === 'high' && <Notice tone="warn">{tp.priceHigh}</Notice>}
-              {priceVerdict === 'low' && <Notice tone="warn">{tp.priceLow}</Notice>}
-
-              <SupplierPicker
-                suppliers={orderedSuppliers}
-                value={supplier}
-                error={Boolean(fieldErrors.supplier)}
-                onChange={(next) => {
-                  haptic.select()
-                  // Nom o'zgarsa — boshqa sotuvchi: yangi qoralama id
-                  if (next.kind === 'new' && (supplier.kind !== 'new' || supplier.name !== next.name)) {
-                    setSupplierDraftId(uuid())
-                  }
-                  setSupplier(next)
-                  setFieldErrors((er) => ({ ...er, supplier: undefined }))
-                }}
-              />
-
-              <PhotoField
-                label={tp.photo}
-                photo={photo.photo}
-                busy={preparingPhoto || saving}
-                preparing={preparingPhoto}
-                notice={photo.notice}
-                onPick={(f) => void photo.pick(f)}
-                onRemove={photo.remove}
-              />
-
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="purchase-note" className="text-sm font-medium text-slate-700">
-                  {tp.note}
-                </label>
-                <textarea
-                  id="purchase-note"
-                  rows={2}
-                  value={note}
-                  placeholder={tp.notePlaceholder}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-                />
-              </div>
-
-              {fieldErrors.object && <Notice>{tm.errors.object}</Notice>}
-              {saveError && (
-                <Notice>
-                  {saveError}
-                  <button type="button" className={retryClass} onClick={onMainButton}>
-                    {t.common.retry}
-                  </button>
-                </Notice>
-              )}
-              {photo.error && (
-                <PhotoErrorBox
-                  message={photo.error}
-                  busy={saving}
-                  onRetry={onMainButton}
-                  onWithoutPhoto={saveWithoutPhoto}
-                />
-              )}
-
-              {!insideTelegram && (
-                <Button className="min-h-12 text-base" onClick={onMainButton} disabled={saving || preparingPhoto}>
-                  {saving ? t.common.saving : tp.save}
-                </Button>
-              )}
-            </section>
+            <PurchaseDetails
+              material={material}
+              unitId={unitId}
+              unit={unit}
+              qty={qty}
+              sum={sum}
+              sumRef={sumRef}
+              errors={fieldErrors}
+              qtyBase={qtyBase}
+              perBaseText={pricePerBase !== null ? tp.perBase(material.base_unit, formatSum(round(pricePerBase, 2))) : null}
+              priceVerdict={priceVerdict}
+              suppliers={orderedSuppliers}
+              supplier={supplier}
+              note={note}
+              photo={{ photo: photo.photo, notice: photo.notice, error: photo.error, preparing: preparingPhoto }}
+              saving={saving}
+              saveError={saveError}
+              showSaveButton={!insideTelegram}
+              onQty={(v) => {
+                setQty(v)
+                setFieldErrors((er) => ({ ...er, qty: undefined }))
+              }}
+              onUnit={(id) => {
+                haptic.select()
+                setUnitId(id)
+                setFieldErrors((er) => ({ ...er, unit: undefined }))
+              }}
+              onSum={onSumChange}
+              onSupplier={(next) => {
+                haptic.select()
+                // Nom o'zgarsa — boshqa sotuvchi: yangi qoralama id
+                if (next.kind === 'new' && (supplier.kind !== 'new' || supplier.name !== next.name)) {
+                  setSupplierDraftId(uuid())
+                }
+                setSupplier(next)
+                setFieldErrors((er) => ({ ...er, supplier: undefined }))
+              }}
+              onNote={setNote}
+              onChangeMaterial={() => setMaterialId(null)}
+              onPickPhoto={(f) => void photo.pick(f)}
+              onRemovePhoto={photo.remove}
+              onSave={onMainButton}
+              onSaveWithoutPhoto={saveWithoutPhoto}
+            />
           )}
         </>
       )}

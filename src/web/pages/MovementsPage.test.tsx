@@ -9,6 +9,7 @@ import type { Movement } from '@/data/types'
 import { t } from '@/i18n'
 import { routes } from '@/routes'
 import { makeMaterial, makeObject, makeProfile } from '@/test/fixtures'
+import { textOf } from '@/test/text'
 
 vi.mock('@/data/systemRepo', () => ({
   isConfigured: () => true,
@@ -66,6 +67,23 @@ const row: Movement = {
   created_by_name: 'Test prorab',
 }
 
+function mockMobile() {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: query.includes('max-width'),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }),
+  })
+}
+
+afterEach(() => {
+  delete (window as { matchMedia?: unknown }).matchMedia
+})
+
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(authRepo.getMyProfile).mockResolvedValue(makeProfile('admin'))
@@ -85,6 +103,12 @@ function open() {
   render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ['/movements'] })} />)
 }
 
+/** Jadval qatori "⋯" menyusidan amal tanlash. */
+function rowAction(scope: HTMLElement, name: string, index = 0) {
+  fireEvent.click(within(scope).getAllByRole('button', { name: t.ui.actions })[index]!)
+  fireEvent.click(within(scope).getByRole('menuitem', { name }))
+}
+
 const lastFilters = () => vi.mocked(movementsRepo.listMovements).mock.lastCall
 
 describe('/movements — Harakatlar', () => {
@@ -92,8 +116,8 @@ describe('/movements — Harakatlar', () => {
     open()
     const table = await screen.findByRole('table')
     expect(within(table).getByText('Sement')).toBeInTheDocument()
-    expect(within(table).getByText('3 qop')).toBeInTheDocument()
-    expect(within(table).getByText('150 kg')).toBeInTheDocument()
+    expect(within(table).getByText(textOf('3 qop'))).toBeInTheDocument()
+    expect(within(table).getByText(textOf('150 kg'))).toBeInTheDocument()
     expect(lastFilters()).toEqual([expect.objectContaining({ objectId: undefined }), 0])
 
     const filters = within(screen.getByRole('form', { name: to.filters }))
@@ -119,7 +143,9 @@ describe('/movements — Harakatlar', () => {
   it('admin o‘chiradi (tasdiq bilan)', async () => {
     open()
     const table = await screen.findByRole('table')
-    fireEvent.click(within(table).getByRole('button', { name: to.delete }))
+    // Qatorda ochiq "O'chirish" tugmasi yo'q — faqat "⋯" menyusida
+    expect(within(table).queryByRole('button', { name: to.delete })).not.toBeInTheDocument()
+    rowAction(table, to.delete)
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: t.common.yes }))
     await waitFor(() => expect(movementsRepo.softDeleteMovement).toHaveBeenCalledWith('mv1'))
   })
@@ -134,8 +160,8 @@ describe('/movements — Harakatlar', () => {
     fireEvent.click(await screen.findByRole('button', { name: to.next }))
     await waitFor(() => expect(lastFilters()?.[1]).toBe(1))
     const table = await screen.findByRole('table')
-    await waitFor(() => expect(within(table).getAllByRole('button', { name: to.delete })).toHaveLength(1))
-    fireEvent.click(within(table).getByRole('button', { name: to.delete }))
+    await waitFor(() => expect(within(table).getAllByRole('button', { name: t.ui.actions })).toHaveLength(1))
+    rowAction(table, to.delete)
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: t.common.yes }))
     await waitFor(() => expect(movementsRepo.softDeleteMovement).toHaveBeenCalledWith('mv1'))
     await waitFor(() => expect(lastFilters()?.[1]).toBe(0))
@@ -154,6 +180,8 @@ describe('/movements — Harakatlar', () => {
     expect(within(table).getByText(t.movements.deleted)).toBeInTheDocument()
     expect(within(table).queryByRole('button', { name: to.delete })).not.toBeInTheDocument()
     expect(within(table).queryByRole('button', { name: to.restore })).not.toBeInTheDocument()
+    // Rasm yo'q va o'chirish/tiklash huquqi yo'q — "⋯" menyusi umuman chiqmaydi
+    expect(within(table).queryByRole('button', { name: t.ui.actions })).not.toBeInTheDocument()
   })
 
   it('prorab — o‘chirish tugmasi yo‘q', async () => {
@@ -161,7 +189,22 @@ describe('/movements — Harakatlar', () => {
     open()
     const table = await screen.findByRole('table')
     expect(within(table).queryByRole('button', { name: to.delete })).not.toBeInTheDocument()
+    expect(within(table).queryByRole('button', { name: t.ui.actions })).not.toBeInTheDocument()
     expect(screen.queryByLabelText(to.filterDeleted)).not.toBeInTheDocument()
+  })
+
+  it('telefonda — kartochkada tugma yo‘q; qator bosilsa tafsilot varag‘i, o‘chirish o‘sha yerda (tasdiq bilan)', async () => {
+    mockMobile()
+    open()
+    const list = await screen.findByRole('list', { name: to.tabMovements })
+    expect(within(list).queryByRole('button', { name: to.delete })).not.toBeInTheDocument()
+    fireEvent.click(within(list).getByRole('button', { name: /Sement/ }))
+    const sheet = screen.getByRole('dialog', { name: 'Sement' })
+    expect(sheet).toHaveTextContent('3 qop')
+    expect(sheet).toHaveTextContent('150 kg')
+    fireEvent.click(within(sheet).getByRole('button', { name: to.delete }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: to.delete })).getByRole('button', { name: t.common.yes }))
+    await waitFor(() => expect(movementsRepo.softDeleteMovement).toHaveBeenCalledWith('mv1'))
   })
 })
 

@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Notice, TextField } from '@/components/ui'
 import { conversionHint, validateFactor } from '@/domain/units'
 import { t } from '@/i18n'
-import { Pager } from '../fields'
+import { Pager } from '@/components/ui'
 import { chipClass, pageSlice } from './styles'
 import { PAGE_SIZE, type UnitAnswer, type UnitQuestion } from './wizardModel'
 
@@ -31,10 +31,10 @@ function QuestionCard({
         )
       : null
   return (
-    <li data-testid={`unitq-${q.key}`} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-      <p className="font-semibold text-slate-900">{tw.unitQuestion(q.unitText, q.materialName)}</p>
+    <li data-testid={`unitq-${q.key}`} className="flex flex-col gap-3 rounded-xl border border-line bg-paper p-4">
+      <p className="font-semibold text-ink">{tw.unitQuestion(q.unitText, q.materialName)}</p>
       <fieldset>
-        <legend className="mb-1.5 text-sm font-medium text-slate-700">{tw.useExisting}</legend>
+        <legend className="mb-1.5 text-sm font-medium text-muted">{tw.useExisting}</legend>
         <div className="flex flex-wrap gap-2">
           {q.options.map((o) => {
             const selected = answer?.kind === 'existing' && answer.unitId === o.id
@@ -63,7 +63,7 @@ function QuestionCard({
         </div>
       </fieldset>
       {isNew && (
-        <div className="flex flex-col gap-3 rounded-xl border border-brand/30 bg-brand-light/40 p-3">
+        <div className="flex flex-col gap-3 rounded-xl border border-brand/30 bg-ice/40 p-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <TextField
               label={tw.unitName}
@@ -87,7 +87,7 @@ function QuestionCard({
             onChange={(e) => onAnswer({ ...answer, variant: e.target.value })}
           />
           {preview && (
-            <p role="status" className="rounded-lg bg-white px-3 py-2 text-sm text-brand-dark">
+            <p role="status" className="tabular rounded-lg bg-ice px-3 py-2 text-sm text-navy">
               {tu.preview}: <span className="font-semibold">{preview}</span>
             </p>
           )}
@@ -114,7 +114,7 @@ export function UnitsStep({
   const current = Math.min(page, lastPage)
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-slate-600">{tw.unitsHint}</p>
+      <p className="text-sm text-muted">{tw.unitsHint}</p>
       {!canCatalog && <Notice tone="info">{tw.unitAdminOnly}</Notice>}
       <ul className="flex flex-col gap-3" aria-label={tw.steps.units}>
         {pageSlice(questions, current, PAGE_SIZE).map((q) => (

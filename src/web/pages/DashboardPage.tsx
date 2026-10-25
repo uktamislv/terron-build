@@ -1,11 +1,11 @@
 // Veb bosh sahifa (docs/reports-design.md): davr va obyekt filtri (URL bilan), kartochkalar,
 // 4 diagramma (Recharts — lazy chunk), oxirgi ogohlantirishlar, Excel eksport. Hammasi RLS orqali.
-import { lazy, Suspense, useCallback, useMemo, useState, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+// Taqdimot qismlari — ../dashboard/DashboardView.tsx (ko'rgazma ham shularni ishlatadi).
+import { useCallback, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { ClipboardCheck, LayoutDashboard } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
-import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Spinner } from '@/components/ui'
+import { EmptyState, PageHeader, Spinner } from '@/components/ui'
 import { listRecentAlerts } from '@/data/alertsRepo'
 import { listBalances } from '@/data/cashRepo'
 import { listObjects } from '@/data/objectsRepo'
@@ -15,7 +15,6 @@ import {
   getDashboardSummary,
   getNormOverview,
   getSpendBreakdown,
-  SPEND_GROUPS,
   type DailyRow,
   type DashboardSummary,
   type SpendGroup,
@@ -24,26 +23,16 @@ import type { ObjectRow } from '@/data/types'
 import { can, type Role } from '@/domain/roles'
 import { t } from '@/i18n'
 import { exportFileName, exportWorkbook } from '@/lib/excelExport'
-import { formatDateTime, formatQty, formatSum, tashkentIsoDate } from '@/lib/format'
-import { useLoad } from '@/lib/useLoad'
-import { alertDetailText } from '../alerts/alertDetails'
-import { SEVERITY_TONE } from '../alerts/alertTones'
+import { tashkentIsoDate } from '@/lib/format'
+import { useLoad, type Loaded } from '@/lib/useLoad'
 import { buildCards, dashboardSections, summaryExportRows, type DashCard } from '../dashboard/cards'
-import { cashChartRows, dailyChartRows, normChartRows, spendChartRows } from '../dashboard/chartData'
+import { cashChartRows, dailyChartRows } from '../dashboard/chartData'
+import { CashCard, DailyCard, DashboardLayout, NormCard, RecentAlertsCard, SpendCard, SummaryCards } from '../dashboard/DashboardView'
 import { PeriodBar } from '../dashboard/PeriodBar'
 import { dashboardSearch, isoToUz, readDashboardQuery, type DashboardQuery } from '../dashboard/query'
 import { ExportButton } from '../ExportButton'
-import { RetryNotice } from '../fields'
-
-// Recharts faqat shu chunk'da
-const charts = () => import('../dashboard/Charts')
-const DailyChart = lazy(() => charts().then((m) => ({ default: m.DailyChart })))
-const NormChart = lazy(() => charts().then((m) => ({ default: m.NormChart })))
-const SpendChart = lazy(() => charts().then((m) => ({ default: m.SpendChart })))
-const CashChart = lazy(() => charts().then((m) => ({ default: m.CashChart })))
 
 const tr = t.reports
-const tc = tr.charts
 
 export function DashboardPage() {
   const { profile } = useAuth()
@@ -71,18 +60,15 @@ export function DashboardPage() {
   const role = profile.role
   const sections = dashboardSections(role)
 
-  return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-5">
-      <h1 className="text-2xl font-bold text-brand-dark">{tr.title}</h1>
-      {sections.size === 0 ? (
-        <p className="rounded-2xl border border-slate-200 bg-white p-5 text-slate-600">{tr.inspectorNote}</p>
-      ) : waitObject ? (
-        <Spinner />
-      ) : (
-        <Dashboard role={role} query={query} todayIso={todayIso} objects={objects.data ?? []} onQuery={setQuery} />
-      )}
-    </div>
-  )
+  if (sections.size === 0 || waitObject)
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader title={tr.title} icon={<LayoutDashboard strokeWidth={1.75} />} />
+        {sections.size === 0 ? <EmptyState icon={<ClipboardCheck strokeWidth={1.5} />} title={tr.inspectorNote} /> : <Spinner />}
+      </div>
+    )
+
+  return <Dashboard role={role} query={query} todayIso={todayIso} objects={objects.data ?? []} onQuery={setQuery} />
 }
 
 function Dashboard({
@@ -105,6 +91,7 @@ function Dashboard({
   const showDaily = sections.has('movements') || sections.has('purchases')
   const daily = useLoad<DailyRow[]>(() => getDashboardDaily(range), rangeKey, showDaily)
   const periodText = tr.rangeLabel(isoToUz(query.from), isoToUz(query.to))
+  const cards: Loaded<DashCard[]> = { ...summary, data: summary.data ? buildCards(summary.data, role, query) : null }
 
   const runExport = async (signal: AbortSignal) => {
     const [s, d] = await Promise.all([
@@ -155,238 +142,30 @@ function Dashboard({
   }
 
   return (
-    <>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="text-slate-600">{periodText}</p>
-        <ExportButton run={runExport} />
-      </div>
-      <PeriodBar
-        key={`${query.from}|${query.to}`}
-        query={query}
-        todayIso={todayIso}
-        objects={objects}
-        onChange={onQuery}
-      />
-      {query.invalid && <p className="text-sm text-warn">{tr.rangeErrors[query.invalid]}</p>}
-
-      {summary.error && <RetryNotice message={summary.error} onRetry={summary.reload} />}
-      {summary.loading && <Spinner />}
-      {summary.data && <Cards cards={buildCards(summary.data, role, query)} objectFiltered={Boolean(query.objectId)} />}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        {showDaily && (
-          <ChartCard title={tc.daily} wide>
-            {daily.error && <RetryNotice message={daily.error} onRetry={daily.reload} />}
-            {daily.loading && <Spinner />}
-            {daily.data && <DailySection rows={daily.data} from={query.from} to={query.to} />}
-          </ChartCard>
-        )}
-        {sections.has('norm') && <NormSection objectId={query.objectId} />}
-        {sections.has('purchases') && <SpendSection range={range} rangeKey={rangeKey} />}
-        {sections.has('cash') && <CashSection />}
-      </div>
-
-      {can(role, 'view_alerts') && <RecentAlerts objectId={query.objectId} />}
-    </>
-  )
-}
-
-const CARD_TONE: Record<DashCard['tone'], string> = {
-  default: 'border-slate-200 bg-white',
-  warn: 'border-warn/30 bg-warn/5',
-  danger: 'border-danger/30 bg-danger/5',
-}
-
-const VALUE_TONE: Record<DashCard['tone'], string> = {
-  default: 'text-slate-900',
-  warn: 'text-warn',
-  danger: 'text-danger',
-}
-
-function Cards({ cards, objectFiltered }: { cards: DashCard[]; objectFiltered: boolean }) {
-  if (cards.length === 0) return null
-  return (
-    <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5" aria-label={tr.title}>
-      {cards.map((c) => {
-        const body = (
-          <>
-            <span className="flex items-start justify-between gap-2 text-sm text-slate-600">
-              {c.label}
-              {c.current && (
-                <span title={tr.nowHint} className="shrink-0 rounded-full bg-brand-light px-2 py-0.5 text-xs font-medium text-brand-dark">
-                  {tr.now}
-                </span>
-              )}
-            </span>
-            <span className={`text-xl font-bold break-words ${VALUE_TONE[c.tone]}`}>{c.value}</span>
-            {c.sub && <span className="text-xs text-slate-500">{c.sub}</span>}
-            {c.companyWide && objectFiltered && <span className="text-xs text-slate-500">{tr.allObjectsNote}</span>}
-          </>
-        )
-        const cls = `flex h-full min-h-24 flex-col gap-1 rounded-2xl border p-4 ${CARD_TONE[c.tone]}`
-        return (
-          <li key={c.key} data-testid={`card-${c.key}`} data-tone={c.tone}>
-            {c.to ? (
-              <Link to={c.to} className={`${cls} hover:border-brand focus-visible:outline-2 focus-visible:outline-brand`}>
-                {body}
-              </Link>
-            ) : (
-              <div className={cls}>{body}</div>
-            )}
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-function ChartCard({ title, wide, actions, children }: { title: string; wide?: boolean; actions?: ReactNode; children: ReactNode }) {
-  return (
-    <section
-      aria-label={title}
-      className={`flex min-w-0 flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 ${wide ? 'lg:col-span-2' : ''}`}
-    >
-      <h2 className="font-semibold text-slate-900">{title}</h2>
-      {actions}
-      {children}
-    </section>
-  )
-}
-
-function NoData() {
-  return <p className="py-6 text-center text-sm text-slate-500">{tr.noData}</p>
-}
-
-/** Ekran o'quvchilar uchun jadval (diagramma ma'lumoti matn ko'rinishida). */
-function SrTable({ caption, head, rows }: { caption: string; head: string[]; rows: string[][] }) {
-  return (
-    <table className="sr-only">
-      <caption>{caption}</caption>
-      <thead>
-        <tr>
-          {head.map((h) => (
-            <th key={h}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r, i) => (
-          <tr key={i}>
-            {r.map((c, j) => (
-              <td key={j}>{c}</td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
-/** Diagramma o'z chegarasida: Recharts chunk'i yoki chizish yiqilsa — faqat shu kartochkada xabar. */
-function ChartSuspense({ children }: { children: ReactNode }) {
-  return (
-    <ErrorBoundary
-      fallback={() => (
-        <p role="alert" className="py-6 text-center text-sm text-danger">
-          {t.appError.chart}
-        </p>
-      )}
-    >
-      <Suspense fallback={<Spinner />}>{children}</Suspense>
-    </ErrorBoundary>
-  )
-}
-
-function DailySection({ rows, from, to }: { rows: DailyRow[]; from: string; to: string }) {
-  const data = useMemo(() => dailyChartRows(rows, from, to), [rows, from, to])
-  const empty = data.every((p) => p.kirim === 0 && p.chiqim === 0 && p.sum === 0)
-  if (empty) return <NoData />
-  return (
-    <>
-      <ChartSuspense>
-        <DailyChart data={data} />
-      </ChartSuspense>
-      <SrTable
-        caption={tc.daily}
-        head={[t.excel.cols.date, tc.dailyKirim, tc.dailyChiqim, tc.dailySum]}
-        rows={data.map((p) => [p.date, formatQty(String(p.kirim)), formatQty(String(p.chiqim)), formatSum(p.sumText)])}
-      />
-    </>
+    <DashboardLayout
+      periodText={periodText}
+      actions={<ExportButton run={runExport} />}
+      periodBar={<PeriodBar key={`${query.from}|${query.to}`} query={query} todayIso={todayIso} objects={objects} onChange={onQuery} />}
+      invalid={query.invalid ? tr.rangeErrors[query.invalid] : null}
+      cards={<SummaryCards state={cards} objectFiltered={Boolean(query.objectId)} />}
+      daily={showDaily && <DailyCard state={daily} from={query.from} to={query.to} />}
+      norm={sections.has('norm') && <NormSection objectId={query.objectId} />}
+      spend={sections.has('purchases') && <SpendSection range={range} rangeKey={rangeKey} />}
+      cash={sections.has('cash') && <CashSection />}
+      alerts={can(role, 'view_alerts') && <RecentAlerts objectId={query.objectId} />}
+    />
   )
 }
 
 function NormSection({ objectId }: { objectId: string }) {
   const norms = useLoad(() => getNormOverview(objectId || null), `norm|${objectId}`)
-  const data = useMemo(() => normChartRows(norms.data ?? []), [norms.data])
-  return (
-    <ChartCard title={tc.norm}>
-      <p className="-mt-2 text-xs text-slate-500">
-        {tc.normHint}
-        {!objectId && `. ${tc.normAllObjects}`}
-      </p>
-      {norms.error && <RetryNotice message={norms.error} onRetry={norms.reload} />}
-      {norms.loading && <Spinner />}
-      {norms.data && data.length === 0 && <NoData />}
-      {data.length > 0 && (
-        <>
-          <ChartSuspense>
-            <NormChart data={data} />
-          </ChartSuspense>
-          <SrTable
-            caption={tc.norm}
-            head={[t.excel.cols.material, tc.normAllowed, tc.normConsumed]}
-            rows={data.map((p) => [
-              p.name,
-              `${formatQty(p.allowedText)} ${p.unit}`.trim(),
-              `${formatQty(p.consumedText)} ${p.unit}`.trim(),
-            ])}
-          />
-        </>
-      )}
-    </ChartCard>
-  )
+  return <NormCard state={norms} objectId={objectId} />
 }
 
 function SpendSection({ range, rangeKey }: { range: { from: string; to: string; objectId: string | null }; rangeKey: string }) {
   const [group, setGroup] = useState<SpendGroup>('material')
   const spend = useLoad(() => getSpendBreakdown(range, group), `${rangeKey}|${group}`)
-  const data = useMemo(() => spendChartRows(spend.data ?? [], 8, group), [spend.data, group])
-  return (
-    <ChartCard
-      title={tc.spend}
-      actions={
-        <div role="group" aria-label={tc.spend} className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:grid-cols-4">
-          {SPEND_GROUPS.map((g) => (
-            <button
-              key={g}
-              type="button"
-              aria-pressed={group === g}
-              onClick={() => setGroup(g)}
-              className={`min-h-11 rounded-lg px-2 text-sm font-medium ${group === g ? 'bg-white text-brand shadow-sm' : 'text-slate-600'}`}
-            >
-              {tc.spendGroups[g]}
-            </button>
-          ))}
-        </div>
-      }
-    >
-      {spend.error && <RetryNotice message={spend.error} onRetry={spend.reload} />}
-      {spend.loading && <Spinner />}
-      {spend.data && data.length === 0 && <NoData />}
-      {data.length > 0 && (
-        <>
-          <ChartSuspense>
-            <SpendChart data={data} />
-          </ChartSuspense>
-          <SrTable
-            caption={tc.spend}
-            head={[tc.spendGroups[group], tc.dailySum]}
-            rows={data.map((p) => [p.label, formatSum(p.valueText)])}
-          />
-        </>
-      )}
-    </ChartCard>
-  )
+  return <SpendCard state={spend} group={group} onGroup={setGroup} />
 }
 
 function CashSection() {
@@ -394,22 +173,7 @@ function CashSection() {
     const [balances, profiles] = await Promise.all([listBalances(), listProfiles().catch(() => [])])
     return cashChartRows(balances, profiles)
   }, 'cash')
-  const data = cash.data ?? []
-  return (
-    <ChartCard title={tc.cash}>
-      {cash.error && <RetryNotice message={cash.error} onRetry={cash.reload} />}
-      {cash.loading && <Spinner />}
-      {cash.data && data.length === 0 && <NoData />}
-      {data.length > 0 && (
-        <>
-          <ChartSuspense>
-            <CashChart data={data} />
-          </ChartSuspense>
-          <SrTable caption={tc.cash} head={[t.excel.cols.person, tc.cashBalance]} rows={data.map((p) => [p.name, formatSum(p.valueText)])} />
-        </>
-      )}
-    </ChartCard>
-  )
+  return <CashCard state={cash} />
 }
 
 function RecentAlerts({ objectId }: { objectId: string }) {
@@ -417,34 +181,5 @@ function RecentAlerts({ objectId }: { objectId: string }) {
     () => listRecentAlerts({ statuses: ['yangi', 'korildi'], objectId: objectId || undefined }, 5),
     `alerts|${objectId}`,
   )
-  return (
-    <section aria-label={tr.recentAlerts} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-semibold text-slate-900">{tr.recentAlerts}</h2>
-        <Link to="/alerts" className="inline-flex min-h-11 items-center px-2 text-sm font-medium text-brand hover:underline">
-          {tr.allAlerts}
-        </Link>
-      </div>
-      {alerts.error && <RetryNotice message={alerts.error} onRetry={alerts.reload} />}
-      {alerts.loading && <Spinner />}
-      {alerts.data && alerts.data.length === 0 && <p className="text-sm text-slate-500">{tr.noAlerts}</p>}
-      {alerts.data && alerts.data.length > 0 && (
-        <ul className="flex flex-col divide-y divide-slate-100">
-          {alerts.data.map((a) => (
-            <li key={a.id} data-testid="recent-alert" className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:gap-3">
-              <div className="flex shrink-0 flex-wrap gap-1">
-                <StatusBadge tone={SEVERITY_TONE[a.severity]}>{t.alertTexts.types[a.type]}</StatusBadge>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-slate-900">{alertDetailText(a)}</p>
-                <p className="text-xs text-slate-500">
-                  {[a.object_name, a.material_name, formatDateTime(a.created_at)].filter(Boolean).join(' · ')}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  )
+  return <RecentAlertsCard state={alerts} />
 }

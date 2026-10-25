@@ -1,178 +1,233 @@
 // Mini App direktor bosh ekrani (faqat ko'rish): bugun / 7 kun, kartochkalar, smeta ishlatilishi,
 // oxirgi 10 ogohlantirish. Ma'lumot — veb bilan umumiy repo'lar (RLS).
 import { useCallback, useMemo, useState } from 'react'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Spinner } from '@/components/ui'
+import { ArrowDownLeft, ArrowUpRight, ChevronRight, ShoppingCart, TriangleAlert } from 'lucide-react'
+import {
+  Badge,
+  cx,
+  EntryRow,
+  type EntryKind,
+  LevelBar,
+  Money,
+  RetryNotice,
+  SegmentedControl,
+  SkeletonRows,
+  SkeletonTiles,
+  StatTile,
+} from '@/components/ui'
 import { listRecentAlerts } from '@/data/alertsRepo'
-import { getDashboardSummary, getNormOverview } from '@/data/reportsRepo'
+import { getDashboardSummary, getNormOverview, type DashboardSummary } from '@/data/reportsRepo'
+import type { Alert, AlertSeverity } from '@/data/types'
 import { periodRange } from '@/domain/reports'
 import { t } from '@/i18n'
-import { formatDate, formatDateTime, formatQty, formatSum, tashkentIsoDate } from '@/lib/format'
-import { useLoad } from '@/lib/useLoad'
+import { formatDateTime, formatQty, tashkentIsoDate } from '@/lib/format'
+import { useLoad, type Loaded } from '@/lib/useLoad'
 import { alertDetailText } from '@/web/alerts/alertDetails'
 import { SEVERITY_TONE } from '@/web/alerts/alertTones'
-import { RetryNotice } from '@/web/fields'
-import { NormProgress } from '@/web/norms/NormProgress'
 import { haptic } from '../telegram'
+import { BackLink, SectionTitle } from '../ui'
 import { useBackButton } from '../useTelegramButtons'
-import { objectUsage } from './usage'
+import { Greeting } from './Greeting'
+import { objectUsage, type ObjectUsage } from './usage'
 
 const tt = t.reports.tg
-type Period = 'today' | 'last7'
+export type DirectorPeriod = 'today' | 'last7'
+
+const SEVERITY_KIND: Record<AlertSeverity, EntryKind> = {
+  belgi: 'neutral',
+  ogohlantirish: 'warn',
+  jiddiy: 'danger',
+}
+
+/** Foiz (Dec) — faqat chiziq uchun son. */
+function pctNumber(pct: string | null): number {
+  return pct === null ? 0 : Number(pct)
+}
 
 export function DirectorHome({ name }: { name: string | null }) {
   const todayIso = useMemo(() => tashkentIsoDate(), [])
-  const [period, setPeriod] = useState<Period>('today')
+  const [period, setPeriod] = useState<DirectorPeriod>('today')
   const [objectId, setObjectId] = useState<string | null>(null)
   const range = periodRange(period, todayIso)
 
   const summary = useLoad(() => getDashboardSummary(range), `${range.from}|${range.to}`)
   const norms = useLoad(() => getNormOverview(null), 'norms')
   const alerts = useLoad(() => listRecentAlerts({}, 10), 'alerts')
-  const usage = useMemo(() => objectUsage(norms.data ?? []), [norms.data])
-  const selected = usage.find((u) => u.objectId === objectId) ?? null
+  const usage = useMemo(() => (norms.data ? objectUsage(norms.data) : null), [norms.data])
+  const selected = usage?.find((u) => u.objectId === objectId) ?? null
 
   const back = useCallback(() => setObjectId(null), [])
   useBackButton(selected ? back : null)
 
-  const pick = (p: Period) => {
-    haptic.select()
-    setPeriod(p)
-  }
-
-  if (selected) {
-    return (
-      <div className="flex flex-col gap-4">
-        <button type="button" onClick={back} className="inline-flex min-h-11 items-center self-start text-sm font-medium text-brand">
-          ← {tt.backToObjects}
-        </button>
-        <div>
-          <h1 className="text-lg font-semibold text-brand-dark">{selected.name}</h1>
-          <p className="text-sm text-slate-600">
-            {selected.avgPct !== null && tt.avgUsage(formatQty(selected.avgPct, 1))} · {tt.overCount(selected.overCount)}
-          </p>
-        </div>
-        <ul className="flex flex-col gap-2" aria-label={tt.usage}>
-          {selected.materials.map((m) => (
-            <li
-              key={m.material_id}
-              data-testid="tg-material-usage"
-              className={`flex flex-col gap-2 rounded-2xl border p-3 ${m.over ? 'border-danger/40' : 'border-slate-200'}`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <p className={`font-medium ${m.over ? 'text-danger' : 'text-slate-900'}`}>{m.material_name ?? '—'}</p>
-                <p className="text-right text-xs text-slate-600">
-                  {formatQty(m.consumed_qty_base)} / {formatQty(m.allowed_qty_base)} {m.base_unit ?? ''}
-                </p>
-              </div>
-              <NormProgress pct={m.pct} label={m.material_name ?? undefined} />
-            </li>
-          ))}
-        </ul>
-      </div>
-    )
-  }
-
-  const s = summary.data
+  if (selected) return <ObjectUsageDetail usage={selected} onBack={back} />
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-2xl bg-brand p-4 text-white">
-        <p className="text-sm opacity-80">{formatDate(new Date())}</p>
-        <h1 className="mt-1 text-xl font-semibold">
-          {t.tg.hello}
-          {name ? `, ${name}` : ''}!
-        </h1>
-      </div>
+    <DirectorHomeView
+      name={name}
+      period={period}
+      onPeriod={(p) => {
+        haptic.select()
+        setPeriod(p)
+      }}
+      summary={summary}
+      usage={{ ...norms, data: usage }}
+      alerts={alerts}
+      onPickObject={(id) => {
+        haptic.select()
+        setObjectId(id)
+      }}
+    />
+  )
+}
 
-      <div role="group" aria-label={tt.title} className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
-        {(['today', 'last7'] as const).map((p) => (
-          <button
-            key={p}
-            type="button"
-            aria-pressed={period === p}
-            onClick={() => pick(p)}
-            className={`min-h-11 rounded-lg text-sm font-medium ${period === p ? 'bg-white text-brand shadow-sm' : 'text-slate-600'}`}
-          >
-            {tt.periods[p]}
-          </button>
-        ))}
+/** Obyekt tanlanganda: materiallar bo'yicha smeta ishlatilishi (oshganlari birinchi). */
+export function ObjectUsageDetail({ usage, onBack }: { usage: ObjectUsage; onBack: () => void }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <BackLink label={tt.backToObjects} onClick={onBack} />
+      <div>
+        <h1 className="text-2xl leading-tight font-semibold text-ink">{usage.name}</h1>
+        {usage.avgPct !== null && <p className="text-sm text-muted">{tt.avgUsage(formatQty(usage.avgPct, 1))}</p>}
+        <p className={cx('text-sm', usage.overCount > 0 ? 'font-semibold text-danger' : 'text-muted')}>{tt.overCount(usage.overCount)}</p>
       </div>
+      <ul className="flex flex-col gap-2" aria-label={tt.usage}>
+        {usage.materials.map((m) => (
+          <li
+            key={m.material_id}
+            data-testid="tg-material-usage"
+            className={cx('flex flex-col gap-2 rounded-xl border bg-paper p-3', m.over ? 'border-danger/35' : 'border-line')}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className={cx('font-semibold', m.over ? 'text-danger' : 'text-ink')}>{m.material_name ?? '—'}</p>
+              <p className="tabular text-right text-xs text-muted">
+                {formatQty(m.consumed_qty_base)} / {formatQty(m.allowed_qty_base)} {m.base_unit ?? ''}
+              </p>
+            </div>
+            {m.pct !== null && <LevelBar label={m.material_name ?? usage.name} value={pctNumber(m.pct)} max={100} />}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** Direktor bosh ekrani (taqdimot): ma'lumotlar `Loaded` holatlari bilan keladi. */
+export function DirectorHomeView({
+  name,
+  period,
+  onPeriod,
+  summary,
+  usage,
+  alerts,
+  onPickObject,
+}: {
+  name: string | null
+  period: DirectorPeriod
+  onPeriod: (p: DirectorPeriod) => void
+  summary: Loaded<DashboardSummary>
+  usage: Loaded<ObjectUsage[]>
+  alerts: Loaded<Alert[]>
+  onPickObject: (objectId: string) => void
+}) {
+  const s = summary.data
+  return (
+    <div className="flex flex-col gap-5">
+      <Greeting name={name} />
+
+      <SegmentedControl
+        label={tt.title}
+        value={period}
+        onChange={onPeriod}
+        options={[
+          { value: 'today', label: tt.periods.today },
+          { value: 'last7', label: tt.periods.last7 },
+        ]}
+      />
 
       {summary.error && <RetryNotice message={summary.error} onRetry={summary.reload} />}
-      {summary.loading && <Spinner />}
+      {summary.loading && <SkeletonTiles count={4} />}
       {s && (
-        <div className="grid grid-cols-2 gap-2">
-          <Stat testId="tg-kirim" label={tt.kirim} value={formatQty(String(s.kirim_count))} />
-          <Stat testId="tg-chiqim" label={tt.chiqim} value={formatQty(String(s.chiqim_count))} />
-          <Stat testId="tg-purchases" label={tt.purchasesSum} value={formatSum(s.purchases_sum)} />
-          <Stat
+        <div className="grid grid-cols-2 gap-3">
+          <StatTile testId="tg-kirim" icon={<ArrowDownLeft strokeWidth={2} />} tone="ok" label={tt.kirim} value={formatQty(String(s.kirim_count))} />
+          <StatTile testId="tg-chiqim" icon={<ArrowUpRight strokeWidth={2} />} label={tt.chiqim} value={formatQty(String(s.chiqim_count))} />
+          <StatTile
+            testId="tg-purchases"
+            icon={<ShoppingCart strokeWidth={1.75} />}
+            label={tt.purchasesSum}
+            value={<Money value={s.purchases_sum} size="lg" />}
+          />
+          <StatTile
             testId="tg-alerts"
+            icon={<TriangleAlert strokeWidth={1.75} />}
+            tone={s.alerts_serious_open > 0 ? 'danger' : 'warn'}
+            live
             label={tt.alertsOpen}
             value={formatQty(String(s.alerts_open))}
-            sub={tt.serious(formatQty(String(s.alerts_serious_open)))}
-            danger={s.alerts_serious_open > 0}
+            hint={
+              <span className={s.alerts_serious_open > 0 ? 'font-semibold text-danger' : undefined}>
+                {tt.serious(formatQty(String(s.alerts_serious_open)))}
+              </span>
+            }
           />
         </div>
       )}
 
       <section aria-label={tt.usage} className="flex flex-col gap-2">
-        <h2 className="font-semibold text-slate-900">{tt.usage}</h2>
-        {norms.error && <RetryNotice message={norms.error} onRetry={norms.reload} />}
-        {norms.loading && <Spinner />}
-        {norms.data && usage.length === 0 && <p className="text-sm text-slate-500">{tt.usageEmpty}</p>}
-        {usage.map((u) => (
+        <SectionTitle>{tt.usage}</SectionTitle>
+        {usage.error && <RetryNotice message={usage.error} onRetry={usage.reload} />}
+        {usage.loading && <SkeletonRows rows={2} />}
+        {usage.data && usage.data.length === 0 && <p className="text-sm text-muted">{tt.usageEmpty}</p>}
+        {usage.data?.map((u) => (
           <button
             key={u.objectId}
             type="button"
             data-testid="tg-object-usage"
-            onClick={() => {
-              haptic.select()
-              setObjectId(u.objectId)
-            }}
-            className={`flex min-h-11 flex-col gap-2 rounded-2xl border p-3 text-left ${u.overCount > 0 ? 'border-danger/40' : 'border-slate-200'}`}
+            onClick={() => onPickObject(u.objectId)}
+            className={cx(
+              'flex min-h-11 flex-col gap-2 rounded-xl border bg-paper p-3 text-left transition-colors active:bg-ice',
+              u.overCount > 0 ? 'border-danger/35' : 'border-line',
+            )}
           >
-            <div className="flex w-full items-center justify-between gap-2">
-              <span className="font-medium text-slate-900">{u.name}</span>
-              {u.overCount > 0 && <StatusBadge tone="danger">{tt.overCount(u.overCount)}</StatusBadge>}
-            </div>
-            <div className="w-full">
-              <NormProgress pct={u.avgPct} label={u.name} />
-            </div>
+            <span className="flex w-full items-center justify-between gap-2">
+              <span className="font-semibold text-ink">{u.name}</span>
+              <span className="flex items-center gap-1">
+                {u.overCount > 0 && <Badge tone="danger">{tt.overCount(u.overCount)}</Badge>}
+                <ChevronRight aria-hidden className="size-5 text-muted" strokeWidth={1.75} />
+              </span>
+            </span>
+            {u.avgPct !== null && <LevelBar label={u.name} value={pctNumber(u.avgPct)} max={100} className="w-full" />}
           </button>
         ))}
       </section>
 
       <section aria-label={tt.alerts} className="flex flex-col gap-2">
-        <h2 className="font-semibold text-slate-900">{tt.alerts}</h2>
+        <SectionTitle>{tt.alerts}</SectionTitle>
         {alerts.error && <RetryNotice message={alerts.error} onRetry={alerts.reload} />}
-        {alerts.loading && <Spinner />}
-        {alerts.data && alerts.data.length === 0 && <p className="text-sm text-slate-500">{tt.noAlerts}</p>}
+        {alerts.loading && <SkeletonRows rows={2} />}
+        {alerts.data && alerts.data.length === 0 && <p className="text-sm text-muted">{tt.noAlerts}</p>}
         {alerts.data && alerts.data.length > 0 && (
           <ul className="flex flex-col gap-2">
             {alerts.data.map((a) => (
-              <li key={a.id} data-testid="tg-alert" className="flex flex-col gap-1 rounded-2xl border border-slate-200 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <StatusBadge tone={SEVERITY_TONE[a.severity]}>{t.alertTexts.types[a.type]}</StatusBadge>
-                  <span className="text-xs text-slate-500">{formatDateTime(a.created_at)}</span>
-                </div>
-                {a.object_name && <p className="text-xs font-medium text-slate-700">{a.object_name}</p>}
-                <p className="text-sm text-slate-800">{alertDetailText(a)}</p>
-              </li>
+              <EntryRow
+                key={a.id}
+                as="li"
+                testId="tg-alert"
+                kind={SEVERITY_KIND[a.severity]}
+                icon={<TriangleAlert className="size-[18px]" strokeWidth={1.75} />}
+                title={t.alertTexts.types[a.type]}
+                badge={<Badge tone={SEVERITY_TONE[a.severity]}>{t.alertTexts.severities[a.severity]}</Badge>}
+                meta={
+                  <>
+                    <span className="text-ink">{alertDetailText(a)}</span>
+                    {a.object_name && <span>{a.object_name}</span>}
+                    <span className="tabular">{formatDateTime(a.created_at)}</span>
+                  </>
+                }
+              />
             ))}
           </ul>
         )}
       </section>
-    </div>
-  )
-}
-
-function Stat({ label, value, sub, danger, testId }: { label: string; value: string; sub?: string; danger?: boolean; testId: string }) {
-  return (
-    <div data-testid={testId} className={`flex flex-col gap-1 rounded-2xl border p-3 ${danger ? 'border-danger/30 bg-danger/5' : 'border-slate-200'}`}>
-      <span className="text-xs text-slate-600">{label}</span>
-      <span className={`text-lg font-bold break-words ${danger ? 'text-danger' : 'text-slate-900'}`}>{value}</span>
-      {sub && <span className={`text-xs ${danger ? 'font-semibold text-danger' : 'text-slate-500'}`}>{sub}</span>}
     </div>
   )
 }

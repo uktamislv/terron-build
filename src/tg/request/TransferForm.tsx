@@ -16,6 +16,7 @@ import { MaterialHeader, NoteField, QtyField } from '../entry/QtyField'
 import { UnitChips } from '../entry/UnitChips'
 import { loadLastObject } from '../movement/prefs'
 import { getWebApp, haptic } from '../telegram'
+import { SavedBanner, SectionTitle } from '../ui'
 import { useBackButton, useMainButton } from '../useTelegramButtons'
 
 const tt = t.tg.transfer
@@ -146,9 +147,7 @@ export function TransferForm({
   return (
     <div className="flex flex-col gap-4">
       {savedText && (
-        <div role="status" className="rounded-2xl border border-ok/30 bg-ok/5 p-4 font-semibold text-ok">
-          ✓ {savedText}
-        </div>
+        <SavedBanner>{savedText}</SavedBanner>
       )}
       {step === 'object' ? (
         <ObjectChooser
@@ -186,7 +185,7 @@ export function TransferForm({
           <MaterialHeader name={material.name} onChange={() => setMaterialId(null)} />
 
           <div className="flex flex-col gap-2">
-            <h2 className="text-sm font-semibold text-slate-700">{tt.chooseTo}</h2>
+            <SectionTitle>{tt.chooseTo}</SectionTitle>
             {toOptions.length === 0 ? (
               <Notice tone="warn">{tt.noTargets}</Notice>
             ) : (
@@ -201,8 +200,8 @@ export function TransferForm({
                       setToId(o.id)
                       setFieldErrors((e) => ({ ...e, to: undefined }))
                     }}
-                    className={`min-h-12 rounded-xl border px-3 text-left text-sm font-semibold ${
-                      o.id === toId ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white text-slate-900'
+                    className={`min-h-13 rounded-xl border px-3 text-left text-sm font-semibold transition-colors ${
+                      o.id === toId ? 'border-brand bg-ice text-brand' : 'border-line bg-paper text-ink active:bg-ice'
                     }`}
                   >
                     {o.name}
@@ -232,7 +231,7 @@ export function TransferForm({
           />
           <BaseQtyBox qtyBase={qtyBase} unit={unit} baseUnit={material.base_unit}>
             {currentStock !== null && (
-              <p data-testid="transfer-stock" className="text-sm text-slate-600">
+              <p data-testid="transfer-stock" className="tabular text-sm text-muted">
                 {tt.stock(formatQty(currentStock), material.base_unit)}
               </p>
             )}
@@ -242,7 +241,7 @@ export function TransferForm({
           <NoteField label={tm.note} value={note} onChange={setNote} />
           {saveError && <Notice>{saveError}</Notice>}
           {!insideTelegram && toOptions.length > 0 && (
-            <Button className="min-h-12 text-base" onClick={onMain} disabled={saving}>
+            <Button size="lg" onClick={onMain} loading={saving}>
               {saving ? t.common.saving : tt.save}
             </Button>
           )}

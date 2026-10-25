@@ -34,8 +34,8 @@ const EXPECTED_TG: Record<Role, TgNavKey[]> = {
   direktor: ['home', 'mine'],
   buxgalter: ['mine'],
   taminotchi: ['purchase', 'mine'],
-  prorab: ['movement', 'purchase', 'request', 'mine'],
-  omborchi: ['movement', 'mine'],
+  prorab: ['home', 'movement', 'purchase', 'request', 'mine'],
+  omborchi: ['home', 'movement', 'mine'],
   haydovchi: ['purchase', 'mine'],
   tekshiruvchi: ['inventory', 'mine'],
 }

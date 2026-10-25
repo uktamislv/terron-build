@@ -66,7 +66,7 @@ export function initTelegram(): void {
   app.ready()
   app.expand()
   app.setHeaderColor('#1E5EFF')
-  app.setBackgroundColor('#FFFFFF')
+  app.setBackgroundColor('#F4F6FA') // canvas tokeni (index.css)
   app.MainButton.setParams({ color: '#1E5EFF', text_color: '#FFFFFF' })
 }
 

@@ -1,0 +1,160 @@
+// Xarid: balans kartasi va tanlangan material uchun forma (taqdimot — holat PurchasePage'da).
+import type { Ref } from 'react'
+import { Wallet } from 'lucide-react'
+import { Button, cx, Money, Notice } from '@/components/ui'
+import type { Material, MaterialUnit, Supplier } from '@/data/types'
+import { isNegative } from '@/domain/decimal'
+import type { PriceCheck } from '@/data/purchasesRepo'
+import { t } from '@/i18n'
+import { BaseQtyBox } from '../entry/BaseQtyBox'
+import { PhotoErrorBox, PhotoField, type PickedPhoto } from '../entry/PhotoPicker'
+import { MaterialHeader, NoteField } from '../entry/QtyField'
+import { bigInputClass } from '../entry/styles'
+import { UnitChips } from '../entry/UnitChips'
+import { LoadError } from '../ui'
+import { SupplierPicker, type SupplierChoice } from './SupplierPicker'
+
+const tm = t.tg.movement
+const tp = t.tg.purchase
+
+/** "Qo'limdagi pul": summa katta, manfiy — qizil. `balance` null — yuklanmoqda. */
+export function BalanceCard({ balance }: { balance: { value: string | null; failed: boolean } | null }) {
+  const negative = balance?.value != null && isNegative(balance.value)
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3">
+      <span aria-hidden className={cx('inline-flex size-11 shrink-0 items-center justify-center rounded-xl', negative ? 'bg-danger-bg text-danger' : 'bg-ice text-navy')}>
+        <Wallet className="size-6" strokeWidth={1.75} />
+      </span>
+      {balance === null ? (
+        <span className="text-sm text-muted">{t.common.loading}</span>
+      ) : balance.failed || balance.value === null ? (
+        <span className="text-sm text-muted">{tp.balanceUnknown}</span>
+      ) : (
+        <p data-testid="cash-balance" data-negative={negative ? 'true' : undefined} className="flex flex-col">
+          <span className="text-sm text-muted">{tp.balance}: </span>
+          <Money value={balance.value} size="lg" />
+        </p>
+      )}
+    </div>
+  )
+}
+
+export type PurchaseFieldErrors = {
+  object?: boolean
+  unit?: boolean
+  qty?: keyof typeof tm.errors.qty
+  sum?: 'sumRequired' | 'sumInvalid'
+  supplier?: boolean
+}
+
+export interface PurchaseDetailsProps {
+  material: Material
+  unitId: string | null
+  unit: MaterialUnit | null
+  qty: string
+  sum: string
+  sumRef?: Ref<HTMLInputElement>
+  errors: PurchaseFieldErrors
+  qtyBase: string | null
+  /** "1 kg narxi: …" — tayyor matn (formatlangan). */
+  perBaseText: string | null
+  priceVerdict: PriceCheck | null
+  suppliers: Supplier[]
+  supplier: SupplierChoice
+  note: string
+  photo: { photo: PickedPhoto | null; notice: string | null; error: string | null; preparing: boolean }
+  saving: boolean
+  saveError: string | null
+  showSaveButton: boolean
+  onQty: (v: string) => void
+  onUnit: (id: string) => void
+  onSum: (raw: string, caret: number | null) => void
+  onSupplier: (next: SupplierChoice) => void
+  onNote: (v: string) => void
+  onChangeMaterial: () => void
+  onPickPhoto: (file: File) => void
+  onRemovePhoto: () => void
+  onSave: () => void
+  onSaveWithoutPhoto: () => void
+}
+
+export function PurchaseDetails({ sumRef, ...p }: PurchaseDetailsProps) {
+  const { material, errors } = p
+  return (
+    <section className="flex flex-col gap-4" aria-label={material.name}>
+      <MaterialHeader name={material.name} onChange={p.onChangeMaterial} />
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="purchase-qty" className="text-sm font-medium text-ink">
+          {tm.qty}
+        </label>
+        <input
+          id="purchase-qty"
+          inputMode="decimal"
+          autoComplete="off"
+          placeholder="0"
+          value={p.qty}
+          aria-invalid={errors.qty ? true : undefined}
+          onChange={(e) => p.onQty(e.target.value)}
+          className={bigInputClass(Boolean(errors.qty))}
+        />
+        {errors.qty && <p className="text-sm text-danger">{tm.errors.qty[errors.qty]}</p>}
+      </div>
+
+      <UnitChips units={material.units} selectedId={p.unitId} onPick={p.onUnit} />
+      {errors.unit && <p className="text-sm text-danger">{tm.errors.unit}</p>}
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="purchase-sum" className="text-sm font-medium text-ink">
+          {tp.sum}
+        </label>
+        <input
+          id="purchase-sum"
+          ref={sumRef}
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="0"
+          value={p.sum}
+          aria-invalid={errors.sum ? true : undefined}
+          onChange={(e) => p.onSum(e.target.value, e.target.selectionStart)}
+          className={bigInputClass(Boolean(errors.sum))}
+        />
+        {errors.sum && <p className="text-sm text-danger">{tp.errors[errors.sum]}</p>}
+      </div>
+
+      {(p.qtyBase !== null || p.perBaseText !== null) && (
+        <BaseQtyBox qtyBase={p.qtyBase} unit={p.unit} baseUnit={material.base_unit}>
+          {p.perBaseText !== null && <p className="tabular text-base font-semibold text-ink">{p.perBaseText}</p>}
+        </BaseQtyBox>
+      )}
+      {p.priceVerdict === 'high' && <Notice tone="warn">{tp.priceHigh}</Notice>}
+      {p.priceVerdict === 'low' && <Notice tone="warn">{tp.priceLow}</Notice>}
+
+      <SupplierPicker suppliers={p.suppliers} value={p.supplier} error={Boolean(errors.supplier)} onChange={p.onSupplier} />
+
+      <PhotoField
+        label={tp.photo}
+        photo={p.photo.photo}
+        busy={p.photo.preparing || p.saving}
+        preparing={p.photo.preparing}
+        notice={p.photo.notice}
+        onPick={p.onPickPhoto}
+        onRemove={p.onRemovePhoto}
+      />
+
+      <NoteField label={tp.note} value={p.note} placeholder={tp.notePlaceholder} onChange={p.onNote} />
+
+      {errors.object && <Notice>{tm.errors.object}</Notice>}
+      {p.saveError && <LoadError message={p.saveError} onRetry={p.onSave} />}
+      {p.photo.error && (
+        <PhotoErrorBox message={p.photo.error} busy={p.saving} onRetry={p.onSave} onWithoutPhoto={p.onSaveWithoutPhoto} />
+      )}
+
+      {p.showSaveButton && (
+        <Button size="lg" onClick={p.onSave} disabled={p.photo.preparing} loading={p.saving}>
+          {p.saving ? t.common.saving : tp.save}
+        </Button>
+      )}
+    </section>
+  )
+}

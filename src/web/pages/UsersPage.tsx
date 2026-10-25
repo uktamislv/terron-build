@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Button, Notice, Spinner } from '@/components/ui'
+import { Building2, Globe, KeyRound, Pencil, Power, Send, UserPlus, Users } from 'lucide-react'
+import { Badge, Button, EmptyState, Notice, PageHeader, RetryNotice, SkeletonRows } from '@/components/ui'
 import { listObjectMembers } from '@/data/objectMembersRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { listProfiles, setProfileActive } from '@/data/profilesRepo'
@@ -12,6 +12,11 @@ import { errorText } from '@/i18n/errorText'
 import { formatPhoneDisplay } from '@shared/phone'
 import { SetLoginDialog } from '../users/SetLoginDialog'
 import { UserFormDialog } from '../users/UserFormDialog'
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '·'
+}
 
 const loginKindLabel: Record<LoginKind, string> = {
   web: t.users.hasLogin,
@@ -85,23 +90,23 @@ export function UsersPage() {
     p.id === me.id || me.role === 'super_admin' || (p.role !== 'admin' && p.role !== 'super_admin')
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-brand-dark">{t.users.title}</h1>
-        {canManage && <Button onClick={() => setDialog({ kind: 'create' })}>{t.users.add}</Button>}
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title={t.users.title}
+        icon={<Users strokeWidth={1.75} />}
+        actions={
+          canManage && (
+            <Button icon={<UserPlus aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => setDialog({ kind: 'create' })}>
+              {t.users.add}
+            </Button>
+          )
+        }
+      />
 
-      {error && (
-        <Notice>
-          {error}{' '}
-          <button type="button" className="font-semibold underline" onClick={reload}>
-            {t.common.retry}
-          </button>
-        </Notice>
-      )}
+      {error && <RetryNotice message={error} onRetry={reload} />}
       {actionError && <Notice>{actionError}</Notice>}
-      {!data && !error && <Spinner />}
-      {data && data.profiles.length === 0 && <p className="text-slate-600">{t.users.empty}</p>}
+      {!data && !error && <SkeletonRows rows={4} />}
+      {data && data.profiles.length === 0 && <EmptyState icon={<Users strokeWidth={1.5} />} title={t.users.empty} />}
 
       {data && data.profiles.length > 0 && (
         <ul className="grid gap-3 xl:grid-cols-2" aria-label={t.users.title}>
@@ -109,47 +114,75 @@ export function UsersPage() {
             const objs = objectsOf(p.id)
             const isMe = p.id === me.id
             return (
-              <li key={p.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-900">
+              <li key={p.id} className="flex flex-col gap-3 rounded-xl border border-line bg-paper p-4">
+                <div className="flex items-start gap-3">
+                  <span
+                    aria-hidden
+                    className={`inline-flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                      p.is_active ? 'bg-ice text-navy' : 'bg-canvas text-muted'
+                    }`}
+                  >
+                    {initials(p.full_name)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-ink">
                       <span>{p.full_name}</span>
-                      {isMe && <span className="ml-1 text-sm font-normal text-slate-500">({t.users.you})</span>}
+                      {isMe && <span className="ml-1 text-sm font-normal text-muted">({t.users.you})</span>}
                     </p>
-                    <p className="text-sm text-slate-600">{formatPhoneDisplay(p.phone)}</p>
+                    <p className="tabular text-sm text-muted">{formatPhoneDisplay(p.phone)}</p>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <span className="inline-flex rounded-full bg-brand-light px-2.5 py-1 text-xs font-medium text-brand-dark">
-                      {t.roles[p.role]}
-                    </span>
-                    <StatusBadge tone={p.is_active ? 'ok' : 'danger'}>
-                      {p.is_active ? t.status.active : t.status.inactive}
-                    </StatusBadge>
+                  <div className="flex flex-wrap justify-end gap-1.5">
+                    <Badge tone="info">{t.roles[p.role]}</Badge>
+                    <Badge tone={p.is_active ? 'ok' : 'danger'}>{p.is_active ? t.status.active : t.status.inactive}</Badge>
                   </div>
                 </div>
 
-                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-                  <dt className="text-slate-500">{t.users.colObjects}</dt>
-                  <dd>{objs.length > 0 ? objs.join(', ') : '—'}</dd>
-                  <dt className="text-slate-500">{t.users.colWeb}</dt>
-                  <dd>{loginKindLabel[p.login_kind]}</dd>
-                  <dt className="text-slate-500">{t.users.colTelegram}</dt>
-                  <dd>{p.telegram_user_id ? t.users.linked : t.users.notLinked}</dd>
+                <dl className="flex flex-col gap-1.5 text-sm">
+                  <div className="flex items-start gap-2">
+                    <dt className="flex shrink-0 items-center gap-1.5 text-muted">
+                      <Building2 aria-hidden className="size-4" strokeWidth={1.75} />
+                      {t.users.colObjects}
+                    </dt>
+                    <dd className="min-w-0 text-ink">{objs.length > 0 ? objs.join(', ') : '—'}</dd>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <dt className="flex shrink-0 items-center gap-1.5 text-muted">
+                      <Globe aria-hidden className="size-4" strokeWidth={1.75} />
+                      {t.users.colWeb}
+                    </dt>
+                    <dd className="text-ink">{loginKindLabel[p.login_kind]}</dd>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <dt className="flex shrink-0 items-center gap-1.5 text-muted">
+                      <Send aria-hidden className="size-4" strokeWidth={1.75} />
+                      {t.users.colTelegram}
+                    </dt>
+                    <dd className={p.telegram_user_id ? 'text-ok' : 'text-muted'}>{p.telegram_user_id ? t.users.linked : t.users.notLinked}</dd>
+                  </div>
                 </dl>
 
                 {editable(p) && (
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="secondary" onClick={() => setDialog({ kind: 'edit', profile: p })}>
+                  <div className="flex flex-wrap gap-2 border-t border-line pt-3">
+                    <Button
+                      variant="secondary"
+                      icon={<Pencil aria-hidden className="size-4" strokeWidth={1.75} />}
+                      onClick={() => setDialog({ kind: 'edit', profile: p })}
+                    >
                       {t.common.edit}
                     </Button>
                     {canSetLogin(p) && (
-                      <Button variant="secondary" onClick={() => setDialog({ kind: 'login', profile: p })}>
+                      <Button
+                        variant="secondary"
+                        icon={<KeyRound aria-hidden className="size-4" strokeWidth={1.75} />}
+                        onClick={() => setDialog({ kind: 'login', profile: p })}
+                      >
                         {p.login_kind === 'web' ? t.users.resetPassword : t.users.setLogin}
                       </Button>
                     )}
                     {!isMe && (
                       <Button
                         variant={p.is_active ? 'danger' : 'secondary'}
+                        icon={<Power aria-hidden className="size-4" strokeWidth={1.75} />}
                         disabled={busyId === p.id}
                         onClick={() => void toggleActive(p)}
                       >

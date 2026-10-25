@@ -45,9 +45,9 @@ export function MakeCurrentDialog({
     <Modal title={te.makeCurrentTitle(te.version(target.version))} onClose={onCancel} size="lg">
       <div className="flex flex-col gap-4">
         <Notice tone="warn">{te.makeCurrentWarn}</Notice>
-        {!current && <p className="text-sm text-slate-600">{te.makeCurrentNoCurrent}</p>}
+        {!current && <p className="text-sm text-muted">{te.makeCurrentNoCurrent}</p>}
         {current && (
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-muted">
             {te.diff.title}: {te.version(current.version)} → {te.version(target.version)}
           </p>
         )}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Notice } from '@/components/ui'
+import { CalendarDays, Check } from 'lucide-react'
+import { Button, cx, Notice } from '@/components/ui'
 import { listNormUsage } from '@/data/normsRepo'
 import { createRequest } from '@/data/requestsRepo'
 import type { Material, NormUsage, ObjectRow, Profile } from '@/data/types'
@@ -16,6 +17,7 @@ import { MaterialHeader, NoteField, QtyField } from '../entry/QtyField'
 import { UnitChips } from '../entry/UnitChips'
 import { loadLastObject, saveLastObject } from '../movement/prefs'
 import { getWebApp, haptic } from '../telegram'
+import { SavedBanner } from '../ui'
 import { useBackButton, useMainButton } from '../useTelegramButtons'
 import { requestNormState } from '@/lib/requestNorm'
 
@@ -161,9 +163,7 @@ export function RequestForm({
   return (
     <div className="flex flex-col gap-4">
       {savedText && (
-        <div role="status" className="rounded-2xl border border-ok/30 bg-ok/5 p-4 font-semibold text-ok">
-          ✓ {savedText}
-        </div>
+        <SavedBanner>{savedText}</SavedBanner>
       )}
       {step === 'object' ? (
         <ObjectChooser
@@ -211,9 +211,10 @@ export function RequestForm({
             <div
               data-testid="norm-left"
               data-over={normState.kind === 'over' ? 'true' : undefined}
-              className={`rounded-xl border px-4 py-3 text-sm ${
-                normState.kind === 'over' ? 'border-warn/30 bg-warn/5 text-warn' : 'border-brand/20 bg-brand-light text-brand-dark'
-              }`}
+              className={cx(
+                'tabular rounded-xl border px-4 py-3 text-sm',
+                normState.kind === 'over' ? 'border-warn/25 bg-warn-bg text-warn' : 'border-brand/15 bg-ice text-navy',
+              )}
             >
               <p className="font-semibold">{tr.normLeft(formatQty(normState.available), material.base_unit)}</p>
               {normState.kind === 'over' && <p className="mt-1">{tr.normOver(formatQty(normState.overQty), material.base_unit)}</p>}
@@ -221,7 +222,10 @@ export function RequestForm({
           )}
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-slate-700">{tr.neededBy}</span>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-ink">
+              <CalendarDays aria-hidden className="size-4 text-muted" strokeWidth={1.75} />
+              {tr.neededBy}
+            </span>
             <div role="group" aria-label={tr.neededBy} className="grid grid-cols-2 gap-2">
               {neededOptions.map((o) => (
                 <button
@@ -232,12 +236,14 @@ export function RequestForm({
                     haptic.select()
                     setNeededBy(o.value)
                   }}
-                  className={`min-h-11 rounded-xl border px-3 text-sm font-medium ${
-                    neededBy === o.value ? 'border-brand bg-brand text-white' : 'border-slate-300 bg-white text-slate-800'
-                  }`}
+                  className={cx(
+                    'relative flex min-h-13 flex-col items-start justify-center rounded-xl border px-3 text-left text-sm font-semibold transition-colors',
+                    neededBy === o.value ? 'border-brand bg-ice text-brand' : 'border-line bg-paper text-ink active:bg-ice',
+                  )}
                 >
                   {tr.needed[o.key]}
-                  {o.value && <span className="block text-xs opacity-80">{formatDate(`${o.value}T12:00:00+05:00`)}</span>}
+                  {o.value && <span className="tabular block text-xs font-normal text-muted">{formatDate(`${o.value}T12:00:00+05:00`)}</span>}
+                  {neededBy === o.value && <Check aria-hidden className="absolute top-2 right-2 size-4" strokeWidth={2.5} />}
                 </button>
               ))}
             </div>
@@ -247,7 +253,7 @@ export function RequestForm({
           {fieldErrors.object && <Notice>{tm.errors.object}</Notice>}
           {saveError && <Notice>{saveError}</Notice>}
           {!insideTelegram && (
-            <Button className="min-h-12 text-base" onClick={onMain} disabled={saving}>
+            <Button size="lg" onClick={onMain} loading={saving}>
               {saving ? t.common.saving : tr.save}
             </Button>
           )}
