@@ -22,6 +22,9 @@ export type RepoErrorCode =
   | 'material_name_taken'
   | 'unit_taken'
   | 'alias_taken'
+  | 'photo_too_large'
+  | 'photo_type'
+  | 'photo_upload_failed'
   | ServerHintCode
   | 'unknown'
 
@@ -56,6 +59,12 @@ export const SERVER_HINTS = {
   ops_unit_material_mismatch: { showServerMessage: false },
   ops_purchase_not_found: { showServerMessage: false },
   ops_purchase_mismatch: { showServerMessage: false },
+  ops_occurred_at_range: { showServerMessage: false },
+  ops_photo_path_company: { showServerMessage: false },
+  ops_photo_path_format: { showServerMessage: false },
+  ops_usage_days_range: { showServerMessage: false },
+  ops_photo_not_owned: { showServerMessage: false },
+  ops_photo_reused: { showServerMessage: false },
   request_fields_locked: { showServerMessage: false },
   request_status_transition: { showServerMessage: false },
   inventory_status_direct: { showServerMessage: false },

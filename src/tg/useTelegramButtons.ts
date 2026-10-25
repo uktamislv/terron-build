@@ -19,8 +19,11 @@ export function useBackButton(onBack: (() => void) | null): void {
   }, [onBack])
 }
 
-/** Telegram MainButton (masalan "Saqlash"). onClick null bo'lsa yashiriladi. */
-export function useMainButton(text: string, onClick: (() => void) | null, disabled = false): void {
+/**
+ * Telegram MainButton (masalan "Saqlash"). onClick null bo'lsa yashiriladi.
+ * `progress` — jarayon belgisi (spinner) va tugma bosilmaydi.
+ */
+export function useMainButton(text: string, onClick: (() => void) | null, disabled = false, progress = false): void {
   useEffect(() => {
     const main = getWebApp()?.MainButton
     if (!main) return
@@ -29,12 +32,15 @@ export function useMainButton(text: string, onClick: (() => void) | null, disabl
       return
     }
     main.setText(text).onClick(onClick)
-    if (disabled) main.disable()
+    if (disabled || progress) main.disable()
     else main.enable()
+    if (progress) main.showProgress(false)
+    else main.hideProgress()
     main.show()
     return () => {
       main.offClick(onClick)
+      main.hideProgress()
       main.hide()
     }
-  }, [text, onClick, disabled])
+  }, [text, onClick, disabled, progress])
 }

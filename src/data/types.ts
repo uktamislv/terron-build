@@ -1,6 +1,7 @@
 // Bazadagi qatorlar tiplari (qo'lda; generatsiya qilingan tiplar hali yo'q).
 // Ustun nomlari docs/db-design.md va supabase/migrations bilan bir xil.
 import type { Dec } from '@/domain/decimal'
+import type { MovementType } from '@/domain/movements'
 import type { Role } from '@/domain/roles'
 
 /** Auth akkaunt turi — faqat o'qiladi, server (Edge Function) yozadi. */
@@ -106,4 +107,46 @@ export interface Material {
   updated_at: string
   units: MaterialUnit[]
   aliases: MaterialAlias[]
+}
+
+/** `movements.type` — bazadagi `movement_type` enum (domain bilan bir xil). */
+export type MovementKind = MovementType
+
+export const MOVEMENT_KINDS: readonly MovementKind[] = ['kirim', 'chiqim', 'transfer_out', 'transfer_in', 'inventory_adjust']
+
+/**
+ * Ombor harakati — obyekt, material va kiritgan profil nomlari bilan.
+ * Miqdorlar `numeric` → satr (`::text`), float'ga aylantirilmaydi.
+ */
+export interface Movement {
+  id: string
+  company_id: string
+  type: MovementKind
+  object_id: string
+  material_id: string
+  unit_id: string
+  qty_input: Dec
+  unit_input: string
+  unit_variant: string | null
+  qty_base: Dec
+  purchase_id: string | null
+  photo_path: string | null
+  occurred_at: string
+  note: string | null
+  created_by: string | null
+  created_at: string
+  deleted_at: string | null
+  object_name: string | null
+  material_name: string | null
+  base_unit: string | null
+  created_by_name: string | null
+}
+
+/** `stock_balances` qatori: obyekt × material qoldig'i asosiy birlikda. */
+export interface StockBalance {
+  company_id: string
+  object_id: string
+  material_id: string
+  qty_base: Dec
+  last_movement_at: string | null
 }

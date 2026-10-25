@@ -7,6 +7,8 @@ import type { TgNavKey, WebNavKey } from '@/domain/roles'
 import { TgAuthGate } from '@/tg/TgAuthGate'
 import { RequireTgNav, TgIndex, TgLayout } from '@/tg/TgLayout'
 import { tgNavItems } from '@/tg/nav'
+import { MinePage } from '@/tg/pages/MinePage'
+import { MovementPage } from '@/tg/pages/MovementPage'
 import { TgHomePage } from '@/tg/pages/TgHomePage'
 import { WebLayout } from '@/web/WebLayout'
 import { RequireAuth, RequireNav } from '@/web/guards'
@@ -14,17 +16,25 @@ import { webNavItems } from '@/web/nav'
 import { DashboardPage } from '@/web/pages/DashboardPage'
 import { LoginPage } from '@/web/pages/LoginPage'
 import { MaterialsPage } from '@/web/pages/MaterialsPage'
+import { MovementsPage } from '@/web/pages/MovementsPage'
 import { ObjectsPage } from '@/web/pages/ObjectsPage'
 import { UsersPage } from '@/web/pages/UsersPage'
 
 // Tayyor veb sahifalar; qolganlari hozircha "Tez orada"
 const webPages: Partial<Record<WebNavKey, ReactNode>> = {
   materials: <MaterialsPage />,
+  movements: <MovementsPage />,
   users: <UsersPage />,
   objects: <ObjectsPage />,
 }
 
 const webSections = (Object.keys(webNavItems) as WebNavKey[]).filter((key) => key !== 'dashboard')
+// Tayyor Mini App ekranlari; qolganlari hozircha "Tez orada"
+const tgPages: Partial<Record<TgNavKey, ReactNode>> = {
+  movement: <MovementPage />,
+  mine: <MinePage />,
+}
+
 const tgSections = (Object.keys(tgNavItems) as TgNavKey[]).filter((key) => key !== 'home')
 
 export const routes: RouteObject[] = [
@@ -78,7 +88,7 @@ export const routes: RouteObject[] = [
             path: tgNavItems[key].to.replace('/tg/', ''),
             element: (
               <RequireTgNav navKey={key}>
-                <ComingSoon title={tgNavItems[key].label} />
+                {tgPages[key] ?? <ComingSoon title={tgNavItems[key].label} />}
               </RequireTgNav>
             ),
           })),

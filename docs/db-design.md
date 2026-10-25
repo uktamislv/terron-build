@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1, 3)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -187,7 +187,7 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 
 - `lower()` (va `norm_name`) kirill harflarini bazaning locale/collation'iga qarab kichraytiradi. PGlite'da `Ц→ц` ishlaydi; **prod Supabase'da birinchi deploy'da tekshiring:** `select private.norm_name('ЦЕМЕНТ Ё') = 'цемент е'` → `true` bo'lishi kerak. `false` bo'lsa — nom/alias unique va to'qnashuv tekshiruvlari kirillda katta-kichik harfni farqlaydi.
 
-### Xato kalitlari (`hint`) — Batch 1–3 to'liq ro'yxati
+### Xato kalitlari (`hint`) — Batch 1–4 to'liq ro'yxati
 
 | `hint` | `errcode` | Qayerda | Ma'nosi |
 |---|---|---|---|
@@ -221,8 +221,54 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `catalog_material_has_stock` | P0001 | `b_materials_guard` | Qoldig'i bor material o'chirilmaydi |
 | `catalog_material_deleted` | P0001 | `b_check_material`, `b_material_units_guard`, `b_material_aliases_guard` | O'chirilgan material |
 | `catalog_material_inactive` | P0001 | `b_check_material` | Nofaol material |
+| `ops_photo_path_format` | 23514 | `b_photo_path` (Batch 4) | Rasm yo'li formati noto'g'ri |
+| `ops_photo_path_company` | 23514 | `b_photo_path` (Batch 4) | Rasm boshqa firma papkasida |
+| `ops_occurred_at_range` | 23514 | `b_op_date` (Batch 4) | Sana [now − 3 kun, now + 5 daqiqa] dan tashqarida (admin emas) |
+| `ops_usage_days_range` | 22023 | `my_material_usage` (Batch 4) | `p_days` 1..365 dan tashqari yoki null |
+| `ops_photo_not_owned` | 42501 | `b_photo_path` (Batch 4) | Rasm yo'q, o'zi yuklamagan yoki 24 soatdan eski |
+| `ops_photo_reused` | 23505 | `b_photo_path` (Batch 4) | Rasm boshqa tirik yozuvga biriktirilgan |
 
 Hint'siz qolganlar (foydalanuvchi ko'rmaydi): RLS rad etishi (42501, PostgreSQL xabari), CHECK/FK/unique cheklovlar (23514/23503/23505 — zaxira), `private.log_auth_event` (faqat service_role, Edge Function ichki xatosi), birinchi migratsiyadagi BYPASSRLS tekshiruvi.
+
+## Kirim, chiqim, rasm (Batch 4 — `20261028000001_ops.sql`)
+
+Shartnoma: `docs/ops-design.md`.
+
+### Storage (`photos` bucket)
+
+- `storage.buckets`: `id = name = 'photos'`, `public = false`, `file_size_limit = 5242880` (5 MB), `allowed_mime_types = {image/jpeg, image/png, image/webp}` (`on conflict (id) do update` — `public = false`, limit va mime qayta qo'yiladi).
+- Yo'l: `{company_id}/{yyyy}/{mm}/{uuid}.{ext}`, regex `^[0-9a-f-]{36}/[0-9]{4}/[0-9]{2}/[0-9a-f-]{36}\.(jpg|jpeg|png|webp)$` (faqat kichik harf, boshida `/` yo'q).
+- `storage.objects` siyosatlari (`to authenticated`):
+  - `photos_insert` — `bucket_id = 'photos'`, `(storage.foldername(name))[1] = my_company_id()::text`, yo'l regex'ga mos, rol: `super_admin, admin, prorab, omborchi, haydovchi, taminotchi`. super_admin ham faqat o'z firmasi papkasiga.
+  - `photos_select` — `bucket_id = 'photos'` va: super_admin — hammasi; aks holda birinchi papka = `my_company_id()::text` **va** (firma bo'yicha rol (`is_company_wide()`) **yoki** `owner_id = auth.uid()::text` **yoki** rasm foydalanuvchi ko'ra oladigan `movements.photo_path` / `purchases.receipt_photo_path` da (invoker `exists` — RLS amal qiladi)). Natija: prorab/omborchi — a'zo obyektlar va o'zi yuklagani, haydovchi — o'z xaridlari cheki va o'zi yuklagani. `createSignedUrl` shu siyosatga tayanadi. Indekslar: `movements_photo_path_idx`, `purchases_receipt_photo_path_idx` (partial, `is not null`).
+  - UPDATE / DELETE siyosati **yo'q** — rasm o'zgarmaydi, o'chirilmaydi. Klient `upsert: true` ishlatmaydi (UPDATE siyosatini talab qiladi).
+- `anon` — hech narsa.
+
+### Rasm yo'li trigger'i — `b_photo_path` (`private.tg_ops_photo_path(col)`)
+
+- `movements.photo_path`, `purchases.receipt_photo_path`; `security definer`, `search_path = ''`. Bo'sh satr → `null`.
+- INSERT yoki yo'l o'zgarganda: regex (`ops_photo_path_format`), birinchi papka = `company_id::text` (`ops_photo_path_company`) — hamma uchun.
+- Shu holatda, foydalanuvchi sessiyasida admin/super_admin bo'lmasa: `storage.objects` da `bucket_id = 'photos'`, `name = yo'l`, `owner_id = auth.uid()::text`, `created_at > now() - 24 soat` bo'lishi shart (`ops_photo_not_owned`, 42501). service_role — tekshirilmaydi.
+- Bitta yo'l — bitta tirik yozuv, `movements` va `purchases` bo'ylab (INSERT, yo'l o'zgarishi yoki tiklashda; hamma uchun, admin ham): `ops_photo_reused` (23505). Zaxira — partial unique indekslar `movements_photo_path_key`, `purchases_receipt_photo_path_key` (`deleted_at is null`); jadvallar aro poyga — `pg_advisory_xact_lock(yo'l)`. O'chirilgan yozuvning rasmi bo'shaydi.
+
+### Operatsiya sanasi — `b_op_date` (`private.tg_ops_op_date(col)`)
+
+- `movements.occurred_at`, `purchases.purchased_at`, `inventory_counts.counted_at`.
+- INSERT: `null` → `now()`. UPDATE: `null` → eski qiymat.
+- `auth.uid()` bor (foydalanuvchi sessiyasi) va rol `admin`/`super_admin` emas: INSERT yoki sana o'zgarganda `now() − 3 kun ≤ sana ≤ now() + 5 daqiqa` (chegaralar kiradi), aks holda `ops_occurred_at_range` (23514). `now()` — tranzaksiya boshlangan vaqt. service_role / cron / migratsiya — cheklovsiz. Domain `occurredAtAllowed` bilan bir xil qoida.
+- `cash_advances.issued_at` cheklanmagan (buxgalter/admin yozadi; Batch 5 da qaror).
+
+### `public.my_material_usage(p_days integer default 30)`
+
+- `returns table (material_id uuid, use_count bigint, last_used_at timestamptz)`.
+- Joriy foydalanuvchi (`created_by = my_profile_id()`) oxirgi `p_days` kunda (`created_at` bo'yicha) kiritgan, o'chirilmagan `movements` + `purchases`, material bo'yicha guruhlangan. Tartib: `use_count desc, last_used_at desc, material_id`.
+- `p_days` 1..365, aks holda (`null` ham) `ops_usage_days_range` (22023).
+- `plpgsql stable security invoker`, `search_path = ''` — RLS amal qiladi. Execute: `authenticated`; `public`, `anon` dan olib tashlangan.
+- Indekslar: `movements_created_by_time_idx`, `purchases_created_by_time_idx` (`(created_by, created_at desc) where deleted_at is null`).
+
+### O'z o'chirilgan yozuvlari
+
+- Qo'shimcha SELECT siyosatlari `movements_select_own_deleted`, `purchases_select_own_deleted`: `deleted_at is not null and created_by = my_profile_id() and company_id = my_company_id()` ("Mening yozuvlarim"da "o'chirilgan" belgisi). Faqat o'chirilganlar — tirik qatorlar ko'rinishi o'zgarmaydi (`stock_balances` ga ta'sir yo'q).
 
 ## Qoldiq
 
@@ -239,7 +285,7 @@ Hint'siz qolganlar (foydalanuvchi ko'rmaydi): RLS rad etishi (42501, PostgreSQL 
 - **`postgres` / Supabase dashboard — ishonchli zona.** Superuser / egasi sifatida bajarilgan SQL RLS'ni chetlab o'tadi, `session_replication_role` yoki triggerlarni o'chirish orqali auditni ham chetlab o'tishi mumkin. Ilova faqat `authenticated` va `service_role` orqali ishlaydi.
 - **Sanalar:** bazada `timestamptz` (UTC). Hisobotlarda kunlarga kesish doim `(ts at time zone 'Asia/Tashkent')::date` bilan (`companies.timezone`).
 - **Telefon bir necha firmada** bo'lishi mumkin (`unique (company_id, phone)`). Bitta auth/Telegram akkaunt — bitta faol profil; qaysi firma profiliga bog'lashni Batch 2 dagi bog'lash oqimi hal qiladi.
-- **Orqa sanaga yozish** (`occurred_at`, `purchased_at` o'tmishga) hozircha cheklanmagan — Batch 4 da qoida qo'shiladi.
+- **Orqa sanaga yozish** — Batch 4 da cheklangan (yuqorida "Kirim, chiqim, rasm").
 - **`audit_log`** da `updated_at`/`deleted_at`/`created_by` yo'q — faqat qo'shiladigan jurnal uchun ataylab qilingan istisno (o'zgarmaydi, o'chirilmaydi).
 
 Shablon (koeffitsientlar taxminiy, firma o'zgartiradi):

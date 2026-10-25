@@ -35,6 +35,7 @@ vi.mock('@/data/authRepo', () => ({
 
 vi.mock('./telegram', () => ({
   isInsideTelegram: () => true,
+  getWebApp: () => null,
   getInitData: () => 'init',
   requestContact: vi.fn(),
   botLink: () => 'https://t.me/x',

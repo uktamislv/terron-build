@@ -776,7 +776,8 @@ describe('R2. o`chirilgan materialning yozuvlari muzlatiladi', () => {
         object: await upd(kirim, `object_id = '${A.ids.obj2}'`),
         material: await upd(kirim, `material_id = '${A.ids.m1}', unit_id = '${kgOther}'`),
         note: await upd(kirim, `note = 'izoh'`),
-        photo: await upd(kirim, `photo_path = 'a/b.jpg'`),
+        // Batch 4: yo'l formati va firma papkasi trigger bilan tekshiriladi
+        photo: await upd(kirim, `photo_path = '${A.id}/2026/10/0b7c2a8e-5f3d-4c1a-9e2b-6d8f0a1b2c3d.jpg'`),
         stock: await scalar<number>(
           tx,
           `select count(*)::int from public.stock_balances where material_id = $1 and qty_base <> 0`,
