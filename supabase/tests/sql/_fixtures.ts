@@ -52,6 +52,14 @@ export const BUSINESS_TABLES = [
 ] as const
 export type BusinessTable = (typeof BUSINESS_TABLES)[number]
 
+/**
+ * Tizim jadvallari (public): firma ustuni va vaqt ustunlari bor, lekin audit trigger,
+ * created_by va soft delete yo'q; yozuvchi — faqat security definer funksiyalar.
+ * DELETE / TRUNCATE baribir bloklangan.
+ */
+export const SYSTEM_TABLES = ['notification_outbox'] as const
+export type SystemTable = (typeof SYSTEM_TABLES)[number]
+
 /** Biznes jadvallari + audit_log + stock_balances view. */
 export const ALL_RELATIONS = [...BUSINESS_TABLES, 'audit_log', 'stock_balances'] as const
 export type Relation = (typeof ALL_RELATIONS)[number]

@@ -12,3 +12,8 @@ verify_jwt = false
 [functions.admin-users]
 # Funksiya chaqiruvchini o'zi auth.getUser(jwt) bilan tekshiradi (JWT signing keys bilan muammo bo'lmasin).
 verify_jwt = false
+
+[functions.tg-dispatch]
+# Faqat baza chaqiradi (pg_net: alert trigger va pg_cron) — ishonch x-dispatch-secret
+# sarlavhasida (Vault: tg_dispatch_secret).
+verify_jwt = false

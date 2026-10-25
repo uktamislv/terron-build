@@ -356,6 +356,45 @@ Hammasi `private`, `security definer`, `search_path = ''`, execute — hech kimg
 
 - `purchases` va `cash_advances` da `authenticated` jadval darajasida `insert` grantiga ega — klient `id` yuboradi; takror so'rov `23505` (`purchases_pkey` / `cash_advances_pkey`).
 
+## Telegram bildirishnomalari (Batch 6 — `20261030000001_notifications.sql`)
+
+Shartnoma va oqim: `docs/bot-design.md`. Bu yerda — baza tomoni.
+
+### `public.notification_outbox` (tizim jadvali)
+
+- Ustunlar: `id`, `company_id`, `kind` (`alert` | `daily_report`), `alert_id` (FK `(company_id, alert_id) → alerts`), `report_date`, `payload jsonb`, `status` (`pending` | `sending` | `sent` | `failed`), `attempts`, `next_attempt_at`, `last_error` (≤ 1000), `sent_count`, `delivered_chat_ids bigint[]` (yetkazilgan chatlar; `sent_count = cardinality`), `created_at`, `sent_at`, `updated_at` (trigger `b_touch`).
+- `check`: `alert` ↔ `alert_id` bor va `report_date` yo'q; `daily_report` ↔ aksincha. Unique: `(alert_id)`, `(company_id, report_date) where kind = 'daily_report'`.
+- **Biznes jadval emas — audit istisnosi** (`_fixtures.ts → SYSTEM_TABLES`): `created_by`, `deleted_at`, audit trigger yo'q — yozuvchi faqat security definer funksiyalar (tizim jurnali; foydalanuvchi o'zgartira olmaydi, `audit_log` ni shovqin bilan to'ldirmaydi). Lekin `a_block_delete` / `a_block_truncate` bor, RLS `enable` + `force`.
+- Yetkazish — "kamida bir marta" (`docs/bot-design.md`).
+- RLS: `select` — `admin`/`super_admin` (o'z firmasi; super_admin — hammasi). Grant: `authenticated`, `service_role` — faqat `select` (yozish — faqat RPC orqali).
+
+### Sozlamalar va sir
+
+- `private.app_settings (key, value)` — `dispatch_url` (sir emas). Hech kimga grant yo'q, RLS yoqilgan.
+- `net` sxemasi jadvallari — `revoke all ... from public, anon, authenticated` (navbatdagi so'rov sarlavhasida sir bor).
+- Vault: `tg_dispatch_secret` — migratsiyada `vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), ...)` (bo'lmasa). O'qish — `vault.decrypted_secrets` (faqat definer funksiyalar).
+
+### Funksiyalar
+
+| Funksiya | Kim | Vazifa |
+|---|---|---|
+| `private.wake_dispatch()` | ichki | `net.http_post(dispatch_url, headers {Content-Type, x-dispatch-secret}, body {})`. Tranzaksiyada bir marta (`terron.dispatch_woken`). Har qanday xato — `WARNING`, chaqiruvchi buzilmaydi. |
+| `private.wake_dispatch_if_due()` | cron | Navbatda vaqti kelgan `pending` yoki 10 daqiqadan eski `sending` bo'lsagina uyg'otadi. |
+| `private.tg_alerts_notify()` | trigger `alerts.zz_notify` (AFTER INSERT) | `deleted_at is null`, `severity <> 'belgi'`, `type <> 'ozi_qabul_qilgan'` → outbox qatori (payload: `alert_id, type, severity, object_name, material_name, base_unit, details, created_at`) + uyg'otish. UPDATE'da trigger yo'q. |
+| `private.daily_report_stats(company, period_start, period_end) → jsonb` | ichki | Oraliq `[period_start, period_end)`; `date` — oraliq oxiridagi Toshkent sanasi. Pastda. |
+| `private.enqueue_daily_reports(date default bugun Toshkent) → int` | cron | Har faol, o'chirilmagan firma uchun `daily_report` (`on conflict do nothing`), `report_date = date`, payload = stats `[date−1 20:00, date 20:00)` Toshkent. Qo'shilgan bo'lsa — uyg'otish. |
+| `public.svc_dispatch_secret() → text` | service_role | Vault siri. |
+| `public.svc_claim_notifications(p_limit int default 20)` | service_role | `for update skip locked`; vaqti kelgan `pending` + 10 daqiqadan eski `sending` → `sending`, `attempts + 1`. Eski `sending` va `attempts >= 6` → `failed` (`stuck_in_sending`). Limit 1..100. |
+| `public.svc_notification_recipients(p_company_id)` | service_role | `(profile_id, chat_id, role)`: firma faol; profil faol, o'chirilmagan, `direktor`/`admin`, `telegram_chat_id` bor; bitta chat — bir marta. |
+| `public.svc_complete_notification(p_id, p_ok, p_delivered bigint[] default '{}', p_error, p_retry_after_sec default null, p_final default false) → text` | service_role | Faqat `sending` qatorga. `p_delivered` har doim `delivered_chat_ids` ga qo'shiladi (takrorsiz). `ok` → `sent`; `p_final` → darhol `failed`; `retry_after` → `pending` (+retry_after s, urinish qaytariladi); `attempts >= 6` → `failed`; aks holda `pending`, `+2^attempts` daqiqa (2, 4, 8, 16, 32). Yangi holatni qaytaradi. |
+
+**`daily_report_stats` maydonlari:** `date` (`YYYY-MM-DD`), `company_name`, `kirim_count` / `chiqim_count` (`movements.occurred_at`), `purchases_count`, `purchases_sum` (`purchases.purchased_at`, `sum(total_amount)::numeric(18,2)::text`, masalan `"3000.50"`), `requests_count` (`material_requests.created_at`; Batch 8 gacha amalda 0), `alerts_new` + `alerts_by_type` (`alerts.created_at`; `belgi`, `ozi_qabul_qilgan` va `yozuv_ochirildi` siz), `self_received_count` (`ozi_qabul_qilgan`), `deleted_count` (`yozuv_ochirildi`), `period_start` / `period_end` (ISO, UTC), `failed_count` (shu firmaning oraliqda `failed` bo'lgan outbox qatorlari, `updated_at` bo'yicha). Hamma joyda `deleted_at is null`. `failed` qatorlarning veb ko'rsatkichi — Batch 9.
+
+### pg_cron
+
+- `terron-dispatch` — `* * * * *` → `select private.wake_dispatch_if_due()`.
+- `terron-daily-report` — `0 15 * * *` (20:00 Toshkent) → `select private.enqueue_daily_reports()`.
+
 ## Qoldiq
 
 - View `public.stock_balances` (`with (security_invoker = true)` — RLS chaqiruvchi huquqida ishlaydi): `company_id`, `object_id`, `material_id`, `last_movement_at`, `qty_base` = `kirim + transfer_in − chiqim − transfer_out + inventory_adjust`, faqat `deleted_at is null` harakatlar.

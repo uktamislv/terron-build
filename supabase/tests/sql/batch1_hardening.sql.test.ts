@@ -22,6 +22,7 @@ import {
 import {
   ALL_RELATIONS,
   BUSINESS_TABLES,
+  SYSTEM_TABLES,
   buildCompany,
   buildTwoCompanies,
   companyCol,
@@ -234,7 +235,7 @@ describe('sxema invariantlari', () => {
     ).then((r) => r.map((x) => x.t))
 
   it('jadval ro`yxati fixture`dagi bilan mos (yangi jadval qo`shilsa — testlarni yangilang)', async () => {
-    expect(await publicTables()).toEqual([...BUSINESS_TABLES, 'audit_log'].sort())
+    expect(await publicTables()).toEqual([...BUSINESS_TABLES, ...SYSTEM_TABLES, 'audit_log'].sort())
   })
 
   it('har public jadvalda RLS yoqilgan va majburiy (force)', async () => {
@@ -294,11 +295,36 @@ describe('sxema invariantlari', () => {
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
          cross join unnest(array['company_id','created_by','created_at','updated_at','deleted_at']) as req(col)
         where n.nspname = 'public' and c.relkind in ('r', 'p') and c.relname <> 'audit_log'
+          and c.relname <> all ($1::text[])
           and not (c.relname = 'companies' and req.col = 'company_id')
           and not exists (select 1 from pg_attribute a
                            where a.attrelid = c.oid and a.attname = req.col and not a.attisdropped)`,
+      [[...SYSTEM_TABLES]],
     )
     expect(r).toEqual([])
+  })
+
+  it('tizim jadvallarida company_id, created_at, updated_at; a_block_delete, a_block_truncate; audit trigger yo`q', async () => {
+    const cols = await rows(
+      db,
+      `select t, req.col
+         from unnest($1::text[]) as t
+         cross join unnest(array['company_id','created_at','updated_at']) as req(col)
+        where not exists (select 1 from pg_attribute a
+                           where a.attrelid = ('public.' || t)::regclass and a.attname = req.col and not a.attisdropped)`,
+      [[...SYSTEM_TABLES]],
+    )
+    expect(cols).toEqual([])
+    for (const t of SYSTEM_TABLES) {
+      const tg = await rows<{ tgname: string }>(
+        db,
+        `select tgname from pg_trigger where tgrelid = ('public.' || $1)::regclass and not tgisinternal and tgenabled <> 'D'`,
+        [t],
+      )
+      const names = tg.map((x) => x.tgname)
+      expect(names).toEqual(expect.arrayContaining(['a_block_delete', 'a_block_truncate']))
+      expect(names).not.toContain('z_audit')
+    }
   })
 
   it('har biznes jadvalda a_block_delete, a_block_truncate, a_before_insert, a_before_update, z_audit', async () => {
@@ -308,8 +334,10 @@ describe('sxema invariantlari', () => {
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
          cross join unnest(array['a_block_delete','a_block_truncate','a_before_insert','a_before_update','z_audit']) as req(tg)
         where n.nspname = 'public' and c.relkind in ('r', 'p') and c.relname <> 'audit_log'
+          and c.relname <> all ($1::text[])
           and not exists (select 1 from pg_trigger g
                            where g.tgrelid = c.oid and g.tgname = req.tg and not g.tgisinternal and g.tgenabled <> 'D')`,
+      [[...SYSTEM_TABLES]],
     )
     expect(r).toEqual([])
   })
@@ -404,7 +432,7 @@ describe('sxema invariantlari', () => {
 // 3. TRUNCATE
 // ============================================================================
 describe('TRUNCATE taqiqlangan', () => {
-  const TABLES = [...BUSINESS_TABLES, 'audit_log'] as const
+  const TABLES = [...BUSINESS_TABLES, ...SYSTEM_TABLES, 'audit_log'] as const
   it.each(TABLES)('%s: superuser (cascade bilan ham) — 42501', async (t) => {
     const r = await tryQuery(db, `truncate public.${t} cascade`)
     expect(code(r)).toBe('42501')

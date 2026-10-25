@@ -364,3 +364,35 @@ export async function telegramSendMessage(
     throw new Error(`telegram sendMessage ${res.status} ${description.slice(0, 200)}`)
   }
 }
+
+/**
+ * Bot API metodini chaqiradi va (status, JSON body) qaytaradi — tasniflash chaqiruvchida
+ * (tg-dispatch: `classifyTelegramResponse`). Tarmoq xatosi/timeout → `null`, asl xato
+ * (unda token bo'lgan URL bo'lishi mumkin) tashlanmaydi va loglanmaydi.
+ */
+export async function telegramCall(
+  botToken: string,
+  method: string,
+  payload: Record<string, unknown>,
+  timeoutMs = 5000,
+): Promise<{ status: number; body: unknown } | { status: null; error: string }> {
+  let res: Response
+  try {
+    res = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+  } catch (e) {
+    const kind = e instanceof Error ? e.name : 'unknown'
+    return { status: null, error: `telegram ${method}: tarmoq xatosi (${kind})` }
+  }
+  let body: unknown = null
+  try {
+    body = await res.json()
+  } catch {
+    // e'tiborsiz — status yetarli
+  }
+  return { status: res.status, body }
+}

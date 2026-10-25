@@ -5,7 +5,7 @@
 //
 // DIQQAT: bu SIMULYATSIYA. Taqlid qilinadi: anon/authenticated/service_role
 // rollari, auth sxemasi (users, uid(), role(), jwt()), Supabase default
-// grantlari, storage sxemasi (minimal), pg_cron/pg_net (stub). PostgREST,
+// grantlari, storage sxemasi (minimal), pg_cron/pg_net/Vault (stub). PostgREST,
 // GoTrue, haqiqiy Storage va pg_cron ishlamaydi.
 // ============================================================================
 
@@ -213,6 +213,34 @@ const SUPABASE_BOOTSTRAP_SQL = `
         values ('POST', url, headers, body, timeout_milliseconds) returning id into v;
       return v;
     end $f$;
+  -- Supabase Vault (supabase_vault) minimal taqlidi: shifrlash yo'q, API bir xil —
+  -- vault.create_secret(), vault.secrets, vault.decrypted_secrets.
+  create schema if not exists vault;
+  revoke all on schema vault from public;
+  create table vault.secrets (
+    id uuid primary key default gen_random_uuid(),
+    name text unique,
+    description text not null default '',
+    secret text not null,
+    key_id uuid,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  );
+  create view vault.decrypted_secrets as
+    select id, name, description, secret, secret as decrypted_secret, key_id, created_at, updated_at
+      from vault.secrets;
+  create function vault.create_secret(
+    new_secret text, new_name text default null, new_description text default '', new_key_id uuid default null
+  ) returns uuid language plpgsql as $f$
+    declare v uuid;
+    begin
+      insert into vault.secrets (secret, name, description, key_id)
+        values (new_secret, new_name, coalesce(new_description, ''), new_key_id) returning id into v;
+      return v;
+    end $f$;
+  revoke all on all tables in schema vault from public;
+  revoke execute on all functions in schema vault from public;
+
   create function net.http_get(
     url text, params jsonb default '{}'::jsonb, headers jsonb default '{}'::jsonb,
     timeout_milliseconds integer default 5000
