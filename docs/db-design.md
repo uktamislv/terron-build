@@ -242,7 +242,7 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `estimate_id_conflict` | 23505 | `import_estimate` (Batch 7) | Shu `p_id` li smeta boshqa obyektga tegishli |
 | `estimate_too_many_rows` | 22023 | `import_estimate` (Batch 7) | Qatorlar > 5000 |
 | `estimate_item_invalid` | 22023 / 23514 | `import_estimate` (22023, `message`: `Qator <Excel qator raqami>: <sabab>`, `detail`: raqam) · `b_compute_norm` (23514) | Smeta qatori noto'g'ri |
-| `estimate_not_found` | P0002 | `set_current_estimate` (Batch 7) | Smeta yo'q, o'chirilgan yoki boshqa firmaniki |
+| `estimate_not_found` | P0002 | `set_current_estimate` (Batch 7), `remember_estimate_aliases` (20261105000001) | Smeta yo'q, o'chirilgan yoki boshqa firmaniki |
 | `estimate_id_reused` | 23505 | `import_estimate` (Batch 7) | Shu `p_id` boshqa mazmun (hash) bilan ishlatilgan |
 | `estimate_direct_edit` | 42501 | `b_estimates_guard`, `b_compute_norm`, `estimate_alert` (Batch 7) | Smeta/qatorni RPC'siz yaratish yoki tahrirlash; obyekt/versiya o'zgarmaydi; begona firma qatori |
 | `estimate_restore_conflict` | 23505 | `b_estimates_guard` (Batch 7) | O'chirilgan joriy versiyani tiklash — obyektda boshqa joriy versiya bor |
@@ -267,9 +267,9 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `report_group_invalid` | 22023 | `spend_breakdown` (Batch 9) | `p_group` — `material` / `object` / `buyer` / `supplier` emas (null ham) |
 | `estimate_materials_forbidden` | 42501 | `estimate_create_materials` (20261104000001) | Rol admin / super_admin emas |
 | `estimate_materials_invalid` | 22023 | `estimate_create_materials` (20261104000001) | `p_items` massiv emas, bo'sh, > 2000 yoki qator xatosi (`message`: `Qator <n>: <sabab>`, n — massivdagi o'rni 1 dan; `detail`: n) |
-| `estimate_aliases_invalid` | 22023 | `remember_estimate_aliases` (20261104000001) | `p_items` massiv emas, > 5000 yoki qator xatosi (material yo'q / o'chirilgan / boshqa firmaniki, shifr > 100, nom > 1000); `message`/`detail` — yuqoridagidek |
+| `estimate_aliases_invalid` | 22023 | `remember_estimate_aliases(p_estimate_id, p_items)` (20261105000001) | Smeta chaqiruvchi yuklamagan (buxgalter; admin/super_admin — istalgani) yoki 24 soatdan eski; `p_items` massiv emas / > 5000; qator xatosi (material yo'q / o'chirilgan / boshqa firmaniki / smetada yo'q, `code` yoki `name` smetadagi shu material qatoriga mos emas); qator xatosida `message` = `Qator <n>: <sabab>`, `detail` = n |
 
-`remember_estimate_aliases` qayta ishlatadi: `auth_required`, `estimate_import_forbidden` (rol admin / buxgalter / super_admin emas). `estimate_create_materials` — `auth_required`.
+`remember_estimate_aliases` qayta ishlatadi: `auth_required`, `estimate_import_forbidden` (rol admin / buxgalter / super_admin emas), `estimate_not_found` (P0002 — smeta yo'q, o'chirilgan yoki boshqa firmaniki). `estimate_create_materials` — `auth_required`. `import_estimate` ning `line_sum` xatolari — `estimate_item_invalid`. 20261104000001 dagi 1-argumentli `remember_estimate_aliases(jsonb)` 20261105000001 da o'chirilgan.
 
 `material_aliases.lang` (20261104000001): `'ru' | 'uz' | 'code'` — `'code'` smetadagi resurs/narx to'plami shifri; unikallik o'zgarmagan (firma bo'yicha `norm_name(alias)`, barcha `lang` birga).
 
@@ -490,6 +490,7 @@ Shartnoma va oqim: `docs/estimate-design.md`. Bu yerda — baza tomoni.
 ### `public.estimate_totals` (view, `security_invoker = true`)
 
 - `estimate_id, company_id, object_id, row_count, material_count, total_sum` (`Σ round(qty * unit_price, 2)`, narxsiz qator — 0), faqat o'chirilmagan qatorlar. Grant: `authenticated`, `service_role` — `select`.
+- **20261105000001:** `total_sum = Σ coalesce(line_sum, round(qty * unit_price, 2))` — `estimate_items.line_sum numeric(18,2)` (nullable, `>= 0`) fayldagi aniq qator summasi (agregatsiya qilingan qatorlar). `line_sum` yo'q qator — avvalgidek. Bu — bazadagi yagona smeta summasi hisobi (hisobotlar, norma, `smeta_ozgarishi` — narxsiz). `import_estimate` ixtiyoriy `line_sum` qabul qiladi (son/satr, ≥ 0, 2 xona, < 1e16; xato — `estimate_item_invalid`); `import_hash` ga `p_items` orqali kiradi. Tafsilot — `docs/estimate-design.md`.
 
 ## So'rovlar, o'tkazmalar, inventarizatsiya, norma (Batch 8 — `20261101000001_requests.sql`)
 

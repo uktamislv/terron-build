@@ -12,6 +12,8 @@ export interface DiffItem {
   qty: Dec
   unit: string
   price: Dec | null
+  /** Qator summasi (`estimate_items.line_sum`) — bo'lsa jami shu bo'yicha. */
+  lineSum?: Dec | null
 }
 
 export interface DiffChange {
@@ -98,7 +100,10 @@ function group(items: DiffItem[]): Map<string, DiffItem> {
 
 function total(items: DiffItem[]): Dec {
   let t: Dec = '0'
-  for (const it of items) if (it.price !== null) t = add(t, mul(it.qty, it.price))
+  for (const it of items) {
+    if (it.lineSum !== undefined && it.lineSum !== null) t = add(t, it.lineSum)
+    else if (it.price !== null) t = add(t, round(mul(it.qty, it.price), PRICE_SCALE))
+  }
   return round(t, PRICE_SCALE)
 }
 

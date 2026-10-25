@@ -27,6 +27,10 @@ export interface RowFix {
 }
 
 export interface WizardItem {
+  /** Guruh kaliti (resurs smetasi — har agregat alohida); bo'lmasa normallashgan nom. */
+  key?: string
+  /** Qator summasi (2 xona) — berilsa, haqiqiy jami shu (resurs smetasi: agregat summasi). */
+  lineSum?: Dec
   rowNumber: number
   name: string
   unit: string
@@ -156,6 +160,8 @@ export interface NameGroup {
   key: string
   name: string
   unit: string
+  /** Smeta shifri (qidiruv va ko'rsatish uchun). */
+  code: string
   type: 'ish' | 'material' | null
   count: number
 }
@@ -167,10 +173,10 @@ export function groupKeyOf(name: string): string {
 export function groupNames(items: readonly WizardItem[]): NameGroup[] {
   const map = new Map<string, NameGroup>()
   for (const it of items) {
-    const key = groupKeyOf(it.name)
+    const key = it.key ?? groupKeyOf(it.name)
     const g = map.get(key)
     if (g) g.count++
-    else map.set(key, { key, name: it.name, unit: it.unit, type: it.type, count: 1 })
+    else map.set(key, { key, name: it.name, unit: it.unit, code: it.code, type: it.type, count: 1 })
   }
   return [...map.values()]
 }
@@ -187,17 +193,41 @@ export interface MatchInfo {
 
 export type CatalogEntry = { id: string; name: string; aliases: string[] }
 
+const catalogCache = new WeakMap<readonly Material[], CatalogEntry[]>()
+
+/** Faol materiallar katalogi — bir xil `materials` massivi uchun bir xil natija (moslik keshi kaliti). */
 export function catalogOf(materials: readonly Material[]): CatalogEntry[] {
-  return materials.filter((m) => m.is_active).map((m) => ({ id: m.id, name: m.name, aliases: m.aliases.map((a) => a.alias) }))
+  const cached = catalogCache.get(materials)
+  if (cached) return cached
+  const list = materials
+    .filter((m) => m.is_active)
+    .map((m) => ({ id: m.id, name: m.name, aliases: m.aliases.filter((a) => a.lang !== 'code').map((a) => a.alias) }))
+  catalogCache.set(materials, list)
+  return list
 }
 
+const matchCache = new WeakMap<readonly CatalogEntry[], Map<string, MatchInfo>>()
+
+/**
+ * Nom bo'yicha moslik (aniq + takliflar). Natija (katalog massivi, nom) bo'yicha keshlanadi —
+ * `buildPlan` va `CatalogStep` bir keshni ishlatadi, katta smetada butun katalog qayta aylanmaydi.
+ */
 export function matchGroup(name: string, catalog: readonly CatalogEntry[]): MatchInfo {
+  let byName = matchCache.get(catalog)
+  if (!byName) {
+    byName = new Map()
+    matchCache.set(catalog, byName)
+  }
+  const hit = byName.get(name)
+  if (hit) return hit
   const all = matchMaterialByName(name, [...catalog])
   const exact = all.find((m) => m.score >= 1)
-  return {
+  const info = {
     exactId: exact?.id ?? null,
     suggestions: all.filter((m) => m.score < 1).slice(0, SUGGESTION_COUNT),
   }
+  byName.set(name, info)
+  return info
 }
 
 /** Avtomatik qaror: "ish" turi — Ish; aniq moslik — material (muqobil nom shart emas). */
@@ -251,6 +281,8 @@ export interface UnitQuestion {
   baseUnit: string
   unitText: string
   options: UnitOption[]
+  /** Shu savolga bog'liq guruhlar ("Ish deb saqlash" hammasiga qo'llanadi). */
+  groupKeys: string[]
 }
 
 export function unitQuestionKey(materialKey: string, unitText: string): string {
@@ -367,6 +399,10 @@ export interface Plan {
   /** Fayldagi jami: Σ summa ustuni (bo'lmasa qty × fayldagi narx), 2 xonaga. */
   fileTotal: Dec
   warningCount: number
+  /** Guruh → amaldagi qaror (avtomatik ham; katalog huquqi va mavjud materiallar hisobga olingan). */
+  decided: Readonly<Record<string, Decision>>
+  /** Savol → avtomatik javob (`PlanInput.autoAnswer` dan; foydalanuvchi javobi bo'lsa ham — u ustun). */
+  autoAnswers: Readonly<Record<string, UnitAnswer>>
 }
 
 export interface PlanInput {
@@ -376,6 +412,10 @@ export interface PlanInput {
   answers: Readonly<Record<string, UnitAnswer>>
   /** Yangi material/birlik/muqobil nom yaratish huquqi (admin). Yo'q bo'lsa — rejaga kirmaydi. */
   canCatalog: boolean
+  /** true — qarorsiz guruhlar uchun nom bo'yicha moslik qidirilmaydi (resurs smetasi: allaqachon tasniflangan). */
+  skipMatch?: boolean
+  /** Javobsiz birlik savoliga avtomatik javob (resurs smetasi). Foydalanuvchi javobi ustun. */
+  autoAnswer?: (q: UnitQuestion) => UnitAnswer | null
 }
 
 /** Qator summasi (bazadagi kabi): round(qty × narx, 2); narx yo'q — 0. */
@@ -384,14 +424,15 @@ export function lineSum(qty: Dec, price: Dec | null): Dec {
 }
 
 export function buildPlan(input: PlanInput): Plan {
-  const { items, materials, decisions, answers, canCatalog } = input
+  const { items, materials, decisions, canCatalog } = input
   const byId = new Map(materials.map((m) => [m.id, m]))
   const catalog = catalogOf(materials)
   const groups = groupNames(items)
   const decided = new Map<string, Decision>()
   let unresolvedGroups = 0
   for (const g of groups) {
-    let d = effectiveDecision(g, decisions, matchGroup(g.name, catalog))
+    // Qaror bor — qisman moslik hisoblanmaydi (katta smetada har bosishda butun katalog aylanmasin)
+    let d = decisions[g.key] ?? (input.skipMatch ? null : defaultDecision(g, matchGroup(g.name, catalog)))
     // Katalog huquqi bo'lmasa — yangi material va muqobil nom yo'q
     if (d && !canCatalog) {
       if (d.kind === 'new') d = null
@@ -403,17 +444,20 @@ export function buildPlan(input: PlanInput): Plan {
   }
 
   const questions = new Map<string, UnitQuestion>()
+  const autoAnswers: Record<string, UnitAnswer> = {}
+  const answers: Record<string, UnitAnswer> = { ...input.answers }
   const rows: PlanRow[] = []
   const materialCount = new Map<string, number>()
   let total: Dec = '0'
   let fileTotal: Dec = '0'
 
   for (const item of items) {
-    const groupKey = groupKeyOf(item.name)
+    const groupKey = item.key ?? groupKeyOf(item.name)
     const d = decided.get(groupKey)
-    const sum = lineSum(item.qty, item.price)
+    // `lineSum` berilgan bo'lsa (resurs smetasi) — u qator summasi; aks holda qty × narx
+    const sum = item.lineSum ?? lineSum(item.qty, item.price)
     total = add(total, sum)
-    fileTotal = add(fileTotal, item.sum ?? (item.price === null ? '0' : mul(item.qty, item.price)))
+    fileTotal = add(fileTotal, item.lineSum ?? item.sum ?? (item.price === null ? '0' : mul(item.qty, item.price)))
     const row: PlanRow = {
       item,
       groupKey,
@@ -449,9 +493,18 @@ export function buildPlan(input: PlanInput): Plan {
             baseUnit: view.baseUnit,
             unitText: item.unit,
             options: view.options,
+            groupKeys: [],
           })
+          const created = questions.get(qKey)
+          // Avtomatik javob doim yoziladi (UnitsStep "Avtomatik aniqlangan" bo'limi barqaror), foydalanuvchi javobi ustun
+          const auto = created && input.autoAnswer ? input.autoAnswer(created) : null
+          if (auto) {
+            autoAnswers[qKey] = auto
+            answers[qKey] ??= auto
+          }
         }
         const q = questions.get(qKey)
+        if (q && !q.groupKeys.includes(groupKey)) q.groupKeys.push(groupKey)
         const a = answers[qKey]
         if (q && a && answerValid(q, a)) {
           if (a.kind === 'existing') {
@@ -529,6 +582,8 @@ export function buildPlan(input: PlanInput): Plan {
     total,
     fileTotal: round(fileTotal, 2),
     warningCount: rows.filter((r) => r.warnings.length > 0).length,
+    decided: Object.fromEntries(decided),
+    autoAnswers,
   }
 }
 
@@ -579,6 +634,7 @@ export function toImportItems(plan: Pick<Plan, 'rows'>, created: CreatedIds): Im
       qty: r.item.qty,
       unit_price: r.item.price === null ? null : round(r.item.price, 2),
       code: r.item.code || null,
+      ...(r.item.lineSum !== undefined ? { line_sum: round(r.item.lineSum, 2) } : {}),
       row_number: r.item.rowNumber,
       sort_order: index + 1,
     }
@@ -595,6 +651,7 @@ export function planToDiffItems(plan: Pick<Plan, 'rows'>): DiffItem[] {
     qty: r.item.qty,
     unit: r.item.unit,
     price: r.item.price,
+    lineSum: r.item.lineSum ?? null,
   }))
 }
 
@@ -608,6 +665,7 @@ export function estimateItemsToDiff(items: readonly EstimateItem[]): DiffItem[] 
     qty: it.qty,
     unit: it.unit ?? '',
     price: it.unit_price,
+    lineSum: it.line_sum,
   }))
 }
 

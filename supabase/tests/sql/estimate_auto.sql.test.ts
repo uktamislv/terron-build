@@ -52,7 +52,7 @@ interface MatItem {
 }
 
 const CREATE_SQL = `select public.estimate_create_materials($1::jsonb) as r`
-const REMEMBER_SQL = `select public.remember_estimate_aliases($1::jsonb) as n`
+const REMEMBER_SQL = `select public.remember_estimate_aliases($1::uuid, $2::jsonb) as n`
 
 async function create(tx: Queryable, items: MatItem[]): Promise<Created[]> {
   const r = await one<{ r: Created[] }>(tx, CREATE_SQL, [JSON.stringify(items)])
@@ -60,11 +60,37 @@ async function create(tx: Queryable, items: MatItem[]): Promise<Created[]> {
 }
 const errCreate = (tx: Queryable, items: unknown): Promise<string> => errInfo(tx, CREATE_SQL, [JSON.stringify(items)])
 
-async function remember(tx: Queryable, items: unknown[]): Promise<number> {
-  return scalar<number>(tx, REMEMBER_SQL, [JSON.stringify(items)])
+async function remember(tx: Queryable, est: string, items: unknown[]): Promise<number> {
+  return scalar<number>(tx, REMEMBER_SQL, [est, JSON.stringify(items)])
 }
-const errRemember = (tx: Queryable, items: unknown): Promise<string> =>
-  errInfo(tx, REMEMBER_SQL, [JSON.stringify(items)])
+const errRemember = (tx: Queryable, est: string, items: unknown): Promise<string> =>
+  errInfo(tx, REMEMBER_SQL, [est, JSON.stringify(items)])
+
+/** Smeta material qatori (remember uchun manba). */
+interface EstRow {
+  material_id: string
+  name: string
+  code?: string | null
+}
+
+/** Chaqiruvchi nomidan smeta import qiladi (material qatorlari, asosiy birlik). */
+async function importEst(tx: Queryable, estRows: EstRow[], obj: string): Promise<string> {
+  const items = []
+  for (const [i, r] of estRows.entries()) {
+    const unitId = await scalar<string>(
+      tx,
+      `select mu.id from public.material_units mu join public.materials m on m.id = mu.material_id
+        where mu.material_id = $1 and mu.unit = m.base_unit and mu.factor = 1 and mu.variant is null and mu.deleted_at is null`,
+      [r.material_id],
+    )
+    items.push({ item_type: 'material', name: r.name, material_id: r.material_id, unit_id: unitId, qty: '1', code: r.code ?? null, row_number: i + 1 })
+  }
+  return scalar<string>(tx, `select public.import_estimate($1, $2, 'Smeta', 'smeta.xlsx', null, $3::jsonb)`, [
+    randomUUID(),
+    obj,
+    JSON.stringify(items),
+  ])
+}
 
 let seq = 0
 const uniq = (p: string): string => `${p} ${++seq}-${Math.random().toString(36).slice(2, 7)}`
@@ -406,35 +432,43 @@ describe('estimate_create_materials — tekshiruv', () => {
 })
 
 // ============================================================================
-// remember_estimate_aliases
+// remember_estimate_aliases(p_estimate_id, p_items) — 20261105000001 imzosi.
+// Smetaga bog'liq qoidalar (muallif, 24 soat, qator mosligi) —
+// estimate_auto_fixes.sql.test.ts da batafsil.
 // ============================================================================
 describe('remember_estimate_aliases', () => {
   it('ruxsat: admin, buxgalter, super_admin — OK; boshqalar — estimate_import_forbidden; profilsiz — auth_required', async () => {
     for (const role of ['admin', 'buxgalter', 'super_admin'] as const) {
-      const n = await asUser(db, A.users[role].authUid, (tx) =>
-        remember(tx, [{ material_id: A.ids.m2, code: uniq('R-'), name: uniq('Песок мытый') }]),
-      )
+      const n = await asUser(db, A.users[role].authUid, async (tx) => {
+        const code = uniq('R-')
+        const name = uniq('Песок мытый')
+        const est = await importEst(tx, [{ material_id: A.ids.m2!, name, code }], A.ids.obj3!)
+        return remember(tx, est, [{ material_id: A.ids.m2, code, name }])
+      })
       expect(n, role).toBe(2)
     }
     for (const role of ['direktor', 'taminotchi', 'prorab', 'omborchi', 'haydovchi', 'tekshiruvchi'] as const) {
-      const e = await asUser(db, A.users[role].authUid, (tx) => errRemember(tx, [{ material_id: A.ids.m2, code: 'x' }]))
+      const e = await asUser(db, A.users[role].authUid, (tx) =>
+        errRemember(tx, A.ids.est_obj1!, [{ material_id: A.ids.m2, code: 'x' }]),
+      )
       expect(e.split('|').slice(0, 2).join('|'), role).toBe('42501|estimate_import_forbidden')
     }
-    const e = await asUser(db, randomUUID(), (tx) => errRemember(tx, [{ material_id: A.ids.m2, code: 'x' }]))
+    const e = await asUser(db, randomUUID(), (tx) => errRemember(tx, A.ids.est_obj1!, [{ material_id: A.ids.m2, code: 'x' }]))
     expect(e.split('|').slice(0, 2).join('|')).toBe('42501|auth_required')
-    const a = await asAnon(db, (tx) => errRemember(tx, [{ material_id: A.ids.m2, code: 'x' }]))
+    const a = await asAnon(db, (tx) => errRemember(tx, A.ids.est_obj1!, [{ material_id: A.ids.m2, code: 'x' }]))
     expect(a.split('|')[0]).toBe('42501')
   })
 
-  it('security definer, search_path bo`sh; anon execute yo`q, authenticated bor', async () => {
+  it('security definer, search_path bo`sh; anon execute yo`q, authenticated bor; eski 1-argumentli imzo yo`q', async () => {
     const f = await one<{ definer: boolean; cfg: string[]; anon: boolean; auth: boolean }>(
       db,
       `select p.prosecdef as definer, p.proconfig as cfg,
               has_function_privilege('anon', p.oid, 'execute') as anon,
               has_function_privilege('authenticated', p.oid, 'execute') as auth
-         from pg_proc p where p.oid = 'public.remember_estimate_aliases(jsonb)'::regprocedure`,
+         from pg_proc p where p.oid = 'public.remember_estimate_aliases(uuid, jsonb)'::regprocedure`,
     )
     expect(f).toEqual({ definer: true, cfg: ['search_path=""'], anon: false, auth: true })
+    expect(await scalar<string | null>(db, `select to_regprocedure('public.remember_estimate_aliases(jsonb)')::text`)).toBeNull()
   })
 
   it('buxgalter: code va ru alias yoziladi (created_by = buxgalter); audit actor — buxgalter', async () => {
@@ -445,7 +479,8 @@ describe('remember_estimate_aliases', () => {
       db,
       bux.authUid,
       async (tx) => {
-        expect(await remember(tx, [{ material_id: A.ids.m2, code, name }])).toBe(2)
+        const est = await importEst(tx, [{ material_id: A.ids.m2!, name, code }], A.ids.obj3!)
+        expect(await remember(tx, est, [{ material_id: A.ids.m2, code, name }])).toBe(2)
         const r = await rows<{ id: string; alias: string; lang: string; created_by: string }>(
           tx,
           `select id, alias, lang, created_by from public.material_aliases where alias = any ($1) order by lang`,
@@ -474,19 +509,29 @@ describe('remember_estimate_aliases', () => {
 
   it('o`g`irlamaydi / ustidan yozmaydi: band alias, material nomi, o`z nomi — o`tkaziladi; takror — 0', async () => {
     await asUser(db, A.users.buxgalter.authUid, async (tx) => {
-      const n = await remember(tx, [
-        { material_id: A.ids.m2, name: 'A Цемент' }, // m1 alias'i
-        { material_id: A.ids.m2, code: 'A sement' }, // m1 nomi
-        { material_id: A.ids.m2, name: 'a QUM' }, // o'z nomi
+      const code = uniq('DUP-')
+      const est = await importEst(
+        tx,
+        [
+          { material_id: A.ids.m2!, name: 'A Цемент' }, // m1 alias'i
+          { material_id: A.ids.m2!, name: 'Qum 2', code: 'A sement' }, // shifr = m1 nomi
+          { material_id: A.ids.m2!, name: 'a QUM', code }, // o'z nomi
+          { material_id: A.ids.m1!, name: 'Sement 2', code },
+        ],
+        A.ids.obj3!,
+      )
+      const n = await remember(tx, est, [
+        { material_id: A.ids.m2, name: 'A Цемент' },
+        { material_id: A.ids.m2, code: 'A sement' },
+        { material_id: A.ids.m2, name: 'a QUM' },
         { material_id: A.ids.m2 }, // bo'sh
       ])
       expect(n).toBe(0)
       expect(await scalar<string>(tx, `select material_id from public.material_aliases where alias = 'A Цемент' and deleted_at is null`)).toBe(
         A.ids.m1,
       )
-      const code = uniq('DUP-')
-      expect(await remember(tx, [{ material_id: A.ids.m1, code }, { material_id: A.ids.m2, code }])).toBe(1)
-      expect(await remember(tx, [{ material_id: A.ids.m1, code }])).toBe(0)
+      expect(await remember(tx, est, [{ material_id: A.ids.m1, code }, { material_id: A.ids.m2, code }])).toBe(1)
+      expect(await remember(tx, est, [{ material_id: A.ids.m1, code }])).toBe(0)
       expect(await scalar<string>(tx, `select material_id from public.material_aliases where alias = $1`, [code])).toBe(A.ids.m1)
     })
   })
@@ -494,49 +539,67 @@ describe('remember_estimate_aliases', () => {
   it('boshqa firma materiali / o`chirilgan / noto`g`ri id — 22023 estimate_aliases_invalid; hech narsa yozilmaydi', async () => {
     await asUser(db, A.users.admin.authUid, async (tx) => {
       const code = uniq('X-')
-      const e = await errRemember(tx, [
+      const [c] = await create(tx, [{ key: '1', name: uniq('Del'), base_unit: 'kg' }])
+      const est = await importEst(
+        tx,
+        [
+          { material_id: A.ids.m1!, name: 'Sement', code },
+          { material_id: c!.material_id, name: 'Del', code: 'z' },
+        ],
+        A.ids.obj3!,
+      )
+      const e = await errRemember(tx, est, [
         { material_id: A.ids.m1, code },
         { material_id: B.ids.m1, code: uniq('Y-') },
       ])
       expect(e).toBe("22023|estimate_aliases_invalid|Qator 2: material topilmadi yoki o'chirilgan|2")
       expect(await scalar<number>(tx, `select count(*)::int from public.material_aliases where alias = $1`, [code])).toBe(0)
 
-      const [c] = await create(tx, [{ key: '1', name: uniq('Del'), base_unit: 'kg' }])
       await tx.query(`update public.materials set deleted_at = now() where id = $1`, [c!.material_id])
-      expect(await errRemember(tx, [{ material_id: c!.material_id, code: 'z' }])).toBe(
+      expect(await errRemember(tx, est, [{ material_id: c!.material_id, code: 'z' }])).toBe(
         "22023|estimate_aliases_invalid|Qator 1: material topilmadi yoki o'chirilgan|1",
       )
-      expect(await errRemember(tx, [{ material_id: 'not-a-uuid' }])).toBe(
+      expect(await errRemember(tx, est, [{ material_id: 'not-a-uuid' }])).toBe(
         "22023|estimate_aliases_invalid|Qator 1: material topilmadi yoki o'chirilgan|1",
       )
-      expect(await errRemember(tx, [{ code: 'z' }])).toBe("22023|estimate_aliases_invalid|Qator 1: material ko'rsatilmagan|1")
-      expect(await errRemember(tx, ['x'])).toBe("22023|estimate_aliases_invalid|Qator 1: qator noto'g'ri formatda|1")
-      expect(await errRemember(tx, [{ material_id: A.ids.m1, code: 'x'.repeat(101) }])).toBe(
-        '22023|estimate_aliases_invalid|Qator 1: shifr juda uzun (100 belgigacha)|1',
-      )
+      expect(await errRemember(tx, est, [{ code: 'z' }])).toBe("22023|estimate_aliases_invalid|Qator 1: material ko'rsatilmagan|1")
+      expect(await errRemember(tx, est, ['x'])).toBe("22023|estimate_aliases_invalid|Qator 1: qator noto'g'ri formatda|1")
     })
   })
 
   it('B firma alias`i A firmada to`sqinlik qilmaydi (firma bo`yicha unikal)', async () => {
     const code = uniq('SHARED-')
-    await asUser(db, B.users.admin.authUid, (tx) => remember(tx, [{ material_id: B.ids.m1, code }]), { commit: true })
-    const n = await asUser(db, A.users.buxgalter.authUid, (tx) => remember(tx, [{ material_id: A.ids.m1, code }]))
+    await asUser(
+      db,
+      B.users.admin.authUid,
+      async (tx) => {
+        const est = await importEst(tx, [{ material_id: B.ids.m1!, name: 'B sement', code }], B.ids.obj3!)
+        return remember(tx, est, [{ material_id: B.ids.m1, code }])
+      },
+      { commit: true },
+    )
+    const n = await asUser(db, A.users.buxgalter.authUid, async (tx) => {
+      const est = await importEst(tx, [{ material_id: A.ids.m1!, name: 'A sement', code }], A.ids.obj3!)
+      return remember(tx, est, [{ material_id: A.ids.m1, code }])
+    })
     expect(n).toBe(1)
   })
 
   it('bo`sh massiv — 0; massiv emas / 5000 dan ko`p — estimate_aliases_invalid', async () => {
     await asUser(db, A.users.buxgalter.authUid, async (tx) => {
-      expect(await remember(tx, [])).toBe(0)
-      expect((await errRemember(tx, { a: 1 })).split('|').slice(0, 2).join('|')).toBe('22023|estimate_aliases_invalid')
+      const est = await importEst(tx, [{ material_id: A.ids.m1!, name: 'Sement' }], A.ids.obj3!)
+      expect(await remember(tx, est, [])).toBe(0)
+      expect((await errRemember(tx, est, { a: 1 })).split('|').slice(0, 2).join('|')).toBe('22023|estimate_aliases_invalid')
       const many = Array.from({ length: 5001 }, () => ({ material_id: A.ids.m1 }))
-      expect(await errRemember(tx, many)).toMatch(/^22023\|estimate_aliases_invalid\|Qatorlar juda ko'p: 5001/)
+      expect(await errRemember(tx, est, many)).toMatch(/^22023\|estimate_aliases_invalid\|Qatorlar juda ko'p: 5001/)
     })
   })
 
   it('remember dan keyin estimate_create_materials shifr bo`yicha topadi', async () => {
     await asUser(db, A.users.admin.authUid, async (tx) => {
       const code = uniq('LRV-')
-      expect(await remember(tx, [{ material_id: A.ids.m2, code }])).toBe(1)
+      const est = await importEst(tx, [{ material_id: A.ids.m2!, name: 'Qum', code }], A.ids.obj3!)
+      expect(await remember(tx, est, [{ material_id: A.ids.m2, code }])).toBe(1)
       const [r] = await create(tx, [{ key: 'q', name: uniq('Песок любой'), base_unit: 'm³', code }])
       expect(r).toEqual({ key: 'q', material_id: A.ids.m2, created: false })
     })

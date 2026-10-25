@@ -1,4 +1,11 @@
-import { importEstimate, listEstimateItems, listEstimates, setCurrentEstimate } from './estimatesRepo'
+import {
+  createEstimateMaterials,
+  importEstimate,
+  listEstimateItems,
+  listEstimates,
+  rememberEstimateAliases,
+  setCurrentEstimate,
+} from './estimatesRepo'
 import { saveTemplate } from './estimateTemplatesRepo'
 
 type Call = [string, ...unknown[]]
@@ -110,5 +117,51 @@ describe('estimatesRepo', () => {
     fake.results.push({ error: null })
     await saveTemplate({ companyId: 'c', name: 'T', headerSignature: 'a|b', mapping: { name: 0 }, sheetName: null, headerRow: 0 })
     expect(all('insert')[0]?.[1]).toMatchObject({ company_id: 'c', header_signature: 'a|b', mapping: { name: 0 } })
+  })
+
+  it('createEstimateMaterials: RPC p_items, 2000 tadan bo‘lib, natija tartibda', async () => {
+    const items = Array.from({ length: 2001 }, (_, i) => ({
+      key: `k${i}`,
+      name: `Material ${i}`,
+      base_unit: 'dona',
+      code: `00${i}`,
+      alias: `МАТЕРИАЛ ${i}`,
+      units: i === 0 ? [{ unit: '100 dona', factor: '100', variant: null }] : null,
+    }))
+    fake.results.push({ data: items.slice(0, 2000).map((it, i) => ({ key: it.key, material_id: `m${i}`, created: true })), error: null })
+    fake.results.push({ data: [{ key: 'k2000', material_id: 'm2000', created: false }], error: null })
+    const res = await createEstimateMaterials(items)
+    const rpc = all('rpc')
+    expect(rpc).toHaveLength(2)
+    expect(rpc[0]?.[1]).toBe('estimate_create_materials')
+    expect((rpc[0]?.[2] as { p_items: unknown[] }).p_items).toHaveLength(2000)
+    expect((rpc[0]?.[2] as { p_items: unknown[] }).p_items[0]).toEqual(items[0])
+    expect((rpc[1]?.[2] as { p_items: unknown[] }).p_items).toEqual([items[2000]])
+    expect(res).toHaveLength(2001)
+    expect(res[2000]).toEqual({ key: 'k2000', material_id: 'm2000', created: false })
+  })
+
+  it('createEstimateMaterials: estimate_materials_forbidden', async () => {
+    fake.results.push({ data: null, error: { code: '42501', hint: 'estimate_materials_forbidden', message: 'x' } })
+    await expect(
+      createEstimateMaterials([{ key: 'k', name: 'n', base_unit: 'kg', code: null, alias: null, units: null }]),
+    ).rejects.toMatchObject({ code: 'estimate_materials_forbidden' })
+  })
+
+  it('rememberEstimateAliases: RPC; bo‘sh ro‘yxat — chaqiruvsiz', async () => {
+    expect(await rememberEstimateAliases('e1', [])).toBe(0)
+    expect(all('rpc')).toHaveLength(0)
+    fake.results.push({ data: 3, error: null })
+    const items = [{ material_id: 'm1', code: '009219', name: 'ВОДА' }]
+    expect(await rememberEstimateAliases('e1', items)).toBe(3)
+    expect(all('rpc')[0]).toEqual(['rpc', 'remember_estimate_aliases', { p_estimate_id: 'e1', p_items: items }])
+  })
+
+  it('rememberEstimateAliases: estimate_aliases_invalid — server xabari', async () => {
+    fake.results.push({ data: null, error: { code: '22023', hint: 'estimate_aliases_invalid', message: 'Qator 2: material topilmadi yoki o‘chirilgan' } })
+    await expect(rememberEstimateAliases('e1', [{ material_id: 'x', code: null, name: null }])).rejects.toMatchObject({
+      code: 'estimate_aliases_invalid',
+      userMessage: 'Qator 2: material topilmadi yoki o‘chirilgan',
+    })
   })
 })

@@ -63,7 +63,8 @@ export interface AuthSession {
 }
 
 /** Muqobil nom tili. */
-export type AliasLang = 'ru' | 'uz'
+/** `code` — smetadagi shifr (resurs smetasi importi, faqat RPC orqali yoziladi). */
+export type AliasLang = 'ru' | 'uz' | 'code'
 
 export const ALIAS_LANGS: readonly AliasLang[] = ['ru', 'uz']
 
@@ -335,6 +336,8 @@ export interface EstimateItem {
   unit_id: string | null
   qty: Dec
   unit_price: Dec | null
+  /** Qator summasi (numeric(18,2)); bo'lsa — haqiqiy jami (resurs smetasi), aks holda round(qty × narx, 2). */
+  line_sum: Dec | null
   /** Asosiy birlikda (material bo'lsa) — bazada hisoblanadi. */
   norm_qty_base: Dec | null
   sort_order: number

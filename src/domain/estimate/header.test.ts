@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { detectHeaderRow, headerSignature } from './header'
+import { detectHeaderRow, headerSignature, isColumnNumberingRow } from './header'
+import { RESOURCE_LRV } from './__fixtures__/resourceLrv'
 import { CSV_STYLE } from './__fixtures__/csvStyle'
 import { GRAND_SMETA, GRAND_SMETA_HEADER_ROW } from './__fixtures__/grandSmeta'
 import { UZ_SIMPLE } from './__fixtures__/uzSimple'
@@ -58,3 +59,21 @@ describe('headerSignature', () => {
   })
 })
 
+
+describe('isColumnNumberingRow va resurs smetasi sarlavhasi', () => {
+  it('ustun raqamlari (+ qisqa birliklar) — sarlavha emas', () => {
+    expect(isColumnNumberingRow([1, 2, 3, 4, 5, 6, 7, 8, 'ЧЕЛ-Ч', 'ЧЕЛ-Ч'])).toBe(true)
+    expect(isColumnNumberingRow(['1', '2', '3', null, ''])).toBe(true)
+    expect(isColumnNumberingRow([1, 2])).toBe(false)
+    expect(isColumnNumberingRow([1, 3, 4])).toBe(false)
+    expect(isColumnNumberingRow([1, 2, 3, 'Наименование работ'])).toBe(false)
+    expect(isColumnNumberingRow([])).toBe(false)
+  })
+
+  it('LRV: sarlavha 2-qator (ustun raqamlari va ost-sarlavha emas)', () => {
+    expect(detectHeaderRow(RESOURCE_LRV)).toBe(1)
+    // raqamlar qatori sarlavha matnlari bilan birga bo'lsa ham u o'tkaziladi
+    const rows: Cell[][] = [[1, 2, 3, 'ЕД'], ['Nomi', 'Birlik', 'Miqdori']]
+    expect(detectHeaderRow(rows)).toBe(1)
+  })
+})

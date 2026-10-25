@@ -91,8 +91,10 @@ function scoreCell(text: string, field: EstimateField): number {
  * Sarlavha qatoridan ustunlarni taklif qiladi. Har ustun faqat bitta maydonga, har maydon
  * bitta ustunga. Ziddiyatda bahosi yuqori juftlik ustun (teng bo'lsa — chaproq ustun,
  * keyin ESTIMATE_FIELDS tartibi). Raqam kataklari e'tiborga olinmaydi.
+ * `subHeader` (sarlavhadan keyingi qator) berilsa va unda "ПО ПРОЕКТУ" ustuni bo'lsa —
+ * `qty` shu ustunga (resurs smetasi: "НА ЕДИНИЦУ" — norma, "ПО ПРОЕКТУ" — jami miqdor).
  */
-export function autoMapColumns(header: Cell[]): ColumnMapping {
+export function autoMapColumns(header: Cell[], subHeader?: Cell[]): ColumnMapping {
   const candidates: { col: number; field: EstimateField; score: number; order: number }[] = []
   const fields = Object.keys(KEYWORDS) as EstimateField[]
   header.forEach((cell, col) => {
@@ -111,7 +113,30 @@ export function autoMapColumns(header: Cell[]): ColumnMapping {
     mapping[c.field] = c.col
     usedCols.add(c.col)
   }
+  if (subHeader) {
+    const { total } = subHeaderColumns(subHeader)
+    if (total !== null && (!usedCols.has(total) || mapping.qty === total)) mapping.qty = total
+  }
   return mapping
+}
+
+const SUB_PER_UNIT = ['наединицу', 'наед', 'birlikka', 'birligiga']
+const SUB_TOTAL = ['попроекту', 'loyihaboyicha', 'loyihabuyicha']
+
+/**
+ * "КОЛ-ВО" ostidagi ost-sarlavha (resurs smetasi, LRV): "НА ЕДИНИЦУ" (birlikka norma) va
+ * "ПО ПРОЕКТУ" (loyiha bo'yicha jami miqdor) ustunlari. Topilmasa — null.
+ */
+export function subHeaderColumns(row: Cell[]): { perUnit: number | null; total: number | null } {
+  let perUnit: number | null = null
+  let total: number | null = null
+  Array.from(row).forEach((cell, col) => {
+    if (typeof cell !== 'string') return
+    const t = compactHeader(cell)
+    if (perUnit === null && SUB_PER_UNIT.some((k) => t === k || t.startsWith(k))) perUnit = col
+    else if (total === null && SUB_TOTAL.some((k) => t === k || t.startsWith(k))) total = col
+  })
+  return { perUnit, total }
 }
 
 /** Yetishmayotgan majburiy maydonlar (`name`, `unit`, `qty` tartibida). */

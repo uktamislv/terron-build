@@ -1,5 +1,6 @@
 // Import ustasining 5-qadami: smetadagi nomlarni katalogga moslash.
 import { useMemo, useState } from 'react'
+import { normalizeAlias } from '@/domain/aliases'
 import { StatusBadge } from '@/components/ui'
 import { Button, Notice, TextField } from '@/components/ui'
 import type { Material } from '@/data/types'
@@ -11,7 +12,6 @@ import { chipClass, pageSlice } from './styles'
 import {
   aliasWorthSaving,
   catalogOf,
-  effectiveDecision,
   matchGroup,
   newMaterialProblem,
   PAGE_SIZE,
@@ -55,10 +55,13 @@ function GroupCard({
   else if (decision.kind === 'new') badge = <StatusBadge tone="info">{tw.newChosen(decision.name)}</StatusBadge>
   else
     badge = (
-      <StatusBadge tone="ok">
-        {decision.materialId === info.exactId ? `${tw.exact}: ` : ''}
-        {chosen?.name}
-      </StatusBadge>
+      <span className="flex flex-wrap items-center gap-1">
+        <StatusBadge tone="ok">
+          {decision.materialId === info.exactId ? `${tw.exact}: ` : ''}
+          {chosen?.name}
+        </StatusBadge>
+        {chosen && !chosen.is_active && <StatusBadge tone="warn">{tw.inactive}</StatusBadge>}
+      </span>
     )
 
   return (
@@ -192,6 +195,9 @@ export function CatalogStep({
   onDecide,
   onBulkWork,
   canCatalog,
+  pageSize = PAGE_SIZE,
+  searchable = false,
+  hideBulkWork = false,
 }: {
   groups: readonly NameGroup[]
   materials: readonly Material[]
@@ -199,24 +205,35 @@ export function CatalogStep({
   onDecide: (key: string, d: Decision) => void
   onBulkWork: (keys: string[]) => void
   canCatalog: boolean
+  /** Sahifadagi kartochkalar soni (katta smetada kamroq — har kartochkada butun katalog ro'yxati). */
+  pageSize?: number
+  /** Nom yoki shifr bo'yicha qidiruv maydoni. */
+  searchable?: boolean
+  hideBulkWork?: boolean
 }) {
   const [onlyUnmatched, setOnlyUnmatched] = useState(false)
+  const [query, setQuery] = useState('')
   const [page, setPage] = useState(0)
   const byId = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials])
-  const catalog = useMemo(() => catalogOf(materials), [materials])
-  const infos = useMemo(() => new Map(groups.map((g) => [g.key, matchGroup(g.name, catalog)])), [groups, catalog])
+  const catalog = catalogOf(materials)
 
+  // `decisions` — rejadagi amaldagi qarorlar (avtomatik moslar ham), shuning uchun holat uchun moslik
+  // hisoblanmaydi; takliflar (`matchGroup`, keshlangan) faqat joriy sahifadagi kartochkalar uchun.
   const rows = groups.map((g) => {
-    const info = infos.get(g.key) ?? { exactId: null, suggestions: [] }
-    let d = effectiveDecision(g, decisions, info)
+    let d = decisions[g.key] ?? null
     if (d?.kind === 'new' && !canCatalog) d = null
-    return { g, info, d }
+    return { g, d }
   })
   const unmatched = rows.filter((r) => !r.d)
   const done = rows.length - unmatched.length
-  const visible = onlyUnmatched ? unmatched : rows
-  const lastPage = Math.max(0, Math.ceil(visible.length / PAGE_SIZE) - 1)
+  const q = normalizeAlias(query)
+  const filtered = onlyUnmatched ? unmatched : rows
+  const visible = q
+    ? filtered.filter((r) => normalizeAlias(r.g.name).includes(q) || normalizeAlias(r.g.code).includes(q))
+    : filtered
+  const lastPage = Math.max(0, Math.ceil(visible.length / pageSize) - 1)
   const current = Math.min(page, lastPage)
+  const pageRows = pageSlice(visible, current, pageSize)
 
   return (
     <div className="flex flex-col gap-3">
@@ -232,16 +249,32 @@ export function CatalogStep({
             setPage(0)
           }}
         />
-        <Button variant="secondary" disabled={unmatched.length === 0} onClick={() => onBulkWork(unmatched.map((r) => r.g.key))}>
-          {tw.allAsWork}
-        </Button>
+        {!hideBulkWork && (
+          <Button variant="secondary" disabled={unmatched.length === 0} onClick={() => onBulkWork(unmatched.map((r) => r.g.key))}>
+            {tw.allAsWork}
+          </Button>
+        )}
       </div>
+      {searchable && (
+        <div className="max-w-md">
+          <TextField
+            label={tw.search}
+            type="search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setPage(0)
+            }}
+          />
+        </div>
+      )}
+      {visible.length === 0 && q !== '' && <p className="text-sm text-muted">{tw.searchEmpty}</p>}
       <ul className="flex flex-col gap-3" aria-label={tw.steps.catalog}>
-        {pageSlice(visible, current, PAGE_SIZE).map(({ g, info, d }) => (
+        {pageRows.map(({ g, d }) => (
           <GroupCard
             key={g.key}
             group={g}
-            info={info}
+            info={matchGroup(g.name, catalog)}
             decision={d}
             materials={materials}
             byId={byId}
@@ -250,7 +283,7 @@ export function CatalogStep({
           />
         ))}
       </ul>
-      {visible.length > PAGE_SIZE && <Pager page={current} pageSize={PAGE_SIZE} total={visible.length} onPage={setPage} />}
+      {visible.length > pageSize && <Pager page={current} pageSize={pageSize} total={visible.length} onPage={setPage} />}
     </div>
   )
 }

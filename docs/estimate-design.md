@@ -109,29 +109,48 @@ p_items (1..2000): [{
 - **Xato:** `22023 estimate_materials_invalid`. Ro'yxat darajasida: massiv emas / bo'sh / > 2000 (`Materiallar juda ko'p: N (ko'pi bilan 2000)`). Qator: `message` = `Qator <n>: <sabab>`, `n` — massivdagi o'rni (1 dan), `detail` = `n`. Faqat birinchi xato; **hech narsa yozilmaydi**. Sabablar: `qator noto'g'ri formatda`, `kalit (key) ko'rsatilmagan`, `nomi bo'sh`, `nomi juda uzun (200 belgigacha)`, `asosiy birlik ko'rsatilmagan`, `... juda uzun`, `birliklar ro'yxat bo'lishi kerak`, `birlik nomi bo'sh`, `«<birlik>» koeffitsienti ko'rsatilmagan / raqam emas / 0 dan katta bo'lishi kerak / juda katta`.
 - Klient: 200 belgidan uzun smeta nomini `name` uchun qisqartiradi (asl nom `alias` ga yoki keyin `remember_estimate_aliases` ga — u 1000 gacha qabul qiladi).
 
-### RPC `public.remember_estimate_aliases`
+### RPC `public.remember_estimate_aliases` (20261105000001 — smetaga bog'langan)
+
+> 20261104000001 dagi `remember_estimate_aliases(p_items jsonb)` **o'chirildi** (review P2: buxgalter ixtiyoriy matnni ixtiyoriy materialga alias qilib, avtomatik moslashni buzishi va katalog nomlarini band qilishi mumkin edi — masalan "Цемент М500" → Kafel).
 
 ```
-remember_estimate_aliases(p_items jsonb) returns integer
+remember_estimate_aliases(p_estimate_id uuid, p_items jsonb) returns integer
 
-p_items (0..5000): [{ material_id uuid, code text | null (≤ 100), name text | null (≤ 1000) }]
+p_items (0..5000): [{ material_id uuid, code text | null, name text | null }]
 → qo'shilgan alias'lar soni
 ```
 
-- Muvaffaqiyatli `import_estimate` dan **keyin** chaqiriladi (alohida tranzaksiya; xato bo'lsa import saqlangan qoladi — klient jimgina log qiladi).
-- Ruxsat: `super_admin`, `admin`, `buxgalter` (`import_estimate` bilan bir xil) — boshqalar `42501 estimate_import_forbidden`; profilsiz `42501 auth_required`.
-- `security definer`, `search_path = ''` — buxgalter `material_aliases` ga RLS orqali yoza olmaydi. Aniq tekshiruvlar: chaqiruvchining faol profili va firmasi; har `material_id` **shu firmaniki va o'chirilmagan** (aks holda butun chaqiruv rad etiladi).
-- Har element: `code` → `lang = 'code'`, `name` → `lang = 'ru'` — faqat matn firmada faol alias yoki faol material nomi (o'zi ham) sifatida band bo'lmasa. Ustidan yozmaydi, o'g'irlamaydi; takroriy chaqiruv — 0.
-- `created_by` = chaqiruvchi profili. Audit (`z_audit`): `actor_profile_id` / `actor_auth_uid` — haqiqiy chaqiruvchi (`auth.uid()` definer ichida ham), `device` — `x-client-device`.
-- Qulf — `private.lock_catalog_names(company_id)` (yuqoridagi bilan bir xil kalit).
-- **Xato:** `22023 estimate_aliases_invalid` — massiv emas / > 5000; qator: `Qator <n>: <sabab>` (`detail` = n), sabablar: `qator noto'g'ri formatda`, `material ko'rsatilmagan`, `material topilmadi yoki o'chirilgan`, `shifr juda uzun (100 belgigacha)`, `nomi juda uzun (1000 belgigacha)`. Hech narsa yozilmaydi.
+- Muvaffaqiyatli `import_estimate` dan **keyin**, o'sha smeta id si bilan chaqiriladi (alohida tranzaksiya; xato bo'lsa import saqlangan qoladi — klient jimgina log qiladi).
+- Ruxsat: `super_admin`, `admin`, `buxgalter` — boshqalar `42501 estimate_import_forbidden`; profilsiz `42501 auth_required`.
+- `security definer`, `search_path = ''` (buxgalter `material_aliases` ga RLS orqali yoza olmaydi). Tekshiruvlar tartibi, hammasi yozishdan oldin:
+  1. smeta chaqiruvchi firmasida va o'chirilmagan — aks holda `P0002 estimate_not_found` (mavjud hint, qayta ishlatiladi);
+  2. smeta muallifi (`created_by`) — chaqiruvchi; `admin` / `super_admin` — firmaning istalgan smetasi. Aks holda `22023 estimate_aliases_invalid`, `Muqobil nomlarni faqat o'zingiz yuklagan smetadan saqlash mumkin`;
+  3. smeta `created_at` so'nggi 24 soat ichida (hamma rollar uchun) — aks holda `22023 estimate_aliases_invalid`, `Smeta 24 soatdan oldin yuklangan — muqobil nomlarni saqlab bo'lmaydi`;
+  4. `p_items` massiv, ≤ 5000 (bo'sh — 0);
+  5. har qator: `material_id` firmada va o'chirilmagan; smetada shu `material_id` li `item_type = 'material'`, o'chirilmagan qator bor; `code` (null bo'lmasa) shu material qatorlaridan birining `code` iga, `name` (null bo'lmasa) birining `name` iga teng. Solishtirish — `private.squash_spaces` (btrim + bo'sh joy ketma-ketligi, NBSP ham, → bitta probel); registr va ё **farqlanadi**.
+- Qator xatosi: `22023 estimate_aliases_invalid`, `Qator <n>: <sabab>` (`detail` = n, massivdagi o'rni 1 dan). Sabablar: `qator noto'g'ri formatda`, `material ko'rsatilmagan`, `material topilmadi yoki o'chirilgan`, `material bu smetada yo'q`, `shifr smetadagi shu material qatoriga mos emas`, `nom smetadagi shu material qatoriga mos emas`. Birinchi xato; **hech narsa yozilmaydi**. (Uzunlik cheklovlari endi kerak emas — matn smeta qatoriga teng bo'lishi shart: `code` ≤ 100, `name` ≤ 1000 import'da tekshirilgan.)
+- Yozish: `code` → `lang = 'code'`, `name` → `lang = 'ru'`, matn `squash_spaces` qilingan holda — faqat firmada faol alias yoki faol material nomi (o'zi ham, `norm_name` bo'yicha) sifatida band bo'lmasa. Ustidan yozmaydi, o'g'irlamaydi; takroriy chaqiruv — 0.
+- `created_by` = chaqiruvchi profili. Audit (`z_audit`): actor — haqiqiy chaqiruvchi (`auth.uid()` definer ichida ham), `device` — `x-client-device`.
+- Qulf — `private.lock_catalog_names(company_id)`.
+- Klient: `import_estimate` ga yuborilgan `name` / `code` ni aynan (yoki faqat bo'sh joylari farqli) yuboradi; `material_id` — shu qatorda tanlangan material.
 
-### Yangi `hint` kalitlari (frontend `src/data/errors.ts`, `src/i18n/uz.ts`)
+### `estimate_items.line_sum` (20261105000001)
+
+Sabab (review P2): agregatsiya qilingan qatorlarda (bir xil resurs bir necha qatordan yig'ilgan) fayldagi summa aniq, lekin `unit_price numeric(18,2)` yaxlitlangani uchun `qty × unit_price ≠ fayl summasi`.
+
+- Ustun: `estimate_items.line_sum numeric(18,2)`, nullable, `check (line_sum >= 0)`.
+- `import_estimate` qator elementi: ixtiyoriy `line_sum` — JSON son yoki satr (nuqta bilan), `>= 0`, 2 xonaga yaxlitlanadi, `< 1e16` (yaxlitlangandan keyin). Xato sabablari (`22023 estimate_item_invalid`, `Qator <row_number>: ...`): `summa raqam emas`, `summa manfiy bo'lishi mumkin emas`, `summa juda katta`. Ish qatorida ham ruxsat.
+- **Qator summasi** (hamma joyda): `coalesce(line_sum, round(qty * unit_price, 2))`. `public.estimate_totals.total_sum` = shu ifodaning yig'indisi. `line_sum` yo'q qatorlar — avvalgidek (ikkalasi ham yo'q — summaga kirmaydi).
+- Bazada boshqa smeta summasi hisoblanmaydi: hisobotlar (`dashboard_*`, `spend_breakdown`) xaridlarga, norma (`norm_usage`, `norm_overview`, qoida 4) va `smeta_ozgarishi` alerti — `norm_qty_base` ga tayanadi (narxsiz). Klient (`diffEstimates`, smeta jadvali, Excel eksport) ham shu ifodani ishlatishi kerak.
+- `import_hash` = sha256(`object_id`, `title`, `p_items`) — `line_sum` `p_items` ichida, demak hash'ga kiradi: shu `p_id` + boshqa `line_sum` → `23505 estimate_id_reused`. `line_sum`siz payload hash'i o'zgarmagan (eski smetalar idempotentligi saqlanadi).
+- `estimate_create_materials` (20261105000001 da qayta yaratilgan, tana o'zgarmagan): ichki `pg_advisory_xact_lock(hashtextextended('terron.catalog_names:' || company_id, 0))` kaliti `private.lock_catalog_names` bilan bir xil ekani izohlangan va test bilan tekshirilgan.
+
+### `hint` kalitlari (frontend `src/data/errors.ts`, `src/i18n/uz.ts`)
 
 | `hint` | `errcode` | RPC |
 |---|---|---|
 | `estimate_materials_forbidden` | 42501 | `estimate_create_materials` |
 | `estimate_materials_invalid` | 22023 | `estimate_create_materials` |
-| `estimate_aliases_invalid` | 22023 | `remember_estimate_aliases` |
+| `estimate_aliases_invalid` | 22023 | `remember_estimate_aliases` (qator xatolari + smeta muallifi / 24 soat) |
 
-Qayta ishlatiladi: `auth_required` (ikkalasi), `estimate_import_forbidden` (`remember_estimate_aliases`).
+Qayta ishlatiladi: `auth_required` (ikkalasi), `estimate_import_forbidden` va `estimate_not_found` (P0002) — `remember_estimate_aliases`; `estimate_item_invalid` — `line_sum` xatolari. 20261105000001 yangi hint qo'shmaydi.

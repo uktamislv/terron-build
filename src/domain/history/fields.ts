@@ -203,6 +203,7 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
       unit_id: 'ref_unit',
       qty: 'qty',
       unit_price: 'money',
+      line_sum: 'money',
       norm_qty_base: 'qty',
       sort_order: 'text',
       code: 'text',

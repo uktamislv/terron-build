@@ -17,22 +17,26 @@ export function WizardStepper({
   maxStep,
   saving,
   onStep,
+  steps = STEPS,
 }: {
   step: number
   maxStep: number
   saving: boolean
   onStep: (i: number) => void
+  /** Ko'rinadigan bosqichlar (resurs smetasida varaq/ustun/qator bosqichlari yo'q). */
+  steps?: readonly StepKey[]
 }) {
   return (
     <nav aria-label={tw.title} className="no-scrollbar -mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
       <ol className="flex min-w-max items-center gap-1">
-        {STEPS.map((key, i) => {
+        {steps.map((key, pos) => {
+          const i = STEPS.indexOf(key)
           const active = i === step
           const done = i < step
           const reachable = i <= maxStep && !saving && key !== 'save'
           return (
             <li key={key} className="flex items-center gap-1">
-              {i > 0 && <span aria-hidden className={cx('h-0.5 w-4 rounded-full lg:w-6', i <= step ? 'bg-brand' : 'bg-line')} />}
+              {pos > 0 && <span aria-hidden className={cx('h-0.5 w-4 rounded-full lg:w-6', i <= step ? 'bg-brand' : 'bg-line')} />}
               <button
                 type="button"
                 disabled={!reachable || active}
@@ -55,9 +59,9 @@ export function WizardStepper({
                         : 'border-line bg-paper text-muted',
                   )}
                 >
-                  {done ? <Check className="size-4" strokeWidth={2.5} /> : i + 1}
+                  {done ? <Check className="size-4" strokeWidth={2.5} /> : pos + 1}
                 </span>
-                <span className="sr-only">{i + 1}</span>
+                <span className="sr-only">{pos + 1}</span>
                 <span className={cx('whitespace-nowrap', !active && 'max-2xl:sr-only')}>{tw.steps[key]}</span>
               </button>
             </li>
@@ -77,7 +81,9 @@ export function WizardFrame({
   onStep,
   onCancel,
   children,
+  steps = STEPS,
 }: {
+  steps?: readonly StepKey[]
   stepKey: StepKey
   step: number
   maxStep: number
@@ -96,10 +102,10 @@ export function WizardFrame({
           </Button>
         }
       />
-      <WizardStepper step={step} maxStep={maxStep} saving={saving} onStep={onStep} />
+      <WizardStepper step={step} maxStep={maxStep} saving={saving} onStep={onStep} steps={steps} />
       <section aria-label={tw.steps[stepKey]} className="flex flex-col gap-4 rounded-2xl border border-line bg-paper p-4 md:p-6">
         <div className="flex flex-col gap-0.5">
-          <p className="tabular text-sm text-muted">{tw.stepOf(step + 1, STEPS.length)}</p>
+          <p className="tabular text-sm text-muted">{tw.stepOf(Math.max(0, steps.indexOf(stepKey)) + 1, steps.length)}</p>
           <h2 className="text-xl font-semibold text-ink">{tw.steps[stepKey]}</h2>
         </div>
         {children}

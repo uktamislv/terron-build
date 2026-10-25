@@ -59,6 +59,9 @@ vi.mock('@/data/estimateTemplatesRepo', () => ({
 const tw = t.estimates.wizard
 const te = t.estimates
 
+// Birinchi usta testi dangasa (lazy) sahifa yuklanishini ham o'z ichiga oladi — yuklangan mashinada 5 s kam
+vi.setConfig({ testTimeout: 30000 })
+
 const sement = makeMaterial('m-sem', 'Sement M500', 'kg', {
   units: [makeUnit('u-qop', 'm-sem', 'qop', '50')],
   aliases: [makeAlias('a1', 'm-sem', 'Цемент М500')],
@@ -110,6 +113,7 @@ function item(id: string, overrides: Partial<EstimateItem>): EstimateItem {
     unit_id: null,
     qty: '1',
     unit_price: '1000',
+    line_sum: null,
     norm_qty_base: null,
     sort_order: 1,
     code: null,

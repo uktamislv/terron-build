@@ -61,7 +61,7 @@ export function makeUnit(
   return { id, company_id: COMPANY_ID, material_id: materialId, unit, factor, variant, created_at: TS, updated_at: TS }
 }
 
-export function makeAlias(id: string, materialId: string, alias: string, lang: 'ru' | 'uz' = 'ru'): MaterialAlias {
+export function makeAlias(id: string, materialId: string, alias: string, lang: 'ru' | 'uz' | 'code' = 'ru'): MaterialAlias {
   return { id, company_id: COMPANY_ID, material_id: materialId, alias, lang, created_at: TS, updated_at: TS }
 }
 

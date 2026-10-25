@@ -39,7 +39,7 @@ export function EstimateItemsTable({ items }: { items: readonly EstimateItem[] }
           cell: (it) => (it.norm_qty_base !== null ? <Qty value={it.norm_qty_base} unit={it.base_unit} size="sm" /> : '—'),
         },
         { key: 'price', header: te.colPrice, align: 'right', cell: (it) => (it.unit_price !== null ? <Money value={it.unit_price} size="sm" /> : '—') },
-        { key: 'sum', header: te.colSum, align: 'right', cell: (it) => <Money value={itemSum(it.qty, it.unit_price)} size="sm" /> },
+        { key: 'sum', header: te.colSum, align: 'right', cell: (it) => <Money value={itemSum(it.qty, it.unit_price, it.line_sum)} size="sm" /> },
       ]}
       renderMobile={(it) => (
         <EntryRow
@@ -58,7 +58,7 @@ export function EstimateItemsTable({ items }: { items: readonly EstimateItem[] }
             </>
           }
           trailing={<Qty value={it.qty} unit={it.unit} />}
-          trailingMeta={<Money value={itemSum(it.qty, it.unit_price)} size="sm" />}
+          trailingMeta={<Money value={itemSum(it.qty, it.unit_price, it.line_sum)} size="sm" />}
         />
       )}
       footer={items.length > PAGE_SIZE && <Pager page={current} pageSize={PAGE_SIZE} total={items.length} onPage={setPage} />}

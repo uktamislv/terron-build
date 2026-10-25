@@ -19,9 +19,12 @@ export function ReviewStep({
   skippedCount,
   prevItems,
   prevError,
+  minorKeys,
 }: {
   plan: Plan
   skippedCount: number
+  /** Resurs smetasi: katalogga qo'shilmagan kam summali materiallar (guruh kalitlari) — "Ish" bo'lib saqlanadi. */
+  minorKeys?: ReadonlySet<string>
   /** Joriy versiya qatorlari; null — yuklanmoqda; [] bilan `noPrev` — joriy versiya yo'q. */
   prevItems: DiffItem[] | null | 'none'
   prevError: string | null
@@ -42,6 +45,7 @@ export function ReviewStep({
         <Stat label={tw.reviewWarnings} value={plan.warningCount} tone={plan.warningCount ? 'warn' : 'ok'} />
         <Stat label={tw.reviewSkipped} value={skippedCount} />
       </div>
+      {minorKeys && minorKeys.size > 0 && <Notice tone="info">{tw.resource.minorNotice(minorKeys.size)}</Notice>}
       {totalsDiffer(plan) && (
         <Notice tone="warn">{tw.totalsDiffer(formatSum(plan.fileTotal), formatSum(plan.total))}</Notice>
       )}
@@ -92,7 +96,15 @@ export function ReviewStep({
           {
             key: 'material',
             header: te.colMaterial,
-            cell: (r) => (r.itemType === 'ish' ? <Badge tone="neutral">{te.types.ish}</Badge> : r.materialName),
+            cell: (r) =>
+              r.itemType === 'ish' ? (
+                <span className="flex flex-wrap items-center gap-1">
+                  <Badge tone="neutral">{te.types.ish}</Badge>
+                  {minorKeys?.has(r.groupKey) && <span className="text-xs text-muted">{tw.resource.minorBadge}</span>}
+                </span>
+              ) : (
+                r.materialName
+              ),
           },
           { key: 'unit', header: te.colUnit, cell: (r) => r.unitText },
           { key: 'qty', header: te.colQty, align: 'right', cell: (r) => <Qty value={r.item.qty} size="sm" /> },
@@ -115,6 +127,7 @@ export function ReviewStep({
             meta={
               <>
                 {r.itemType !== 'ish' && r.materialName && <span>{r.materialName}</span>}
+                {r.itemType === 'ish' && minorKeys?.has(r.groupKey) && <span>{tw.resource.minorBadge}</span>}
                 {r.warnings.length > 0 && <Warnings list={r.warnings} />}
               </>
             }

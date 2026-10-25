@@ -8,7 +8,7 @@ import type { Estimate, EstimateItem, EstimateItemType } from './types'
 const ESTIMATE_COLUMNS =
   'id, company_id, object_id, version, title, estimate_date, source_file_name, is_current, created_by, created_at, updated_at'
 const ITEM_COLUMNS =
-  'id, estimate_id, item_type, name, material_id, unit, unit_id, qty::text, unit_price::text, norm_qty_base::text, ' +
+  'id, estimate_id, item_type, name, material_id, unit, unit_id, qty::text, unit_price::text, line_sum::text, norm_qty_base::text, ' +
   'sort_order, code, row_number, material:materials!estimate_items_material_fkey(name, base_unit)'
 
 /** PostgREST bitta javobda ko'pi bilan shuncha qator qaytaradi (Supabase `max_rows`). */
@@ -26,6 +26,8 @@ export interface ImportEstimateItem {
   code: string | null
   row_number: number | null
   sort_order: number
+  /** Qator summasi (2 xona, satr) — berilsa bazada jami shu (resurs smetasi agregati). */
+  line_sum?: Dec
 }
 
 export interface ImportEstimateInput {
@@ -43,8 +45,12 @@ type RawItem = Omit<EstimateItem, 'material_name' | 'base_unit'> & {
   material: { name: string; base_unit: string } | null
 }
 
-/** Qator summasi: round(qty × narx, 2); narx yo'q — 0. */
-export function itemSum(qty: Dec, price: Dec | null): Dec {
+/**
+ * Qator summasi: `line_sum` (bo'lsa — bazadagi haqiqiy jami), aks holda round(qty × narx, 2); narx yo'q — 0.
+ * `estimate_totals.total_sum` bilan bir xil formula.
+ */
+export function itemSum(qty: Dec, price: Dec | null, lineSum: Dec | null = null): Dec {
+  if (lineSum !== null) return lineSum
   return price === null ? '0' : round(mul(qty, price), 2)
 }
 
@@ -140,4 +146,79 @@ export async function importEstimate(input: ImportEstimateInput): Promise<string
 export async function setCurrentEstimate(estimateId: string): Promise<void> {
   const { error } = await getSupabase().rpc('set_current_estimate', { p_estimate_id: estimateId })
   if (error) throw toRepoError(error)
+}
+
+// ---------------------------------------------------------------------------
+// Resurs smetasi: katalogga ommaviy qo'shish va shifrlarni eslab qolish
+// (docs/estimate-design.md → "Resurs smetasi — avtomatik moslash").
+
+/** RPC `estimate_create_materials` bitta chaqiruvda ko'pi bilan shuncha material qabul qiladi. */
+export const CREATE_MATERIALS_CHUNK = 2000
+/** RPC `remember_estimate_aliases` chegarasi. */
+export const REMEMBER_ALIASES_CHUNK = 5000
+
+export interface EstimateMaterialUnitInput {
+  unit: string
+  /** 1 `unit` = factor asosiy birlik (satr, float emas). */
+  factor: Dec
+  variant: string | null
+}
+
+export interface EstimateMaterialInput {
+  /** Klient kaliti — javobda qaytadi (≤ 200). */
+  key: string
+  name: string
+  base_unit: string
+  category?: string | null
+  code: string | null
+  /** Smetadagi asl nom (≤ 200). */
+  alias: string | null
+  units: EstimateMaterialUnitInput[] | null
+}
+
+export interface EstimateMaterialResult {
+  key: string
+  material_id: string
+  /** false — katalogda allaqachon bor edi (shifr / nom / muqobil nom bo'yicha topildi). */
+  created: boolean
+}
+
+/**
+ * Smetadagi moslanmagan materiallarni katalogga qo'shadi (yoki mavjudini topadi) — RPC
+ * `estimate_create_materials`, 2000 tadan bo'lib. Natija kirish tartibida.
+ */
+export async function createEstimateMaterials(items: readonly EstimateMaterialInput[]): Promise<EstimateMaterialResult[]> {
+  const out: EstimateMaterialResult[] = []
+  for (let i = 0; i < items.length; i += CREATE_MATERIALS_CHUNK) {
+    const chunk = items.slice(i, i + CREATE_MATERIALS_CHUNK)
+    const { data, error } = await getSupabase().rpc('estimate_create_materials', { p_items: chunk })
+    if (error) throw toRepoError(error)
+    const rows = (data ?? []) as { key: string | number; material_id: string; created: boolean }[]
+    for (const r of rows) out.push({ key: String(r.key), material_id: r.material_id, created: Boolean(r.created) })
+  }
+  return out
+}
+
+export interface EstimateAliasInput {
+  material_id: string
+  /** Smeta shifri (≤ 100) → `lang = 'code'`. */
+  code: string | null
+  /** Smetadagi asl nom (≤ 1000) → `lang = 'ru'`. */
+  name: string | null
+}
+
+/**
+ * Saqlangan smetadagi shifr va asl nomlarni katalogga muqobil nom sifatida eslab qoladi — RPC
+ * `remember_estimate_aliases` (band matnlar o'tkaziladi). `estimateId` — hozirgina saqlangan smeta: elementlar
+ * shu smetadan bo'lishi shart (server tekshiradi). Natija — qo'shilgan alias'lar soni.
+ */
+export async function rememberEstimateAliases(estimateId: string, items: readonly EstimateAliasInput[]): Promise<number> {
+  let added = 0
+  for (let i = 0; i < items.length; i += REMEMBER_ALIASES_CHUNK) {
+    const chunk = items.slice(i, i + REMEMBER_ALIASES_CHUNK)
+    const { data, error } = await getSupabase().rpc('remember_estimate_aliases', { p_estimate_id: estimateId, p_items: chunk })
+    if (error) throw toRepoError(error)
+    added += Number(data ?? 0)
+  }
+  return added
 }

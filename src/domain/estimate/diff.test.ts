@@ -71,6 +71,15 @@ describe('diffEstimates', () => {
     expect(d.changed).toEqual([])
   })
 
+  it('line_sum bo\'lsa jami shu bo\'yicha (qty × yaxlitlangan narx emas)', () => {
+    const d = diffEstimates(
+      [mat('a', '7', '21.43')],
+      [mat('a', '7', '21.43', { lineSum: '150' }), mat('b', '3', '10', { lineSum: null })],
+    )
+    expect(d.totalBefore).toBe('150.01')
+    expect(d.totalAfter).toBe('180')
+  })
+
   it('narxsiz qatorlar: o\'rtacha faqat narxlilar bo\'yicha, jami 0 qo\'shadi', () => {
     const d = diffEstimates([], [mat('a', '10', null), mat('a', '5', '100'), mat('b', '1', null)])
     expect(d.added).toEqual([

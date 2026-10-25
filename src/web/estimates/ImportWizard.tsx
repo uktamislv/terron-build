@@ -1,16 +1,20 @@
 // Smeta import ustasi (docs/estimate-design.md, "Oqim" 1–8). Bosqichlar ko'rinadi, orqaga qaytish
 // mumkin — barcha tanlovlar shu komponent holatida saqlanadi.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ArrowRight, Save } from 'lucide-react'
-import { Button, Notice, Spinner } from '@/components/ui'
-import { listEstimateItems, listEstimates } from '@/data/estimatesRepo'
+import { ArrowLeft, ArrowRight, FileSpreadsheet, Save } from 'lucide-react'
+import { Button, Notice, Spinner, useToast } from '@/components/ui'
+import { createEstimateMaterials, listEstimateItems, listEstimates, rememberEstimateAliases } from '@/data/estimatesRepo'
 import { findTemplateBySignature } from '@/data/estimateTemplatesRepo'
 import { listMaterials } from '@/data/materialsRepo'
 import { errorCodeOf } from '@/data/errors'
 import type { EstimateImportTemplate, Material, ObjectRow } from '@/data/types'
 import {
+  aggregateMaterials,
   autoMapColumns,
   detectHeaderRow,
+  detectResourceLayout,
+  parseResourceEstimate,
+  selectMainMaterials,
   headerSignature,
   parseRows,
   validateMapping,
@@ -24,6 +28,22 @@ import { errorText } from '@/i18n/errorText'
 import { uuid } from '@/lib/uuid'
 import { CatalogStep } from './CatalogStep'
 import { readWorkbook, WorkbookError, type ReadError, type SheetData } from './readWorkbook'
+import {
+  autoDecisions,
+  autoUnitAnswer,
+  classifyResources,
+  createMaterialsPayload,
+  DEFAULT_SHARE,
+  matchCounts,
+  rememberPayload,
+  RESOURCE_PAGE_SIZE,
+  resourceItems,
+  resourceSummary,
+  shareStats,
+  unknownKeysOf,
+  type SharePct,
+} from './resourceModel'
+import { ResourceBanner, ResourceCatalogPanel } from './ResourceSteps'
 import { ReviewStep } from './ReviewStep'
 import { emptyProgress, saveImport, type SaveProgress, type SaveStep } from './saveImport'
 import { UnitsStep } from './UnitsStep'
@@ -49,9 +69,21 @@ import { WizardFrame } from './wizardChrome'
 import { ColumnsStep, FileStep, RowsStep, SheetStep } from './wizardSteps'
 
 const tw = t.estimates.wizard
+const tr = tw.resource
+
+/** Resurs smetasida varaq, sarlavha, ustun va qator bosqichlari yo'q. */
+const RESOURCE_STEPS: readonly StepKey[] = STEPS.filter((k) => k !== 'sheet' && k !== 'columns' && k !== 'rows')
+
+/** Resurs smetasi tuzilishi bor birinchi varaq (bo'lmasa 0). */
+function resourceSheetIndex(all: readonly SheetData[]): number {
+  const i = all.findIndex((s) => detectResourceLayout(s.rows) !== null)
+  return i < 0 ? 0 : i
+}
 
 
 const EMPTY_ROWS: Cell[][] = []
+/** Barqaror bo'sh katalog (moslik keshi massiv identifikatori bo'yicha). */
+const EMPTY_MATERIALS: Material[] = []
 
 type SaveState = { status: 'saving'; step: SaveStep } | { status: 'error'; message: string; idReused: boolean } | null
 
@@ -98,6 +130,16 @@ export function ImportWizard({
   const [prev, setPrev] = useState<{ objectId: string; items: DiffItem[] | 'none' } | null>(null)
   const [prevError, setPrevError] = useState<string | null>(null)
   const [save, setSave] = useState<SaveState>(null)
+  const toast = useToast()
+
+  // Resurs smetasi rejimi
+  const [forceClassic, setForceClassic] = useState(false)
+  const [share, setShare] = useState<SharePct>(DEFAULT_SHARE)
+  /** Agregat kaliti → shu importda katalogga qo'shilgan (yoki topilgan) material id. */
+  const [created, setCreated] = useState<Record<string, string>>({})
+  const [creating, setCreating] = useState(false)
+  const [createNote, setCreateNote] = useState<string | null>(null)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   // Klient id (import_estimate idempotent) va yaratilganlar — qayta urinishda takrorlanmaydi
   const [estimateId, setEstimateId] = useState(() => uuid())
@@ -136,6 +178,33 @@ export function ImportWizard({
   const rowOffset = sheet?.rowOffset ?? 0
   const hidden = useMemo(() => new Set(sheet?.hiddenRows ?? []), [sheet])
   const missing = validateMapping(mapping)
+  const layout = useMemo(() => (sheet ? detectResourceLayout(rows) : null), [sheet, rows])
+  const resource = useMemo(() => {
+    if (!layout || forceClassic) return null
+    const parsedRes = parseResourceEstimate(rows, layout)
+    // Turi aniqlanmagan resurslar ham olinadi — moslanmasa "Ish" bo'lib saqlanadi (jami yo'qolmaydi)
+    const aggregated = aggregateMaterials(parsedRes.resources, ['material', 'equipment', 'unknown'])
+    const { items, kept, dropped } = resourceItems(aggregated, rowOffset)
+    return { summary: resourceSummary(parsedRes), items, kept, dropped, unknownKeys: unknownKeysOf(kept, parsedRes.resources) }
+  }, [layout, forceClassic, rows, rowOffset])
+  const resourceMode = resource !== null
+  const steps = resourceMode ? RESOURCE_STEPS : STEPS
+  const main = useMemo(() => (resource ? selectMainMaterials(resource.kept, share) : new Set<string>()), [resource, share])
+  const shareInfo = useMemo(() => (resource ? shareStats(resource.kept, main) : null), [resource, main])
+  const matches = useMemo(
+    () => (resource ? classifyResources(resource.kept, materials ?? [], main, created, resource.unknownKeys) : []),
+    [resource, materials, main, created],
+  )
+  const counts = useMemo(() => matchCounts(matches), [matches])
+  const effDecisions = useMemo(
+    () => (resourceMode ? { ...autoDecisions(matches), ...decisions } : decisions),
+    [resourceMode, matches, decisions],
+  )
+  const pendingNew = useMemo(() => matches.filter((m) => m.source === 'new' && !decisions[m.groupKey]), [matches, decisions])
+  const minorKeys = useMemo(
+    () => new Set(matches.filter((m) => m.source === 'minor' && effDecisions[m.groupKey]?.kind === 'ish').map((m) => m.groupKey)),
+    [matches, effDecisions],
+  )
   const parsed = useMemo(
     () =>
       headerRow === null || validateMapping(mapping).length > 0
@@ -144,10 +213,24 @@ export function ImportWizard({
     [rows, headerRow, mapping, rowOffset],
   )
   const collected = useMemo(() => collectItems(parsed, fixes, skipped, hidden), [parsed, fixes, skipped, hidden])
+  const planItems = resource ? resource.items : collected.items
+  const materialsById = useMemo(() => new Map((materials ?? []).map((m) => [m.id, m])), [materials])
+  // Bitta o'tish: resurs smetasida guruhlar allaqachon tasniflangan (qisman moslik qidirilmaydi),
+  // smetadagi birlik ("М3", "100ШТ", "Т") material birligiga avtomatik — faqat noma'lumlari so'raladi
   const plan = useMemo(
-    () => buildPlan({ items: collected.items, materials: materials ?? [], decisions, answers, canCatalog }),
-    [collected.items, materials, decisions, answers, canCatalog],
+    () =>
+      buildPlan({
+        items: planItems,
+        materials: materials ?? EMPTY_MATERIALS,
+        decisions: effDecisions,
+        answers,
+        canCatalog,
+        skipMatch: resourceMode,
+        autoAnswer: resourceMode ? (q) => autoUnitAnswer(q, materialsById.get(q.materialKey), canCatalog) : undefined,
+      }),
+    [planItems, materials, materialsById, effDecisions, answers, canCatalog, resourceMode],
   )
+  const effAnswers = useMemo(() => ({ ...plan.autoAnswers, ...answers }), [plan.autoAnswers, answers])
   const newProblems = useMemo(
     () => Object.values(decisions).filter((d) => newMaterialProblem(d, materials ?? []) !== null).length,
     [decisions, materials],
@@ -165,7 +248,7 @@ export function ImportWizard({
     const header = sheetRows[h] ?? []
     const signature = headerSignature(header)
     signatureRef.current = signature
-    setMapping(autoMapColumns(header))
+    setMapping(autoMapColumns(header, sheetRows[h + 1]))
     setMappingSource('auto')
     setTemplate(null)
     findTemplateBySignature(companyId, signature)
@@ -200,7 +283,11 @@ export function ImportWizard({
         setSheets(all)
         setFileName(file.name)
         setTitle((cur) => (cur.trim() === '' || cur === prevDefault ? titleFromFileName(file.name) : cur))
-        selectSheet(all, 0)
+        setForceClassic(false)
+        setCreated({})
+        setCreateNote(null)
+        setCreateError(null)
+        selectSheet(all, resourceSheetIndex(all))
       })
       .catch((err: unknown) => setReadError(err instanceof WorkbookError ? err.reason : 'file_unreadable'))
       .finally(() => setReading(false))
@@ -229,7 +316,59 @@ export function ImportWizard({
       return
     }
     setShowErrors(false)
-    go(step + 1)
+    go(neighbour(1))
+  }
+
+  /** Ko'rinadigan bosqichlar bo'yicha qo'shni bosqich (resurs rejimida varaq/ustun/qator o'tkaziladi). */
+  function neighbour(delta: 1 | -1): number {
+    const pos = steps.indexOf(stepKey)
+    const key = steps[Math.min(Math.max(pos + delta, 0), steps.length - 1)] ?? stepKey
+    return STEPS.indexOf(key)
+  }
+
+  /** Resurs rejimidan oddiy oqimga: varaq, sarlavha va ustunlar qo'lda. */
+  function openSettings() {
+    setForceClassic(true)
+    const i = STEPS.indexOf('sheet')
+    setStep(i)
+    setMaxStep(i)
+  }
+
+  function backToResource() {
+    setForceClassic(false)
+    const i = STEPS.indexOf('catalog')
+    setStep(i)
+    setMaxStep(i)
+  }
+
+  async function createNewMaterials() {
+    const list = pendingNew.map((m) => m.item)
+    if (list.length === 0) return
+    setCreating(true)
+    setCreateError(null)
+    setCreateNote(null)
+    try {
+      const res = await createEstimateMaterials(createMaterialsPayload(list))
+      const next = { ...created }
+      let added = 0
+      let found = 0
+      for (const r of res) {
+        const it = list[Number(r.key)]
+        if (!it) continue
+        next[it.key] = r.material_id
+        if (r.created) added++
+        else found++
+      }
+      // Yangi materiallar (birliklari va shifr alias'lari bilan) katalogdan qayta o'qiladi
+      const fresh = await listMaterials()
+      setMaterials(fresh)
+      setCreated(next)
+      setCreateNote(tr.created(added, found))
+    } catch (err) {
+      setCreateError(errorText(err))
+    } finally {
+      setCreating(false)
+    }
   }
 
   async function runSave() {
@@ -247,7 +386,7 @@ export function ImportWizard({
           sourceFileName: fileName,
           estimateDate: estimateDate || null,
           template:
-            headerRow !== null
+            headerRow !== null && !resourceMode
               ? {
                   signature: headerSignature(header),
                   mapping: mappingRecord(mapping),
@@ -260,6 +399,16 @@ export function ImportWizard({
         progressRef.current,
         (s) => setSave({ status: 'saving', step: s }),
       )
+      if (resourceMode) {
+        // Shifr va asl nomlar katalogga — keyingi import shifr bo'yicha avtomatik moslanadi.
+        // Smeta allaqachon saqlangan: xato bo'lsa faqat ogohlantirish.
+        setSave({ status: 'saving', step: 'aliases' })
+        try {
+          await rememberEstimateAliases(id, rememberPayload(plan.rows, progressRef.current.materials))
+        } catch {
+          toast.show(tr.rememberFailed, 'info')
+        }
+      }
       setSave(null)
       onSaved(id, objectId)
     } catch (err) {
@@ -281,7 +430,7 @@ export function ImportWizard({
   const saving = save?.status === 'saving'
 
   return (
-    <WizardFrame stepKey={stepKey} step={step} maxStep={maxStep} saving={saving} onStep={setStep} onCancel={onCancel}>
+    <WizardFrame stepKey={stepKey} step={step} maxStep={maxStep} saving={saving} onStep={setStep} onCancel={onCancel} steps={steps}>
         {materialsError && <Notice>{materialsError}</Notice>}
 
         {stepKey === 'file' && (
@@ -302,6 +451,16 @@ export function ImportWizard({
             onDate={setEstimateDate}
             showErrors={showErrors}
           />
+        )}
+        {stepKey === 'file' && resource && (
+          <ResourceBanner summary={resource.summary} dropped={resource.dropped.length} onOpenSettings={openSettings} />
+        )}
+        {stepKey === 'sheet' && layout && forceClassic && (
+          <div>
+            <Button variant="secondary" icon={<FileSpreadsheet aria-hidden className="size-5" strokeWidth={1.75} />} onClick={backToResource}>
+              {tr.backToResource}
+            </Button>
+          </div>
         )}
         {stepKey === 'sheet' && sheets && (
           <SheetStep
@@ -333,7 +492,7 @@ export function ImportWizard({
                 setMapping(sanitizeMapping(template.mapping, Math.max(header.length, 1)))
                 setMappingSource('template')
               } else {
-                setMapping(autoMapColumns(header))
+                setMapping(autoMapColumns(header, rows[headerRow + 1]))
                 setMappingSource('manual')
               }
             }}
@@ -372,12 +531,58 @@ export function ImportWizard({
             onSkip={(n, s) => setSkipped((cur) => ({ ...cur, [n]: s }))}
           />
         )}
+        {stepKey === 'catalog' && resource && (
+          <ResourceBanner summary={resource.summary} dropped={resource.dropped.length} onOpenSettings={openSettings} />
+        )}
+        {stepKey === 'catalog' && resource && materials && shareInfo && (
+          <ResourceCatalogPanel
+            totalMaterials={resource.kept.length}
+            share={share}
+            onShare={setShare}
+            shareCount={shareInfo.count}
+            sharePct={shareInfo.pct}
+            counts={counts}
+            newCount={pendingNew.length}
+            canCatalog={canCatalog}
+            creating={creating}
+            createNote={createNote}
+            createError={createError}
+            onCreate={() => void createNewMaterials()}
+            onNewAsWork={() =>
+              setDecisions((cur) => {
+                const next = { ...cur }
+                for (const m of pendingNew) next[m.groupKey] = { kind: 'ish' }
+                return next
+              })
+            }
+            list={
+              <CatalogStep
+                groups={plan.groups}
+                materials={materials}
+                decisions={plan.decided}
+                canCatalog={canCatalog}
+                pageSize={RESOURCE_PAGE_SIZE}
+                searchable
+                onDecide={(key, d) => setDecisions((cur) => ({ ...cur, [key]: d }))}
+                onBulkWork={(keys) =>
+                  setDecisions((cur) => {
+                    const next = { ...cur }
+                    for (const k of keys) next[k] = { kind: 'ish' }
+                    return next
+                  })
+                }
+              />
+            }
+          />
+        )}
+        {stepKey === 'catalog' && resource && !materials && !materialsError && <Spinner />}
         {stepKey === 'catalog' &&
+          !resource &&
           (materials ? (
             <CatalogStep
               groups={plan.groups}
               materials={materials}
-              decisions={decisions}
+              decisions={plan.decided}
               canCatalog={canCatalog}
               onDecide={(key, d) => setDecisions((cur) => ({ ...cur, [key]: d }))}
               onBulkWork={(keys) =>
@@ -394,15 +599,28 @@ export function ImportWizard({
         {stepKey === 'units' && (
           <UnitsStep
             questions={plan.questions}
-            answers={answers}
+            answers={effAnswers}
+            autoAnswers={plan.autoAnswers}
             canCatalog={canCatalog}
             onAnswer={(key, a) => setAnswers((cur) => ({ ...cur, [key]: a }))}
+            onWork={(keys) =>
+              setDecisions((cur) => {
+                const next = { ...cur }
+                for (const k of keys) next[k] = { kind: 'ish' }
+                return next
+              })
+            }
           />
         )}
         {stepKey === 'review' && (
           <ReviewStep
             plan={plan}
-            skippedCount={collected.autoSkipped + collected.userSkipped}
+            skippedCount={
+              resource
+                ? resource.summary.laborMachineRows + resource.summary.invalidRows + resource.dropped.length
+                : collected.autoSkipped + collected.userSkipped
+            }
+            minorKeys={resource ? minorKeys : undefined}
             prevItems={prev && prev.objectId === objectId ? prev.items : null}
             prevError={prevError}
           />
@@ -444,7 +662,7 @@ export function ImportWizard({
 
         {stepKey !== 'save' && (
           <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-between">
-            <Button variant="secondary" disabled={step === 0} icon={<ArrowLeft aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => setStep(step - 1)}>
+            <Button variant="secondary" disabled={step === 0} icon={<ArrowLeft aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => setStep(neighbour(-1))}>
               {tw.back}
             </Button>
             {stepKey === 'review' ? (
