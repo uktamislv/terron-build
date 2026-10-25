@@ -121,14 +121,14 @@ Sof funksiyalar (testlar bilan):
 
 | Rol | Veb menyu | Mini App menyu |
 |---|---|---|
-| super_admin, admin | hammasi + Foydalanuvchilar, Obyektlar | Bosh, Kirim/chiqim, Xarid, Yozuvlarim |
+| super_admin, admin | hammasi + Foydalanuvchilar, Obyektlar, Sozlamalar | Bosh, Kirim/chiqim, Xarid, Inventarizatsiya, Yozuvlarim |
 | direktor | Bosh, Ombor, Xaridlar, Podotchet, Smeta, So'rovlar, Ogohlantirishlar, Tarix | Bosh, Yozuvlarim |
 | buxgalter | Bosh, Materiallar, Ombor, Xaridlar, Podotchet, Smeta, Ogohlantirishlar | Yozuvlarim |
 | taminotchi | Bosh, Materiallar, Xaridlar, So'rovlar | Xarid, Yozuvlarim |
-| prorab | Bosh, Ombor, So'rovlar | Kirim/chiqim, Xarid, So'rov, Yozuvlarim |
-| omborchi | Bosh, Ombor | Kirim/chiqim, Yozuvlarim |
+| prorab | Bosh, Ombor, So'rovlar | Bosh, Kirim/chiqim, Xarid, So'rov, Yozuvlarim |
+| omborchi | Bosh, Ombor | Bosh, Kirim/chiqim, Yozuvlarim |
 | haydovchi | — (veb kerak emas) | Xarid, Yozuvlarim |
-| tekshiruvchi | Bosh, Ombor | Inventarizatsiya, Yozuvlarim |
+| tekshiruvchi | Bosh | Inventarizatsiya, Yozuvlarim |
 
 ## Maxfiy kalitlar (Supabase secrets, faqat foydalanuvchi qo'yadi)
 

@@ -1,0 +1,44 @@
+# Buxgalter uchun qo‘llanma
+
+## Sizning vazifangiz
+
+Siz xodimlarga xarid uchun pul berasiz va qaytgan pulni yozasiz. Smetani yuklaysiz, xaridlar va hisobotlarni kuzatasiz. Ishingiz veb panelda.
+
+## Har kuni
+
+### Pul berish (podotchet)
+
+1. “Podotchet” → “Pul berish”.
+2. “Kimga” ni tanlang, summa va sanani kiriting, “Saqlash”.
+3. Odam ortiqcha pulni qaytarsa — “Qaytarish”, “Kimdan” ni tanlang.
+4. “Qo‘limdagi pul” jadvalida har kimning berilgan, sarflangan va qo‘lidagi puli ko‘rinadi.
+
+### Smeta yuklash
+
+1. “Smeta” → obyektni tanlang → “Smeta yuklash”.
+2. Faylni tanlang (.xlsx, .xls, .csv), ustunlar va materiallarni qadamma-qadam moslang.
+3. Tekshirib, “Smetani saqlash”. Yangi versiyani “Solishtirish” bilan eskisi bilan solishtiring.
+
+### Kuzatish
+
+1. “Xaridlar” da cheklar va qabul holatini ko‘ring.
+2. “Bosh sahifa” da davr bo‘yicha xarajatlar, kerak bo‘lsa Excel’ga eksport.
+
+## Muhim qoidalar
+
+- Berilgan pul summasini o‘zgartirib bo‘lmaydi. Xato bo‘lsa — o‘chirib, qayta bering.
+- Pulni faqat xarid kiritadigan xodimga berish mumkin.
+- Yangi materialni katalogga faqat admin qo‘shadi.
+
+## Ogohlantirishlar nimani anglatadi
+
+| Ogohlantirish | Nimani anglatadi | Nima qilish kerak |
+|---|---|---|
+| Podotchet muddati o‘tdi | Berilgan pul belgilangan kundan ko‘p hisobot qilinmagan. | Odamdan xaridlarni kiritishni yoki pulni qaytarishni so‘rang. |
+| Manfiy podotchet | Odam berilgan puldan ko‘p xarid kiritgan — o‘z pulidan sarflagan. | Tekshiring, kerak bo‘lsa pul bering. |
+| Chek farqi | Chekdagi summa xaridda yozilgan summadan farq qiladi. | Chekni ko‘ring, adminga ayting. |
+| Narx og‘ishi | Narx odatdagidan ancha yuqori yoki past. | Xaridni tekshiring. |
+
+## Savol bo‘lsa
+
+Savol bo‘lsa, firmangiz adminiga murojaat qiling. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.

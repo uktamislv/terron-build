@@ -73,6 +73,24 @@ export interface RequestOverduePayload {
   requests: OverdueRequestItem[]
 }
 
+/** Batch 11: Mini App'dagi "Xatolik haqida xabar berish" (admin va super_admin'larga). */
+export interface BugReportPayload {
+  bug_report_id: string
+  company_id: string
+  company_name: string | null
+  reporter_id: string | null
+  reporter_name: string | null
+  reporter_role: string | null
+  screen: string | null
+  /** ≤ 500 belgi (bazada kesilgan). */
+  message: string | null
+  message_truncated: boolean | null
+  client: string | null
+  app_version: string | null
+  has_photo: boolean | null
+  created_at: string
+}
+
 /** Batch 12 (I): haftalik podotchet xabari (pul egasiga). */
 export interface CashStatementPayload {
   date: string
@@ -267,6 +285,27 @@ export const NOTIFY_TEXTS = {
   buttons: {
     seen: "✓ Ko'rildi",
     open: 'Ochish',
+  },
+  /** Rol nomlari — `src/i18n/uz.ts` `roles` bilan bir xil. */
+  roles: {
+    super_admin: 'Tizim egasi',
+    admin: 'Admin',
+    direktor: 'Direktor',
+    buxgalter: 'Buxgalter',
+    taminotchi: 'Ta’minotchi',
+    prorab: 'Prorab',
+    omborchi: 'Omborchi',
+    haydovchi: 'Haydovchi',
+    tekshiruvchi: 'Tekshiruvchi',
+  } as Record<string, string>,
+  bugReport: {
+    title: 'Xatolik haqida xabar',
+    unknownReporter: "Noma'lum foydalanuvchi",
+    company: 'Firma: ',
+    screen: 'Ekran: ',
+    noMessage: '(matn yo‘q)',
+    version: (v: string) => `v${v}`,
+    photo: "📎 Rasm ilova qilingan — veb panelda ko'ring",
   },
   receipt: {
     purchased: 'Xarid: ',
@@ -1436,10 +1475,70 @@ export function formatCashStatement(p: CashStatementPayload): string {
 }
 
 // ---------------------------------------------------------------------------
+// Batch 11 — xatolik haqida xabar
+// ---------------------------------------------------------------------------
+
+/** Xabar matni uchun himoya chegarasi (bazada ≤ 500; bu — ehtiyot uchun). */
+const BUG_MESSAGE_MAX = 1000
+
+/**
+ * Xatolik xabari: sarlavha, kim (ism · rol), firma, ekran, matn (escape, kesilgan bo'lsa "…"),
+ * qurilma/versiya (kursiv), rasm belgisi, vaqt. ≤ 4096 belgi.
+ */
+export function formatBugReport(p: BugReportPayload): string {
+  const t = NOTIFY_TEXTS.bugReport
+  const role = typeof p.reporter_role === 'string' ? (NOTIFY_TEXTS.roles[p.reporter_role] ?? nameHtml(p.reporter_role)) : null
+  const who = [nameHtml(p.reporter_name) ?? t.unknownReporter, role].filter((x) => x).join(' · ')
+  const company = nameHtml(p.company_name)
+  const screen = nameHtml(p.screen)
+  let message = typeof p.message === 'string' ? p.message.replace(/\r\n?/g, '\n').trim() : ''
+  let truncated = p.message_truncated === true
+  if (Array.from(message).length > BUG_MESSAGE_MAX) {
+    message = Array.from(message).slice(0, BUG_MESSAGE_MAX).join('')
+    truncated = true
+  }
+  const body = message === '' ? `<i>${t.noMessage}</i>` : `<blockquote>${escapeHtml(message)}${truncated ? NOTIFY_TEXTS.ellipsis : ''}</blockquote>`
+  const version = typeof p.app_version === 'string' && p.app_version.trim() !== '' ? t.version(p.app_version.trim()) : null
+  const device = [nameHtml(p.client), nameHtml(version)].filter((x) => x).join(' · ')
+  return fitLines([
+    `🐞 <b>${t.title}</b>`,
+    who,
+    company ? t.company + company : '',
+    screen ? t.screen + screen : '',
+    body,
+    device ? `<i>${device}</i>` : '',
+    p.has_photo === true ? t.photo : '',
+    formatDateTimeTashkent(p.created_at) ?? '',
+  ])
+}
+
+/**
+ * Veb panel "Sozlamalar → Xatoliklar" havolasi: Mini App URL'dan oxirgi `/tg` olib tashlanadi,
+ * `/settings?tab=bugs` qo'shiladi. "https://x.uz/tg" → "https://x.uz/settings?tab=bugs".
+ */
+export function webBugsUrl(miniAppUrl: string): string {
+  try {
+    const u = new URL(miniAppUrl)
+    const base = u.pathname.replace(/\/+$/, '').replace(/\/tg$/, '')
+    return `${u.origin}${base}/settings?tab=bugs`
+  } catch {
+    return miniAppUrl
+  }
+}
+
+/** Xatolik xabari tugmasi: "Ochish" — oddiy `url` (veb panel, Mini App emas). */
+export function bugReportKeyboard(miniAppUrl: string): InlineKeyboard {
+  return { inline_keyboard: [[{ text: NOTIFY_TEXTS.buttons.open, url: webBugsUrl(miniAppUrl) }]] }
+}
+
+// ---------------------------------------------------------------------------
 // Inline tugma
 // ---------------------------------------------------------------------------
 
-export type InlineButton = { text: string; web_app: { url: string } } | { text: string; callback_data: string }
+export type InlineButton =
+  | { text: string; web_app: { url: string } }
+  | { text: string; url: string }
+  | { text: string; callback_data: string }
 export interface InlineKeyboard {
   inline_keyboard: InlineButton[][]
 }

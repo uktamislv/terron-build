@@ -13,6 +13,9 @@
 import { timingSafeEqual } from '../_shared/telegramAuth.ts'
 import {
   alertKeyboard,
+  bugReportKeyboard,
+  formatBugReport,
+  type BugReportPayload,
   formatAlertDigest,
   formatAlertMessage,
   formatAlertReminder,
@@ -45,7 +48,7 @@ export const BUDGET_RETRY_SEC = 1
 export interface OutboxRow {
   id: string
   company_id: string
-  kind: 'alert' | 'daily_report' | 'alert_reminder' | 'request_overdue' | 'cash_statement' | string
+  kind: 'alert' | 'daily_report' | 'alert_reminder' | 'request_overdue' | 'cash_statement' | 'bug_report' | string
   payload: unknown
   /** Faqat `cash_statement`: xabar egasi. */
   profile_id?: string | null
@@ -175,6 +178,8 @@ export function buildMessage(row: OutboxRow): string {
       return formatRequestOverdue(row.payload as unknown as RequestOverduePayload)
     case 'cash_statement':
       return formatCashStatement(row.payload as unknown as CashStatementPayload)
+    case 'bug_report':
+      return formatBugReport(row.payload as unknown as BugReportPayload)
     default:
       throw new Error(`noma'lum kind: ${String(row.kind).slice(0, 40)}`)
   }
@@ -328,8 +333,11 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
   const startedAt = deps.now()
   const appUrl = resolveMiniAppUrl(deps.env.miniAppUrl)
   const keyboard = miniAppKeyboard(appUrl)
+  const bugKeyboard = bugReportKeyboard(appUrl)
   const keyboardFor = (unit: Unit, r: Recipient): unknown =>
-    unit.alertId === null
+    unit.rows[0]?.kind === 'bug_report'
+      ? bugKeyboard
+      : unit.alertId === null
       ? keyboard
       : alertKeyboard(appUrl, unit.alertId, SEEN_ROLES.includes(r.role), ALERT_READER_ROLES.includes(r.role))
   const summary: DispatchSummary = { processed: rows.length, sent: 0, failed: 0 }

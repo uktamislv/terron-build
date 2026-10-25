@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9, 10, 12)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -276,6 +276,8 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `receipt_lookup_invalid` | 22023 | `svc_upsert_receipt_lookup` (Batch 12) | Firma yoki fiskal belgi yo'q |
 | `alert_action_forbidden` | 42501 | `svc_mark_alert_seen` (Batch 12) | Telegram profili yo'q/nofaol, admin emas yoki boshqa firma |
 | `alert_not_found` | P0002 | `svc_mark_alert_seen` (Batch 12) | Alert yo'q yoki o'chirilgan |
+| `bug_report_invalid` | 23514 | `b_bug_reports_guard` (Batch 11) | Xatolik xabari matni bo'sh yoki > 2000 belgi |
+| `bug_report_rate_limited` | 23514 | `b_bug_reports_guard` (Batch 11) | Bir foydalanuvchi 10 daqiqada 5 tadan ko'p xabar |
 | `estimate_aliases_invalid` | 22023 | `remember_estimate_aliases(p_estimate_id, p_items)` (20261105000001) | Smeta chaqiruvchi yuklamagan (buxgalter; admin/super_admin — istalgani) yoki 24 soatdan eski; `p_items` massiv emas / > 5000; qator xatosi (material yo'q / o'chirilgan / boshqa firmaniki / smetada yo'q, `code` yoki `name` smetadagi shu material qatoriga mos emas); qator xatosida `message` = `Qator <n>: <sabab>`, `detail` = n |
 
 `remember_estimate_aliases` qayta ishlatadi: `auth_required`, `estimate_import_forbidden` (rol admin / buxgalter / super_admin emas), `estimate_not_found` (P0002 — smeta yo'q, o'chirilgan yoki boshqa firmaniki). `estimate_create_materials` — `auth_required`. `import_estimate` ning `line_sum` xatolari — `estimate_item_invalid`. 20261104000001 dagi 1-argumentli `remember_estimate_aliases(jsonb)` 20261105000001 da o'chirilgan.
@@ -675,6 +677,17 @@ Shartnoma: `docs/automation-design.md`; outbox payloadlari va alert `details` sh
 **O'zgargan (create or replace):** `tg_alerts_notify`, `enqueue_alert_escalation` (conflict maqsadi `kind = 'alert'`), `tg_cash_advances_guard` (+ kind; oluvchi roli/faolligi faqat `berildi` da tekshiriladi — qaytarish nofaol odamdan ham), `evaluate_purchase_receipt`, `create_transfer`, `cash_balances` (`returned_total` oxirida; `balance = berildi − qaytarildi − xaridlar`; `issued_total`, `last_issued_at` — faqat berildi), `dashboard_summary` (`cash_issued_sum` — faqat berildi, yangi `cash_returned_sum`), `daily_report_stats` (`low_stock_count`, `geo_denied_count`, `geo_unavailable_count`). Meta kalitlar (`reminded_at`, `seen_*`) — `private.alert_meta_keys()` / `private.alert_meta(details)`: qayta baholashda saqlanadi, solishtirishga kirmaydi.
 
 **Yangi hint'lar:** `transfer_insufficient_stock` (22023, `create_transfer`; xabarda mavjud qoldiq, `detail` — raqam), `photo_required` (23514, `c_purchases_auto`, `c_movements_auto`), `photo_sha256_invalid` (23514, o'sha), `receipt_already_used` (23505, `c_purchases_auto` — insert, belgi o'zgarishi, tiklash; xabarda xaridor ismi va `dd.mm.yyyy HH:MI` Toshkent), `purchase_request_invalid` (23503 — so'rov yo'q/o'chirilgan/boshqa firma; 23514 — boshqa obyekt/material yoki holat tasdiqlandi/xarid_qilindi emas), `supplier_tin_duplicate` (23505, `c_suppliers_tin_guard`), `receipt_lookup_invalid` (22023, `svc_upsert_receipt_lookup`), `alert_action_forbidden` (42501, `svc_mark_alert_seen`), `alert_not_found` (P0002, o'sha). `cash_amount_locked` — endi `kind` o'zgarishida ham.
+
+## Topshirish (Batch 11 — `20261107000001_handoff.sql`)
+
+Shartnoma: `docs/handoff-design.md` (1-bo'lim — ustunlar, RLS, payload).
+
+- **`public.bug_reports`** (biznes jadvali: `a_*` triggerlar, `z_audit`, soft delete, RLS enable + force): `id, company_id, message (1..2000), screen (≤ 200), client (≤ 500), app_version (≤ 50), photo_path, status ('yangi' | 'korildi' | 'hal_qilindi'), created_by, created_at, updated_at, deleted_at`. `created_by` — **kompozit** FK `(company_id, created_by) → profiles` (xabar doim o'z firmasiga, super_admin ham).
+- `b_bug_reports_guard` (security definer): foydalanuvchi sessiyasida INSERT — `created_by = my_profile_id()`, `status = 'yangi'`, `deleted_at = null`, `company_id` null → o'z firmasi; cheklov (profil bo'yicha advisory lock, 10 daqiqa, ≤ 5, o'chirilganlari ham) — `bug_report_rate_limited`; matn btrim (`bug_report_invalid`), `screen/client/app_version` kesiladi; `photo_path` — format `{company_id}/bug/{yyyy}/{mm}/{uuid}.{ext}`, firma papkasi, o'zi yuklagan va 24 soatdan yangi (admin ham), bitta yo'l — bitta tirik xabar (`ops_photo_*` hint'lari; zaxira — `bug_reports_photo_path_key`).
+- RLS: SELECT — o'zi (o'chirilmagan), admin (firma, o'chirilganlar ham), super_admin (hamma); INSERT — o'z firmasi, `created_by = my_profile_id()`; UPDATE — admin, super_admin. Grant: authenticated — `select`, `insert (id, company_id, message, screen, client, app_version, photo_path)`, `update (status, deleted_at)`; service_role — `select, insert, update`. Tiklash oq ro'yxatiga (`history_tables`) kirmaydi.
+- Storage: `photos_insert` / `photos_select` qayta yaratildi (siyosatlar soni o'zgarmagan). `bug/` yo'li: yuklash — istalgan faol rol (o'z firmasi papkasi); ko'rish — yuklagan, firma admini, super_admin. Operatsiya rasmlari uchun shartlar Batch 4 dagi bilan bir xil.
+- `notification_outbox`: `kind` ∪ `bug_report`, ustun `bug_report_id` (FK `(company_id, bug_report_id) → bug_reports`, unique `where kind = 'bug_report'`, `(kind = 'bug_report') = (bug_report_id is not null)`). Trigger `bug_reports.zz_notify` → `private.tg_bug_reports_notify()`. `svc_outbox_recipients` (create or replace): `bug_report` → xabar firmasi `admin` lari + barcha faol `super_admin` lar (o'z firmasi faol); qolgan kind'lar o'zgarmagan.
+- Demo ma'lumot — `supabase/seed/demo.sql` (`docs/handoff-design.md` 3-bo'lim, `docs/deploy-supabase.md`).
 
 ## Qoldiq
 

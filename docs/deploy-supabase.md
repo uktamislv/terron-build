@@ -23,6 +23,26 @@ npx supabase db push
 
 `supabase/seed.sql` (namuna firma) production'ga **qo'llanmaydi**. Sinov uchun kerak bo'lsa — SQL Editor'da qo'lda ishga tushiring.
 
+### Demo ma'lumotlar (ixtiyoriy) — `supabase/seed/demo.sql`
+
+Alohida **"Demo qurilish"** firmasi: 3 obyekt, 10 xodim, smetalar, 30 kunlik kirim/chiqim/xarid/podotchet/so'rov/o'tkazma/inventarizatsiya va bir nechta ogohlantirish. Haqiqiy firmalarga tegmaydi, avtomatik qo'llanmaydi, qayta ishga tushirsa takrorlamaydi (firma bor bo'lsa — hech narsa qilmaydi). Faqat barcha migratsiyalardan keyin.
+
+1. **SQL Editor:** Dashboard → SQL Editor → New query → `supabase/seed/demo.sql` ning butun matnini qo'ying → **Run**. Natijada `Demo qurilish yaratildi: … harakat, … xarid, … ogohlantirish` xabari chiqadi (takroriy ishga tushirishda — `allaqachon bor`).
+   yoki **psql** (Dashboard → Connect → connection string, parol — o'zingizda):
+   ```bash
+   psql "<connection string>" -v ON_ERROR_STOP=1 -f supabase/seed/demo.sql
+   ```
+2. Tekshirish:
+   ```sql
+   select type, severity, count(*) from public.alerts
+    where company_id = 'de300000-0000-4000-8000-000000000001' group by 1, 2 order by 1;
+   ```
+3. Demo xodimlarda login yo'q. Ko'rish uchun: super_admin sifatida kiring (barcha firmalarni ko'radi) yoki Foydalanuvchilar sahifasida demo xodimga login bering.
+4. Demo firma ogohlantirishlari Telegram navbatiga ham tushadi; demo xodimlarda Telegram ulanmagan — xabar hech kimga ketmaydi (`sent_count = 0`).
+5. Olib tashlash: hech narsa butunlay o'chirilmaydi — kerak bo'lmasa super_admin firmani nofaol qiladi: `update public.companies set is_active = false where id = 'de300000-0000-4000-8000-000000000001';`
+
+Seed ichida vaqtinchalik 4 ta `auth.users` qatori (`*@demo-seed.invalid`) yaratiladi va shu tranzaksiya oxirida o'chiriladi — ular faqat sessiya talab qiladigan funksiyalar (o'tkazma, inventarizatsiya) uchun kerak.
+
 ## 3. Kirish (Auth) sozlamalari — muhim
 
 Dashboard → **Authentication → Sign In / Providers**:

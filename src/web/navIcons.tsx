@@ -6,6 +6,7 @@ import {
   History,
   LayoutDashboard,
   Package,
+  Settings,
   ShoppingCart,
   TriangleAlert,
   Users,
@@ -29,4 +30,5 @@ export const webNavIcons: Record<WebNavKey, ReactNode> = {
   history: <History {...p} />,
   users: <Users {...p} />,
   objects: <Building2 {...p} />,
+  settings: <Settings {...p} />,
 }

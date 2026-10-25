@@ -58,3 +58,18 @@ GitHub'da ham: **Settings → Secrets and variables → Actions → Variables** 
 3. Brauzerda `https://terron-build.SUBDOMEN.workers.dev/tg` ochsangiz — sariq **"Brauzerda ochilgan"** belgisi chiqadi. Bu to'g'ri.
 
 Kirish (telefon raqami orqali bog'lash, `tg-auth`) Batch 2 da qo'shiladi.
+
+## 6. Webhook'ni qayta ulash ("Ko'rildi" tugmasi uchun, Batch 12)
+
+Telegram xabaridagi **Ko'rildi** tugmasi ishlashi uchun webhook `callback_query` ni ham qabul qilishi kerak. Bir marta qayta ishga tushiring:
+
+1. BotFather'dan bot tokenini nusxalang (clipboard'ga).
+2. Loyiha papkasida: `node scripts/setup-telegram.mjs` — token clipboard'dan o'qiladi, ekranga chiqmaydi.
+3. Tekshirish: yangi ogohlantirish kelganda admin **Ko'rildi** ni bossa, xabar oxirida "✓ Ko'rildi — <ism>" paydo bo'ladi.
+
+## 7. Sinovdan oldin: bot tokenini almashtirish
+
+Token 25.10.2026 da terminalda ochiq ko'ringan. Haqiqiy foydalanishdan oldin:
+
+1. BotFather → `/revoke` → **@terron_build_bot** → yangi token.
+2. Yangi tokenni nusxalab, `node scripts/setup-telegram.mjs` ni qayta ishga tushiring (6-bo'lim) — Supabase secrets va webhook yangilanadi.

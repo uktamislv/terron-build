@@ -274,7 +274,7 @@ describe('/tg/movement — boshqa holatlar', () => {
     expect(photosRepo.uploadPhoto).not.toHaveBeenCalled()
     save()
     await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalled())
-    expect(photosRepo.uploadPhoto).toHaveBeenCalledWith(expect.any(Blob), makeProfile('prorab').company_id)
+    expect(photosRepo.uploadPhoto).toHaveBeenCalledWith(expect.any(Blob), makeProfile('prorab').company_id, 'ops')
     expect(vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0].photoPath).toBe('c/2026/10/abc.jpg')
   })
 })

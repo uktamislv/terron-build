@@ -1,14 +1,13 @@
 import { useCallback, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
-import { KeyRound, LogOut, Menu, Settings, X } from 'lucide-react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Bug, CircleHelp, KeyRound, LogOut, Menu, X } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { ChangePasswordForm } from '@/auth/ChangePasswordForm'
+import { BugReportForm } from '@/components/bugReport/BugReportForm'
 import { BrandMark, cx, IconButton, Modal, useOverlay } from '@/components/ui'
-
 import { t } from '@/i18n'
 import { webNavForRole } from './nav'
 import { webNavIcons } from './navIcons'
-import { CompanySettingsForm } from './settings/CompanySettingsForm'
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -28,9 +27,10 @@ function DrawerBehaviour({ target, onClose }: { target: RefObject<HTMLElement | 
 export function WebLayout({ children }: { children?: ReactNode } = {}) {
   const [open, setOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
-  // Batch 12: firma sozlamalari (admin) — modal
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const closeSettings = useCallback(() => setSettingsOpen(false), [])
+  // Batch 11: xatolik haqida xabar (sozlamalar endi alohida sahifa — /settings)
+  const [bugOpen, setBugOpen] = useState(false)
+  const closeBug = useCallback(() => setBugOpen(false), [])
+  const { pathname } = useLocation()
   const closePassword = useCallback(() => setPasswordOpen(false), [])
   const closeMenu = useCallback(() => setOpen(false), [])
   const { profile, signOut } = useAuth()
@@ -43,7 +43,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
         ref={aside}
         tabIndex={-1}
         className={cx(
-          'fixed inset-y-0 left-0 z-40 flex w-72 flex-col bg-navy text-white outline-none transition-[transform,visibility] duration-200',
+          'fixed inset-y-0 left-0 z-40 flex w-72 flex-col bg-navy text-white outline-none transition-[transform,visibility] duration-200 print:hidden',
           'lg:sticky lg:top-0 lg:z-30 lg:h-screen lg:w-[76px] lg:translate-x-0 xl:w-64',
           open ? 'visible translate-x-0 shadow-float' : 'invisible -translate-x-full lg:visible',
         )}
@@ -115,20 +115,32 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
                 <p className="truncate text-xs text-white/60">{t.roles[profile.role]}</p>
               </div>
             </div>
-            {(profile.role === 'admin' || profile.role === 'super_admin') && (
-              <button
-                type="button"
-                title={t.settings.open}
-                onClick={() => {
-                  closeMenu()
-                  setSettingsOpen(true)
-                }}
-                className="mt-1 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-2 text-sm text-white/75 hover:bg-white/10 hover:text-white xl:justify-start xl:px-3"
-              >
-                <Settings aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
-                <span className="lg:sr-only xl:not-sr-only">{t.settings.open}</span>
-              </button>
-            )}
+            <NavLink
+              to="/help"
+              title={t.help.open}
+              onClick={closeMenu}
+              className={({ isActive }) =>
+                cx(
+                  'mt-1 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-2 text-sm hover:bg-white/10 hover:text-white xl:justify-start xl:px-3',
+                  isActive ? 'bg-ice/10 text-white' : 'text-white/75',
+                )
+              }
+            >
+              <CircleHelp aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
+              <span className="truncate lg:sr-only xl:not-sr-only">{t.help.open}</span>
+            </NavLink>
+            <button
+              type="button"
+              title={t.bugReport.open}
+              onClick={() => {
+                closeMenu()
+                setBugOpen(true)
+              }}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-2 text-sm text-white/75 hover:bg-white/10 hover:text-white xl:justify-start xl:px-3"
+            >
+              <Bug aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
+              <span className="truncate lg:sr-only xl:not-sr-only">{t.bugReport.open}</span>
+            </button>
             <div className="mt-1 flex gap-1 lg:flex-col xl:flex-row">
               <button
                 type="button"
@@ -165,7 +177,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-paper/95 px-2 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-paper/95 px-2 backdrop-blur lg:hidden print:hidden">
           <IconButton
             label={t.common.openMenu}
             aria-expanded={open}
@@ -176,13 +188,13 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
           <BrandMark className="size-7 shrink-0" />
           <span className="truncate text-base font-semibold text-ink">{t.app.name}</span>
         </header>
-        <main className="w-full max-w-[1280px] flex-1 px-4 py-4 md:px-6 md:py-6 lg:px-8 lg:py-8">
+        <main className="w-full max-w-[1280px] flex-1 px-4 py-4 md:px-6 md:py-6 lg:px-8 lg:py-8 print:max-w-none print:p-0">
           {children ?? <Outlet />}
         </main>
       </div>
-      {settingsOpen && profile && (
-        <Modal title={t.settings.title} onClose={closeSettings} size="lg">
-          <CompanySettingsForm companyId={profile.company_id} canEdit />
+      {bugOpen && profile && (
+        <Modal title={t.bugReport.title} onClose={closeBug}>
+          <BugReportForm screen={pathname} onClose={closeBug} />
         </Modal>
       )}
       {passwordOpen && (

@@ -13,3 +13,4 @@ supabase/.branches
 .DS_Store
 Thumbs.db
 .claude/settings.local.json
+.vitest

@@ -4,6 +4,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   type AlertPayload,
+  type BugReportPayload,
+  bugReportKeyboard,
+  formatBugReport,
+  webBugsUrl,
   type CashStatementPayload,
   type DailyReportPayload,
   type RequestOverduePayload,
@@ -363,5 +367,63 @@ describe('tugmalar', () => {
   it('alertOpenUrl mavjud query bilan; noto\'g\'ri URL — o\'zgarmaydi', () => {
     expect(alertOpenUrl('https://a.uz/tg?x=1', ID)).toBe(`https://a.uz/tg?x=1&alert=${ID}`)
     expect(alertOpenUrl('not a url', ID)).toBe('not a url')
+  })
+})
+
+describe('formatBugReport (Batch 11)', () => {
+  const bug = (over: Partial<BugReportPayload> = {}): BugReportPayload => ({
+    bug_report_id: 'b1',
+    company_id: 'c1',
+    company_name: 'Demo qurilish',
+    reporter_id: 'p1',
+    reporter_name: 'Sherzod Aliyev',
+    reporter_role: 'prorab',
+    screen: '/tg/movement',
+    message: 'Saqlash tugmasi <ishlamayapti> & qotib qoldi',
+    message_truncated: false,
+    client: 'tg 8.0 · android',
+    app_version: '0.11.0',
+    has_photo: true,
+    created_at: '2026-10-29T09:32:00Z',
+    ...over,
+  })
+  it("to'liq xabar", () => {
+    expect(formatBugReport(bug())).toBe(
+      '🐞 <b>Xatolik haqida xabar</b>\nSherzod Aliyev · Prorab\nFirma: Demo qurilish\nEkran: /tg/movement\n' +
+        '<blockquote>Saqlash tugmasi &lt;ishlamayapti&gt; &amp; qotib qoldi</blockquote>\n' +
+        "<i>tg 8.0 · android · v0.11.0</i>\n📎 Rasm ilova qilingan — veb panelda ko'ring\n29.10.2026 14:32",
+    )
+  })
+  it('kesilgan — "…", rasmsiz, rol tarjimasi (super_admin, taminotchi)', () => {
+    const t = formatBugReport(bug({ message_truncated: true, has_photo: false, reporter_role: 'taminotchi' }))
+    expect(t).toContain('qotib qoldi…</blockquote>')
+    expect(t).toContain('Sherzod Aliyev · Ta’minotchi')
+    expect(t).not.toContain('Rasm ilova')
+    expect(formatBugReport(bug({ reporter_role: 'super_admin' }))).toContain('· Tizim egasi')
+  })
+  it("null maydonlar — noma'lum foydalanuvchi, matn yo'q, qurilma qatori yo'q", () => {
+    const t = formatBugReport(
+      bug({ reporter_name: null, reporter_role: null, company_name: null, screen: null, message: null, client: null, app_version: null, has_photo: null }),
+    )
+    expect(t).toBe("🐞 <b>Xatolik haqida xabar</b>\nNoma'lum foydalanuvchi\n<i>(matn yo‘q)</i>\n29.10.2026 14:32")
+  })
+  it("noma'lum rol escape qilinadi; nomlar va ekran escape", () => {
+    const t = formatBugReport(bug({ reporter_role: '<x>', reporter_name: 'A<b>', screen: '/tg?a=1&b=2' }))
+    expect(t).toContain('A&lt;b&gt; · &lt;x&gt;')
+    expect(t).toContain('Ekran: /tg?a=1&amp;b=2')
+  })
+  it("juda uzun matn (himoya) — 1000 belgigacha, '…', 4096 ga sig'adi", () => {
+    const t = formatBugReport(bug({ message: 'x'.repeat(5000) }))
+    expect(t).toContain(`${'x'.repeat(1000)}…</blockquote>`)
+    expect(t.length).toBeLessThanOrEqual(TELEGRAM_MAX_LENGTH)
+  })
+  it('webBugsUrl va tugma (url, web_app emas)', () => {
+    expect(webBugsUrl('https://app.example.uz/tg')).toBe('https://app.example.uz/settings?tab=bugs')
+    expect(webBugsUrl('https://app.example.uz/tg/')).toBe('https://app.example.uz/settings?tab=bugs')
+    expect(webBugsUrl('https://x.uz/app/tg')).toBe('https://x.uz/app/settings?tab=bugs')
+    expect(webBugsUrl('https://x.uz')).toBe('https://x.uz/settings?tab=bugs')
+    expect(bugReportKeyboard('https://app.example.uz/tg')).toEqual({
+      inline_keyboard: [[{ text: 'Ochish', url: 'https://app.example.uz/settings?tab=bugs' }]],
+    })
   })
 })

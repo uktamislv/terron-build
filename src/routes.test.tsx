@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import * as authRepo from '@/data/authRepo'
 import type { Profile } from '@/data/types'
+import { guides } from '@/i18n/guides.uz'
 import { makeProfile } from '@/test/fixtures'
 import { t } from './i18n'
 import { routes } from './routes'
@@ -37,6 +38,10 @@ vi.mock('@/data/reportsRepo', async (orig) => ({
 vi.mock('@/data/alertsRepo', () => ({ listRecentAlerts: vi.fn(async () => []) }))
 vi.mock('@/data/cashRepo', () => ({ listBalances: vi.fn(async () => []) }))
 vi.mock('@/data/objectMembersRepo', () => ({ listObjectMembers: vi.fn(async () => []) }))
+vi.mock('@/data/companiesRepo', async (orig) => ({
+  ...(await orig<typeof import('@/data/companiesRepo')>()),
+  getCompanySettings: vi.fn(async () => (await import('@/data/companiesRepo')).DEFAULT_COMPANY_SETTINGS),
+}))
 
 const repo = vi.mocked(authRepo)
 
@@ -205,5 +210,44 @@ describe('majburiy parol o‘zgartirish', () => {
     renderAt('/')
     fireEvent.click(await screen.findByRole('button', { name: t.password.change }))
     expect(await screen.findByRole('dialog', { name: t.password.change })).toBeInTheDocument()
+  })
+})
+
+describe('Batch 11: Sozlamalar sahifasi va Yordam', () => {
+  it('admin — "Sozlamalar" yon menyuning oxirgi bandi va /settings sahifasi', async () => {
+    signedInAs(makeProfile('admin'))
+    const router = renderAt('/')
+    const links = (await sideNav()).getAllByRole('link')
+    expect(links.at(-1)).toHaveTextContent(t.web.nav.settings)
+    fireEvent.click(links.at(-1) as HTMLElement)
+    expect(await screen.findByRole('heading', { name: t.settings.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/settings')
+    expect(screen.getByRole('tab', { name: t.settings.tabCompany })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: t.settings.tabBugs })).toBeInTheDocument()
+  })
+
+  it('direktor /settings — "Ruxsat yo‘q", menyuda yo‘q', async () => {
+    signedInAs(makeProfile('direktor'))
+    renderAt('/settings')
+    expect(await screen.findByText(t.forbidden.title)).toBeInTheDocument()
+    expect((await sideNav()).queryByRole('link', { name: t.web.nav.settings })).not.toBeInTheDocument()
+  })
+
+  it('prorab — yon menyuda "Yordam" → /help, o‘z roli qo‘llanmasi', async () => {
+    signedInAs(makeProfile('prorab'))
+    const router = renderAt('/')
+    fireEvent.click(await screen.findByRole('link', { name: t.help.open }))
+    expect(await screen.findByRole('heading', { name: guides.prorab.title })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/help')
+  })
+
+  it('/help: "Chop etish" — window.print; haydovchi ham ochadi', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => undefined)
+    signedInAs(makeProfile('haydovchi'))
+    renderAt('/help')
+    expect(await screen.findByRole('heading', { name: guides.haydovchi.title })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t.help.print }))
+    expect(print).toHaveBeenCalledTimes(1)
+    print.mockRestore()
   })
 })

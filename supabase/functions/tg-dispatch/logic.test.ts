@@ -23,6 +23,7 @@ import {
   formatAlertMessage,
   formatDailyReport,
   alertKeyboard,
+  formatBugReport,
   formatAlertReminder,
   formatCashStatement,
   formatRequestOverdue,
@@ -582,5 +583,34 @@ describe('Batch 12 — yangi kind\'lar, qabul qiluvchilar, tugmalar', () => {
     await handleDispatch(SECRET, f.deps)
     expect(f.completed[0]).toMatchObject({ id: 'x1', ok: false, final: true })
     expect(f.sent).toEqual([])
+  })
+})
+
+describe('Batch 11 — bug_report', () => {
+  const BUG = {
+    bug_report_id: 'b1', company_id: 'c1', company_name: 'Demo', reporter_id: 'p1', reporter_name: 'Ali',
+    reporter_role: 'prorab', screen: '/tg', message: 'xato', message_truncated: false, client: 'tg 8.0',
+    app_version: '0.11.0', has_photo: false, created_at: '2026-10-29T09:32:00Z',
+  }
+  const bugRow = (id: string): OutboxRow => ({ id, company_id: 'c1', kind: 'bug_report', payload: { ...BUG, bug_report_id: id }, attempts: 1, delivered_chat_ids: [] })
+
+  it('shablon, url tugmasi (veb sozlamalar), qabul qiluvchilar qator bo\'yicha', async () => {
+    const f = fake({ rows: [bugRow('b1')], recipients: { c1: [R(1, 'admin'), R(2, 'super_admin')] }, miniAppUrl: 'https://app.example.uz/tg' })
+    const r = await handleDispatch(SECRET, f.deps)
+    expect(r.body).toEqual({ processed: 1, sent: 1, failed: 0 })
+    expect(f.recipientCalls).toEqual(['b1'])
+    expect(f.sent.map((s) => s.text)).toEqual([formatBugReport(BUG), formatBugReport(BUG)])
+    for (const s of f.sent) {
+      expect(s.markup).toEqual({ inline_keyboard: [[{ text: 'Ochish', url: 'https://app.example.uz/settings?tab=bugs' }]] })
+    }
+  })
+
+  it('ko\'p bo\'lsa ham digest qilinmaydi — har biri alohida', async () => {
+    const rows = Array.from({ length: DIGEST_THRESHOLD + 3 }, (_, i) => bugRow(`b${i}`))
+    const f = fake({ rows, recipients: { c1: [R(1, 'admin')] } })
+    await handleDispatch(SECRET, f.deps)
+    expect(f.sent).toHaveLength(rows.length)
+    expect(f.sent.every((s) => s.text.startsWith('🐞'))).toBe(true)
+    expect(f.completed.every((c) => c.ok)).toBe(true)
   })
 })

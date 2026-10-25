@@ -6,6 +6,7 @@ import { RouteErrorPage } from '@/components/ErrorBoundary'
 import { NotFound } from '@/components/NotFound'
 import { LazyBoundary } from '@/components/LazyBoundary'
 import { ToastProvider } from '@/components/ui'
+import { t } from '@/i18n'
 import type { TgNavKey, WebNavKey } from '@/domain/roles'
 import { TgAuthGate } from '@/tg/TgAuthGate'
 import { RequireTgNav, TgIndex, TgLayout } from '@/tg/TgLayout'
@@ -31,6 +32,8 @@ const AlertsPage = page(() => import('@/web/pages/AlertsPage'), 'AlertsPage')
 const HistoryPage = page(() => import('@/web/pages/HistoryPage'), 'HistoryPage')
 const UsersPage = page(() => import('@/web/pages/UsersPage'), 'UsersPage')
 const ObjectsPage = page(() => import('@/web/pages/ObjectsPage'), 'ObjectsPage')
+const SettingsPage = page(() => import('@/web/pages/SettingsPage'), 'SettingsPage')
+const HelpPage = page(() => import('@/web/pages/HelpPage'), 'HelpPage')
 
 const TgHomePage = page(() => import('@/tg/pages/TgHomePage'), 'TgHomePage')
 const MovementPage = page(() => import('@/tg/pages/MovementPage'), 'MovementPage')
@@ -38,6 +41,7 @@ const PurchasePage = page(() => import('@/tg/pages/PurchasePage'), 'PurchasePage
 const RequestPage = page(() => import('@/tg/pages/RequestPage'), 'RequestPage')
 const InventoryPage = page(() => import('@/tg/pages/InventoryPage'), 'InventoryPage')
 const MinePage = page(() => import('@/tg/pages/MinePage'), 'MinePage')
+const TgHelpPage = page(() => import('@/tg/pages/TgHelpPage'), 'TgHelpPage')
 
 // Tayyor veb sahifalar; qolganlari hozircha "Tez orada"
 const webPages: Partial<Record<WebNavKey, ComponentType>> = {
@@ -51,6 +55,7 @@ const webPages: Partial<Record<WebNavKey, ComponentType>> = {
   history: HistoryPage,
   users: UsersPage,
   objects: ObjectsPage,
+  settings: SettingsPage,
 }
 
 const webSections = (Object.keys(webNavItems) as WebNavKey[]).filter((key) => key !== 'dashboard')
@@ -116,6 +121,8 @@ export const routes: RouteObject[] = [
                 path: webNavItems[key].to.slice(1),
                 element: <RequireNav navKey={key}>{render(webPages[key], webNavItems[key].label)}</RequireNav>,
               })),
+              // Yordam — har bir rol uchun (menyu bandi emas, yon menyudagi foydalanuvchi bloki)
+              { path: 'help', element: render(HelpPage, t.help.title) },
               { path: '*', element: <NotFound /> },
             ],
           },
@@ -135,6 +142,8 @@ export const routes: RouteObject[] = [
             path: tgNavItems[key].to.replace('/tg/', ''),
             element: <RequireTgNav navKey={key}>{render(tgPages[key], tgNavItems[key].label)}</RequireTgNav>,
           })),
+          // Yordam — har bir rol uchun (pastki menyu emas, sarlavhadagi "?")
+          { path: 'help', element: render(TgHelpPage, t.help.title) },
           { path: '*', element: <NotFound homePath="/tg" /> },
         ],
       },

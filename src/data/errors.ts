@@ -131,6 +131,9 @@ export const SERVER_HINTS = {
   purchase_request_invalid: { showServerMessage: false },
   supplier_tin_duplicate: { showServerMessage: false },
   receipt_lookup_invalid: { showServerMessage: false },
+  // Batch 11 (docs/handoff-design.md): xatolik xabarlari — 10 daqiqada ≤ 5 ta
+  bug_report_rate_limited: { showServerMessage: false },
+  bug_report_invalid: { showServerMessage: false },
 } as const satisfies Record<string, { showServerMessage: boolean }>
 
 export type ServerHintCode = keyof typeof SERVER_HINTS

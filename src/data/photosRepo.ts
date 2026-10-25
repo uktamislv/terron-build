@@ -30,14 +30,24 @@ export function isPhotoError(error: unknown): boolean {
   return error instanceof RepoError && PHOTO_ERROR_CODES.includes(error.code)
 }
 
-/** `{company_id}/{yyyy}/{mm}/{uuid}.{ext}` — kichik harf, oy Asia/Tashkent bo'yicha. */
-export function photoPath(companyId: string, contentType: string, now: Date = new Date()): string {
+/**
+ * Rasm turi: `ops` — harakat/xarid rasmlari; `bug` — xatolik xabari skrinshoti (Batch 11, alohida
+ * papka: uni istalgan faol foydalanuvchi yuklaydi, faqat o'zi va firma admini ko'radi).
+ */
+export type PhotoKind = 'ops' | 'bug'
+
+/**
+ * `{company_id}/{yyyy}/{mm}/{uuid}.{ext}` (`bug` — `{company_id}/bug/{yyyy}/{mm}/{uuid}.{ext}`) —
+ * kichik harf, oy Asia/Tashkent bo'yicha.
+ */
+export function photoPath(companyId: string, contentType: string, now: Date = new Date(), kind: PhotoKind = 'ops'): string {
   const p: Record<string, string> = {}
   for (const x of new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit' }).formatToParts(now)) {
     p[x.type] = x.value
   }
   const ext = EXT_BY_TYPE[contentType] ?? 'jpg'
-  return `${companyId.toLowerCase()}/${p.year}/${p.month}/${uuid()}.${ext}`
+  const folder = kind === 'bug' ? 'bug/' : ''
+  return `${companyId.toLowerCase()}/${folder}${p.year}/${p.month}/${uuid()}.${ext}`
 }
 
 interface StorageLikeError {
@@ -60,10 +70,10 @@ export function toPhotoError(error: unknown): RepoError {
 }
 
 /** Rasmni private `photos` bucket'ga yuklaydi (har safar yangi yo'l, `upsert: false`). */
-export async function uploadPhoto(file: Blob, companyId: string): Promise<string> {
+export async function uploadPhoto(file: Blob, companyId: string, kind: PhotoKind = 'ops'): Promise<string> {
   // contentType — faqat haqiqiy tur; ruxsat etilmagan tur yuborilmaydi
   if (!EXT_BY_TYPE[file.type]) throw new RepoError('photo_type')
-  const path = photoPath(companyId, file.type)
+  const path = photoPath(companyId, file.type, new Date(), kind)
   let result: { error: unknown }
   try {
     result = await getSupabase().storage.from(PHOTOS_BUCKET).upload(path, file, { upsert: false, contentType: file.type })

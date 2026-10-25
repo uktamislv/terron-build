@@ -103,13 +103,13 @@ describe('Sozlamalar', () => {
     expect(await screen.findByText(ts.saved)).toBeInTheDocument()
   })
 
-  it('admin — yon menyuda "Sozlamalar" modal; direktor ko‘rmaydi', async () => {
+  it('Batch 11: admin — yon menyuda "Sozlamalar" havolasi (/settings, modal emas); direktor ko‘rmaydi', () => {
     const { unmount } = render(withAuth('admin', <WebLayout>{null}</WebLayout>))
-    fireEvent.click(screen.getAllByRole('button', { name: ts.open })[0] as HTMLElement)
-    expect(await screen.findByLabelText(ts.cashMaxDays)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t.web.nav.settings })).toHaveAttribute('href', '/settings')
+    expect(screen.queryByRole('button', { name: ts.open })).not.toBeInTheDocument()
     unmount()
     render(withAuth('direktor', <WebLayout>{null}</WebLayout>))
-    expect(screen.queryByRole('button', { name: ts.open })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t.web.nav.settings })).not.toBeInTheDocument()
   })
 })
 

@@ -14,6 +14,7 @@ const ALL_WEB: WebNavKey[] = [
   'history',
   'users',
   'objects',
+  'settings',
 ]
 
 const EXPECTED_WEB: Record<Role, WebNavKey[]> = {

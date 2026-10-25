@@ -96,3 +96,47 @@
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * Chop etish (Batch 11): qo'llanma — bir rol = bir A4 sahifa. Menyu, sarlavha va almashtirgich
+ * `print:hidden` bilan yashiriladi; bu yerda — sahifa o'lchami va ixcham matn.
+ */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm 14mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  .guide-print {
+    gap: 2.5mm !important;
+    font-size: 9.5pt;
+    line-height: 1.32;
+    break-after: page;
+  }
+  .guide-print h2 {
+    font-size: 15pt;
+    line-height: 1.2;
+  }
+  .guide-print h3 {
+    font-size: 11pt;
+    margin-top: 1mm;
+  }
+  .guide-print h4,
+  .guide-print .text-sm {
+    font-size: 9.5pt;
+    line-height: 1.32;
+  }
+  .guide-print .guide-section,
+  .guide-print .guide-alert {
+    gap: 1mm !important;
+    break-inside: avoid;
+  }
+  .guide-print ol,
+  .guide-print ul,
+  .guide-print dl {
+    gap: 0.6mm !important;
+  }
+}

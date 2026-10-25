@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { isPhotoError, uploadPhoto } from '@/data/photosRepo'
+import { isPhotoError, uploadPhoto, type PhotoKind } from '@/data/photosRepo'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { preparePhoto } from '@/lib/image'
@@ -12,7 +12,7 @@ import type { PickedPhoto } from './PhotoPicker'
  * saqlash xato bo'lsa, qayta urinishda rasm qayta yuklanmaydi. Rasm xatosi saqlashni to'xtatmaydi:
  * "Qayta urinish" yoki "Rasmsiz saqlash".
  */
-export function usePhotoDraft() {
+export function usePhotoDraft({ kind = 'ops' }: { kind?: PhotoKind } = {}) {
   const [photo, setPhoto] = useState<PickedPhoto | null>(null)
   const [preparing, setPreparing] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -63,11 +63,11 @@ export function usePhotoDraft() {
       }
       if (!photo) return null
       if (uploaded && uploaded.blob === photo.blob) return uploaded.path
-      const path = await uploadPhoto(photo.blob, companyId)
+      const path = await uploadPhoto(photo.blob, companyId, kind)
       setUploaded({ blob: photo.blob, path })
       return path
     },
-    [photo, uploaded],
+    [photo, uploaded, kind],
   )
 
   /** Saqlash xatosi rasm bilan bog'liq bo'lsa — rasm bo'limida ko'rsatiladi (true qaytaradi). */

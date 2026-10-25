@@ -41,6 +41,7 @@ export type WebNavKey =
   | 'history'
   | 'users'
   | 'objects'
+  | 'settings'
 
 export type TgNavKey = 'home' | 'movement' | 'purchase' | 'request' | 'inventory' | 'mine'
 
@@ -57,6 +58,8 @@ const WEB_ORDER: readonly WebNavKey[] = [
   'history',
   'users',
   'objects',
+  // Batch 11: firma sozlamalari va xatolik xabarlari — faqat admin, super_admin
+  'settings',
 ]
 
 /** Barcha Mini App bandlar — barqaror tartib (pastki menyudagi tartib). */
