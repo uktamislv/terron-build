@@ -179,6 +179,7 @@ export type AlertType =
   | 'smetadan_ortiq_sorov'
   | 'yozuv_ochirildi'
   | 'smeta_ozgarishi'
+  | 'otkazma_farqi'
 
 export const ALERT_TYPES: readonly AlertType[] = [
   'xarid_qabul_farqi',
@@ -189,6 +190,7 @@ export const ALERT_TYPES: readonly AlertType[] = [
   'smetadan_ortiq_sorov',
   'yozuv_ochirildi',
   'smeta_ozgarishi',
+  'otkazma_farqi',
 ]
 
 export type AlertStatus = 'yangi' | 'korildi' | 'yopildi'
@@ -354,4 +356,139 @@ export interface EstimateImportTemplate {
   last_used_at: string | null
   updated_at: string | null
   created_by_name: string | null
+}
+
+/** `material_requests.status` — bazadagi `request_status` enum. */
+export type RequestStatus = 'kutilmoqda' | 'tasdiqlandi' | 'rad' | 'xarid_qilindi'
+
+export const REQUEST_STATUSES: readonly RequestStatus[] = ['kutilmoqda', 'tasdiqlandi', 'rad', 'xarid_qilindi']
+
+/** Material so'rovi (prorab) — obyekt, material, kiritgan va hal qilgan nomlari bilan. Miqdorlar — satr. */
+export interface MaterialRequest {
+  id: string
+  company_id: string
+  object_id: string
+  material_id: string
+  unit_id: string
+  qty_input: Dec
+  unit_input: string
+  unit_variant: string | null
+  qty_base: Dec
+  status: RequestStatus
+  /** `yyyy-mm-dd` yoki null. */
+  needed_by: string | null
+  decided_by: string | null
+  decided_at: string | null
+  /** Rad etish (yoki tasdiqlash) sababi — admin yozadi. */
+  decision_note: string | null
+  /** "Xarid qilindi" da bog'langan xarid (ixtiyoriy). */
+  purchase_id: string | null
+  note: string | null
+  created_by: string | null
+  created_at: string
+  deleted_at: string | null
+  object_name: string | null
+  material_name: string | null
+  base_unit: string | null
+  created_by_name: string | null
+  decided_by_name: string | null
+}
+
+/** `transfers.status` — bazadagi `transfer_status` enum. */
+export type TransferStatus = 'yuborildi' | 'qabul_qilindi' | 'bekor'
+
+export const TRANSFER_STATUSES: readonly TransferStatus[] = ['yuborildi', 'qabul_qilindi', 'bekor']
+
+/** Obyektlar orasidagi o'tkazma. Boshqa obyekt nomi RLS tufayli ko'rinmasligi mumkin (null). */
+export interface Transfer {
+  id: string
+  company_id: string
+  from_object_id: string
+  to_object_id: string
+  material_id: string
+  unit_id: string
+  qty_input: Dec
+  unit_input: string
+  unit_variant: string | null
+  qty_base: Dec
+  status: TransferStatus
+  /** Qabul qilingan miqdor (asosiy birlikda); qabul qilinmagan — null. */
+  received_qty_base: Dec | null
+  received_at: string | null
+  received_by: string | null
+  cancel_reason: string | null
+  note: string | null
+  created_by: string | null
+  created_at: string
+  deleted_at: string | null
+  from_object_name: string | null
+  to_object_name: string | null
+  material_name: string | null
+  base_unit: string | null
+  created_by_name: string | null
+}
+
+export type InventoryStatus = 'draft' | 'submitted'
+
+/** Inventarizatsiya (sanash) hisobi. */
+export interface InventoryCount {
+  id: string
+  company_id: string
+  object_id: string
+  status: InventoryStatus
+  counted_at: string
+  note: string | null
+  applied_at: string | null
+  applied_by: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  object_name: string | null
+  created_by_name: string | null
+  /** O'chirilmagan qatorlar soni. */
+  item_count: number
+}
+
+/** Sanalgan qator. `qty_counted` — asosiy birlikda (baza hisoblaydi), `qty_expected` — yuborilgandan keyin. */
+export interface InventoryCountItem {
+  id: string
+  inventory_count_id: string
+  material_id: string
+  qty_counted: Dec
+  qty_expected: Dec | null
+  qty_input: Dec | null
+  unit_id: string | null
+  updated_at: string
+  material_name: string | null
+  base_unit: string | null
+}
+
+/** `norm_usage` view qatori — obyekt × material: norma, isrof bilan norma, sarf, ochiq so'rovlar. */
+export interface NormUsage {
+  company_id: string
+  object_id: string
+  material_id: string
+  estimate_id: string | null
+  norm_qty_base: Dec
+  allowed_qty_base: Dec
+  consumed_qty_base: Dec
+  /** Obyektga yetkazilgan (kirim + transfer_in) Σ qty_base. */
+  delivered_qty_base: Dec
+  requested_open_qty_base: Dec
+  remaining_qty_base: Dec
+  usage_pct: Dec | null
+}
+
+/** `inventory_count_details` RPC qatori (yakunlangan hisob; admin, direktor). Sanalmagan — `qty_counted` null. */
+export interface InventoryDetailRow {
+  material_id: string
+  material_name: string | null
+  base_unit: string | null
+  qty_input: Dec | null
+  unit_id: string | null
+  qty_counted: Dec | null
+  qty_expected: Dec | null
+  /** counted − expected (ishorali). */
+  diff: Dec | null
+  shortage_value: Dec | null
 }

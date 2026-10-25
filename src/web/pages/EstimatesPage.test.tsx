@@ -50,6 +50,7 @@ vi.mock('@/data/estimatesRepo', async (importOriginal) => ({
   importEstimate: vi.fn(),
   setCurrentEstimate: vi.fn(async () => undefined),
 }))
+vi.mock('@/data/normsRepo', () => ({ listNormUsage: vi.fn(async () => []) }))
 vi.mock('@/data/estimateTemplatesRepo', () => ({
   findTemplateBySignature: vi.fn(async () => null),
   saveTemplate: vi.fn(async () => undefined),

@@ -25,7 +25,8 @@ Xabarlar to'g'ridan-to'g'ri triggerdan yuborilmaydi — avval navbatga (outbox) 
 
 - `xarid_qabul_farqi`, `narx_ogishi`, `yozuv_ochirildi`, `normadan_oshish`, `inventarizatsiya_kamomadi`, `smetadan_ortiq_sorov` — darhol.
 - `ozi_qabul_qilgan` (`severity = 'belgi'`) — darhol **emas**, faqat kunlik hisobotda soni.
-- Alert yangilanishi (`details` o'zgarishi) qayta yubormaydi.
+- Alert yangilanishi (`details` o'zgarishi) qayta yubormaydi — istisno (Batch 8): `normadan_oshish` kuchaysa (jiddiy / over_pct ≥ 50 / ≥ 100) outbox'ga `escalation` = 1/2/3 bilan yangi qator (payload `escalation` maydoni bilan), har daraja bir marta; unique `(alert_id, escalation)`.
+- `otkazma_farqi` (Batch 8) — darhol; `direction`: `under` / `over` / `not_received`.
 - **Spam himoyasi:** bitta dispatch chaqiruvida bitta firmadan 5 tadan ko'p `alert` qatori olinsa — `formatAlertDigest` bilan bitta xabar (har qabul qiluvchiga bitta); qatorlarning hammasi birga yakunlanadi. Bitta chatga ketma-ket yuborishlar orasida ~1 s.
 
 ## Qabul qiluvchilar

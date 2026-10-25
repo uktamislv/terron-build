@@ -71,12 +71,13 @@ const WEB_NAV: Record<Role, readonly WebNavKey[]> = {
   prorab: ['dashboard', 'movements', 'requests'],
   omborchi: ['dashboard', 'movements'],
   haydovchi: [],
-  tekshiruvchi: ['dashboard', 'movements'],
+  // Ko'r-ko'rona sanash: tekshiruvchi qoldiq va harakatlarni ko'rmaydi (Batch 8)
+  tekshiruvchi: ['dashboard'],
 }
 
 const TG_NAV: Record<Role, readonly TgNavKey[]> = {
-  super_admin: ['home', 'movement', 'purchase', 'mine'],
-  admin: ['home', 'movement', 'purchase', 'mine'],
+  super_admin: ['home', 'movement', 'purchase', 'inventory', 'mine'],
+  admin: ['home', 'movement', 'purchase', 'inventory', 'mine'],
   direktor: ['home', 'mine'],
   buxgalter: ['mine'],
   taminotchi: ['purchase', 'mine'],
@@ -109,6 +110,9 @@ export type Action =
   | 'create_movement'
   | 'create_request'
   | 'approve_request'
+  | 'mark_request_purchased'
+  | 'manage_transfers'
+  | 'apply_inventory'
   | 'run_inventory'
   | 'view_audit'
   | 'view_alerts'
@@ -127,7 +131,10 @@ const ACTIONS: Record<Action, readonly Role[]> = {
   create_purchase: [...ADMINS, 'taminotchi', 'prorab', 'haydovchi'], // purchases insert
   create_movement: [...ADMINS, 'prorab', 'omborchi'], // movements insert (kirim/chiqim)
   create_request: [...ADMINS, 'prorab'], // material_requests insert
-  approve_request: [...ADMINS, 'taminotchi'], // material_requests status: kutilmoqda → tasdiqlandi | rad
+  approve_request: ADMINS, // material_requests: kutilmoqda → tasdiqlandi | rad (Batch 8: faqat admin, decision_note)
+  mark_request_purchased: [...ADMINS, 'taminotchi'], // material_requests: tasdiqlandi → xarid_qilindi (+ purchase_id)
+  manage_transfers: ADMINS, // veb: o'tkazmani bekor qilish (cancel_transfer)
+  apply_inventory: ADMINS, // apply_inventory_adjustments — qoldiqni tuzatish
   run_inventory: [...ADMINS, 'tekshiruvchi'], // inventory_counts insert
   view_audit: [...ADMINS, 'direktor'], // audit_log select
   view_alerts: [...ADMINS, 'direktor', 'buxgalter'], // alerts select

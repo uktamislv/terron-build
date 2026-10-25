@@ -16,6 +16,7 @@ import { EstimateItemsTable } from '../estimates/EstimateItemsTable'
 import { ImportWizard } from '../estimates/ImportWizard'
 import { MakeCurrentDialog } from '../estimates/MakeCurrentDialog'
 import { estimateItemsToDiff } from '../estimates/wizardModel'
+import { NormUsageTable } from '../norms/NormUsageTable'
 
 const te = t.estimates
 
@@ -331,6 +332,7 @@ export function EstimatesPage() {
           {list.length > 1 && <ComparePanel key={objectId} estimates={list} />}
         </>
       )}
+      {!opened && objectId && list.some((e) => e.is_current) && <NormUsageTable key={objectId} objectId={objectId} />}
     </div>
   )
 }

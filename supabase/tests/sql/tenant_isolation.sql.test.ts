@@ -170,9 +170,11 @@ describe('kompozit FK: A yozuvi B materiali/obyekti/profiliga bog`lanmaydi (2350
     [
       'transfers → B obyektga',
       () => ({
+        // Batch 8: transfers ga faqat RPC ichida (GUC) yoziladi — RPC holati taqlid qilinadi
         sql: `insert into public.transfers (company_id, from_object_id, to_object_id, material_id, qty_input, unit_input,
                 qty_base, created_by)
-              values ($1, $2, $3, $4, 1, 'kg', 1, $5)`,
+              select $1::uuid, $2::uuid, $3::uuid, $4::uuid, 1, 'kg', 1, $5::uuid
+                from (select set_config('terron.transfer_rpc', 'on', true)) g`,
         params: [F.A.id, F.A.ids.obj1, F.B.ids.obj1, F.A.ids.m1, F.A.users.admin.profileId],
       }),
     ],

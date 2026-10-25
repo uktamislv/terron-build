@@ -55,3 +55,13 @@ export function formatQty(value: Dec | bigint, maxFrac?: number): string {
   if (dec === null) return raw
   return formatDecUz(maxFrac === undefined ? dec : round(dec, maxFrac))
 }
+
+/** Toshkent bo'yicha bugungi sana + `offsetDays` kun, `yyyy-mm-dd` (bazadagi `date` ustunlar uchun). */
+export function tashkentIsoDate(offsetDays = 0, now: Date = new Date()): string {
+  const p = parts(new Date(now.getTime() + offsetDays * 24 * 60 * 60 * 1000), {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+  return `${p.year}-${p.month}-${p.day}`
+}

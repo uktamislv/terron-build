@@ -30,6 +30,7 @@ import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
 import { PhotoErrorBox, PhotoField } from '../entry/PhotoPicker'
 import { UnitChips } from '../entry/UnitChips'
 import { usePhotoDraft } from '../entry/usePhotoDraft'
+import { IncomingTransfers } from '../movement/IncomingTransfers'
 import { LinkedPurchases } from '../movement/LinkedPurchases'
 import { loadEntryType, loadLastObject, saveEntryType, saveLastObject } from '../movement/prefs'
 import { getWebApp, haptic } from '../telegram'
@@ -73,6 +74,8 @@ export function MovementPage() {
   const savingRef = useRef(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedText, setSavedText] = useState<string | null>(null)
+  // Kelayotgan o'tkazmalar ro'yxati ochiq — forma yashiriladi
+  const [incomingOpen, setIncomingOpen] = useState(false)
 
   useEffect(() => {
     if (!companyId) return
@@ -283,8 +286,8 @@ export function MovementPage() {
   }, [step, clearPhotoError])
   const canGoBack = step === 'details' || (step === 'object' && Boolean(objectId)) || (step === 'material' && manyObjects)
 
-  useBackButton(canGoBack ? onBack : null)
-  useMainButton(tm.save, step === 'details' ? onMainButton : null, preparingPhoto, saving)
+  useBackButton(canGoBack && !incomingOpen ? onBack : null)
+  useMainButton(tm.save, step === 'details' && !incomingOpen ? onMainButton : null, preparingPhoto, saving)
   const insideTelegram = getWebApp() !== null
 
   if (!profile) return null
@@ -293,166 +296,173 @@ export function MovementPage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-xl font-bold text-brand-dark">{tm.title}</h1>
 
-      <div role="group" aria-label={tm.typeLabel} className="grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1">
-        {ENTRY_TYPES.map((k) => (
-          <button
-            key={k}
-            type="button"
-            aria-pressed={type === k}
-            onClick={() => chooseType(k)}
-            className={`min-h-12 rounded-xl text-base font-semibold ${
-              type === k ? (k === 'kirim' ? 'bg-ok text-white' : 'bg-brand text-white') : 'text-slate-600'
-            }`}
-          >
-            {t.movements.types[k]}
-          </button>
-        ))}
-      </div>
-
-      {savedText && (
-        <div role="status" className="rounded-2xl border border-ok/30 bg-ok/5 p-4 text-ok">
-          <p className="font-semibold">✓ {savedText}</p>
-        </div>
+      {objects && objects.length > 0 && (
+        <IncomingTransfers objectIds={objects.map((o) => o.id)} open={incomingOpen} onOpenChange={setIncomingOpen} />
       )}
-
-      {loadError && (
-        <Notice>
-          {loadError}
-          <button type="button" className={retryClass} onClick={() => setReloadKey((k) => k + 1)}>
-            {t.common.retry}
-          </button>
-        </Notice>
-      )}
-      {!loadError && (!objects || !materials) && <Spinner />}
-      {objects && objects.length === 0 && <Notice tone="warn">{tm.noObjects}</Notice>}
-
-      {objects && objects.length > 0 && materials && (
+      {!incomingOpen && (
         <>
-          {step === 'object' ? (
-            <ObjectChooser objects={objects} selectedId={objectId} lastUsed={loadLastObject()} onPick={chooseObject} />
-          ) : (
-            object && <ObjectBar object={object} onChange={manyObjects ? () => setPickingObject(true) : null} />
+          <div role="group" aria-label={tm.typeLabel} className="grid grid-cols-2 gap-1 rounded-2xl bg-slate-100 p-1">
+            {ENTRY_TYPES.map((k) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={type === k}
+                onClick={() => chooseType(k)}
+                className={`min-h-12 rounded-xl text-base font-semibold ${
+                  type === k ? (k === 'kirim' ? 'bg-ok text-white' : 'bg-brand text-white') : 'text-slate-600'
+                }`}
+              >
+                {t.movements.types[k]}
+              </button>
+            ))}
+          </div>
+
+          {savedText && (
+            <div role="status" className="rounded-2xl border border-ok/30 bg-ok/5 p-4 text-ok">
+              <p className="font-semibold">✓ {savedText}</p>
+            </div>
           )}
 
-          {step === 'material' && <MaterialGrid materials={ranked} onPick={chooseMaterial} />}
+          {loadError && (
+            <Notice>
+              {loadError}
+              <button type="button" className={retryClass} onClick={() => setReloadKey((k) => k + 1)}>
+                {t.common.retry}
+              </button>
+            </Notice>
+          )}
+          {!loadError && (!objects || !materials) && <Spinner />}
+          {objects && objects.length === 0 && <Notice tone="warn">{tm.noObjects}</Notice>}
 
-          {step === 'details' && material && (
-            <section className="flex flex-col gap-4" aria-label={material.name}>
-              <div className="flex min-h-11 items-center justify-between gap-2">
-                <p className="text-lg font-semibold text-slate-900">{material.name}</p>
-                <button
-                  type="button"
-                  onClick={() => setMaterialId(null)}
-                  className="min-h-11 px-2 text-sm font-medium text-brand"
-                >
-                  {tm.change}
-                </button>
-              </div>
+          {objects && objects.length > 0 && materials && (
+            <>
+              {step === 'object' ? (
+                <ObjectChooser objects={objects} selectedId={objectId} lastUsed={loadLastObject()} onPick={chooseObject} />
+              ) : (
+                object && <ObjectBar object={object} onChange={manyObjects ? () => setPickingObject(true) : null} />
+              )}
 
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="movement-qty" className="text-sm font-medium text-slate-700">
-                  {tm.qty}
-                </label>
-                <input
-                  id="movement-qty"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  value={qty}
-                  aria-invalid={fieldErrors.qty ? true : undefined}
-                  onChange={(e) => {
-                    setQty(e.target.value)
-                    setFieldErrors((er) => ({ ...er, qty: undefined }))
-                  }}
-                  className={`min-h-14 rounded-xl border px-4 text-2xl font-semibold outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 ${
-                    fieldErrors.qty ? 'border-danger' : 'border-slate-300'
-                  }`}
-                />
-                {fieldErrors.qty && <p className="text-sm text-danger">{tm.errors.qty[fieldErrors.qty]}</p>}
-              </div>
+              {step === 'material' && <MaterialGrid materials={ranked} onPick={chooseMaterial} />}
 
-              <UnitChips
-                units={material.units}
-                selectedId={unitId}
-                onPick={(id) => {
-                  haptic.select()
-                  setUnitId(id)
-                  setFieldErrors((er) => ({ ...er, unit: undefined }))
-                }}
-              />
-              {fieldErrors.unit && <p className="text-sm text-danger">{tm.errors.unit}</p>}
+              {step === 'details' && material && (
+                <section className="flex flex-col gap-4" aria-label={material.name}>
+                  <div className="flex min-h-11 items-center justify-between gap-2">
+                    <p className="text-lg font-semibold text-slate-900">{material.name}</p>
+                    <button
+                      type="button"
+                      onClick={() => setMaterialId(null)}
+                      className="min-h-11 px-2 text-sm font-medium text-brand"
+                    >
+                      {tm.change}
+                    </button>
+                  </div>
 
-              {qtyBase !== null && (
-                <BaseQtyBox qtyBase={qtyBase} unit={unit} baseUnit={material.base_unit}>
-                  {type === 'chiqim' && currentStock !== null && (
-                    <p className="text-sm text-slate-600">
-                      {tm.stock(
-                        formatQty(currentStock),
-                        formatQty(stockAfter(currentStock, 'chiqim', qtyBase)),
-                        material.base_unit,
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="movement-qty" className="text-sm font-medium text-slate-700">
+                      {tm.qty}
+                    </label>
+                    <input
+                      id="movement-qty"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      value={qty}
+                      aria-invalid={fieldErrors.qty ? true : undefined}
+                      onChange={(e) => {
+                        setQty(e.target.value)
+                        setFieldErrors((er) => ({ ...er, qty: undefined }))
+                      }}
+                      className={`min-h-14 rounded-xl border px-4 text-2xl font-semibold outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 ${
+                        fieldErrors.qty ? 'border-danger' : 'border-slate-300'
+                      }`}
+                    />
+                    {fieldErrors.qty && <p className="text-sm text-danger">{tm.errors.qty[fieldErrors.qty]}</p>}
+                  </div>
+
+                  <UnitChips
+                    units={material.units}
+                    selectedId={unitId}
+                    onPick={(id) => {
+                      haptic.select()
+                      setUnitId(id)
+                      setFieldErrors((er) => ({ ...er, unit: undefined }))
+                    }}
+                  />
+                  {fieldErrors.unit && <p className="text-sm text-danger">{tm.errors.unit}</p>}
+
+                  {qtyBase !== null && (
+                    <BaseQtyBox qtyBase={qtyBase} unit={unit} baseUnit={material.base_unit}>
+                      {type === 'chiqim' && currentStock !== null && (
+                        <p className="text-sm text-slate-600">
+                          {tm.stock(
+                            formatQty(currentStock),
+                            formatQty(stockAfter(currentStock, 'chiqim', qtyBase)),
+                            material.base_unit,
+                          )}
+                        </p>
                       )}
-                    </p>
+                    </BaseQtyBox>
                   )}
-                </BaseQtyBox>
-              )}
-              {warnings[0] && <Notice tone="warn">{tm.warnings[warnings[0]]}</Notice>}
+                  {warnings[0] && <Notice tone="warn">{tm.warnings[warnings[0]]}</Notice>}
 
-              {type === 'kirim' && (
-                <LinkedPurchases
-                  rows={openRows}
-                  selectedId={linkedPurchaseId}
-                  baseUnit={material.base_unit}
-                  onSelect={selectLinked}
-                />
-              )}
+                  {type === 'kirim' && (
+                    <LinkedPurchases
+                      rows={openRows}
+                      selectedId={linkedPurchaseId}
+                      baseUnit={material.base_unit}
+                      onSelect={selectLinked}
+                    />
+                  )}
 
-              <PhotoField
-                label={tm.photo}
-                photo={photo.photo}
-                busy={preparingPhoto || saving}
-                preparing={preparingPhoto}
-                notice={photo.notice}
-                onPick={(f) => void photo.pick(f)}
-                onRemove={photo.remove}
-              />
+                  <PhotoField
+                    label={tm.photo}
+                    photo={photo.photo}
+                    busy={preparingPhoto || saving}
+                    preparing={preparingPhoto}
+                    notice={photo.notice}
+                    onPick={(f) => void photo.pick(f)}
+                    onRemove={photo.remove}
+                  />
 
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="movement-note" className="text-sm font-medium text-slate-700">
-                  {tm.note}
-                </label>
-                <textarea
-                  id="movement-note"
-                  rows={2}
-                  value={note}
-                  placeholder={tm.notePlaceholder}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-                />
-              </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="movement-note" className="text-sm font-medium text-slate-700">
+                      {tm.note}
+                    </label>
+                    <textarea
+                      id="movement-note"
+                      rows={2}
+                      value={note}
+                      placeholder={tm.notePlaceholder}
+                      onChange={(e) => setNote(e.target.value)}
+                      className="min-h-11 rounded-xl border border-slate-300 px-3 py-2 text-base outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                    />
+                  </div>
 
-              {fieldErrors.object && <Notice>{tm.errors.object}</Notice>}
-              {saveError && (
-                <Notice>
-                  {saveError}
-                  <button type="button" className={retryClass} onClick={onMainButton}>
-                    {t.common.retry}
-                  </button>
-                </Notice>
-              )}
-              {photo.error && (
-                <PhotoErrorBox
-                  message={photo.error}
-                  busy={saving}
-                  onRetry={onMainButton}
-                  onWithoutPhoto={saveWithoutPhoto}
-                />
-              )}
+                  {fieldErrors.object && <Notice>{tm.errors.object}</Notice>}
+                  {saveError && (
+                    <Notice>
+                      {saveError}
+                      <button type="button" className={retryClass} onClick={onMainButton}>
+                        {t.common.retry}
+                      </button>
+                    </Notice>
+                  )}
+                  {photo.error && (
+                    <PhotoErrorBox
+                      message={photo.error}
+                      busy={saving}
+                      onRetry={onMainButton}
+                      onWithoutPhoto={saveWithoutPhoto}
+                    />
+                  )}
 
-              {!insideTelegram && (
-                <Button className="min-h-12 text-base" onClick={onMainButton} disabled={saving || preparingPhoto}>
-                  {saving ? t.common.saving : tm.save}
-                </Button>
+                  {!insideTelegram && (
+                    <Button className="min-h-12 text-base" onClick={onMainButton} disabled={saving || preparingPhoto}>
+                      {saving ? t.common.saving : tm.save}
+                    </Button>
+                  )}
+                </section>
               )}
-            </section>
+            </>
           )}
         </>
       )}

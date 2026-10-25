@@ -25,7 +25,7 @@ import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatDateTime } from '@/lib/format'
-import { alertDetailText, isAutoClosed } from '../alerts/alertDetails'
+import { alertDetailText, autoCloseReason, isAutoClosed } from '../alerts/alertDetails'
 import { SEVERITY_TONE, STATUS_TONE } from '../alerts/alertTones'
 import { Pager, RetryNotice, SelectField } from '../fields'
 
@@ -146,7 +146,12 @@ export function AlertsPage() {
   const statusCell = (a: Alert) => (
     <span className="flex flex-col items-start gap-1">
       <StatusBadge tone={STATUS_TONE[a.status]}>{ta.statuses[a.status]}</StatusBadge>
-      {a.status === 'yopildi' && isAutoClosed(a) && <span className="text-xs text-slate-500">{tp.autoClosed}</span>}
+      {a.status === 'yopildi' && isAutoClosed(a) && (
+        <span className="text-xs text-slate-500">
+          {tp.autoClosed}
+          {autoCloseReason(a) ? `: ${autoCloseReason(a)}` : ''}
+        </span>
+      )}
       {a.close_note && (
         <span className="text-xs text-slate-600">
           {tp.closeNoteLabel}: {a.close_note}

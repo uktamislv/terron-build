@@ -53,6 +53,8 @@ vi.mock('@/data/cashRepo', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/data/cashRepo')>()),
   getMyBalance: vi.fn(),
 }))
+vi.mock('@/data/requestsRepo', () => ({ listMyRequests: vi.fn(async () => []) }))
+vi.mock('@/data/transfersRepo', () => ({ listMyTransfers: vi.fn(async () => []), listIncomingTransfers: vi.fn(async () => []) }))
 vi.mock('@/data/purchasesRepo', () => ({
   createPurchase: vi.fn(),
   checkPurchasePrice: vi.fn(async () => 'ok'),

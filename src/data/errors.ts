@@ -89,6 +89,23 @@ export const SERVER_HINTS = {
   estimate_restore_conflict: { showServerMessage: false },
   estimate_too_many_rows: { showServerMessage: false },
   estimate_item_invalid: { showServerMessage: true },
+  inventory_locked: { showServerMessage: false },
+  inventory_forbidden: { showServerMessage: false },
+  inventory_object_not_found: { showServerMessage: false },
+  inventory_details_forbidden: { showServerMessage: false },
+  request_purchase_invalid: { showServerMessage: false },
+  transfer_direct_edit: { showServerMessage: false },
+  transfer_invalid: { showServerMessage: false },
+  transfer_object_not_found: { showServerMessage: false },
+  transfer_forbidden: { showServerMessage: false },
+  transfer_id_reused: { showServerMessage: false },
+  transfer_not_found: { showServerMessage: false },
+  transfer_not_open: { showServerMessage: false },
+  transfer_already_received: { showServerMessage: false },
+  inventory_apply_direct: { showServerMessage: false },
+  inventory_apply_forbidden: { showServerMessage: false },
+  inventory_not_submitted: { showServerMessage: false },
+  inventory_already_applied: { showServerMessage: false },
 } as const satisfies Record<string, { showServerMessage: boolean }>
 
 export type ServerHintCode = keyof typeof SERVER_HINTS

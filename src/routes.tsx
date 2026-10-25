@@ -7,9 +7,11 @@ import type { TgNavKey, WebNavKey } from '@/domain/roles'
 import { TgAuthGate } from '@/tg/TgAuthGate'
 import { RequireTgNav, TgIndex, TgLayout } from '@/tg/TgLayout'
 import { tgNavItems } from '@/tg/nav'
+import { InventoryPage } from '@/tg/pages/InventoryPage'
 import { MinePage } from '@/tg/pages/MinePage'
 import { MovementPage } from '@/tg/pages/MovementPage'
 import { PurchasePage } from '@/tg/pages/PurchasePage'
+import { RequestPage } from '@/tg/pages/RequestPage'
 import { TgHomePage } from '@/tg/pages/TgHomePage'
 import { WebLayout } from '@/web/WebLayout'
 import { RequireAuth, RequireNav } from '@/web/guards'
@@ -23,6 +25,7 @@ import { MaterialsPage } from '@/web/pages/MaterialsPage'
 import { MovementsPage } from '@/web/pages/MovementsPage'
 import { ObjectsPage } from '@/web/pages/ObjectsPage'
 import { PurchasesPage } from '@/web/pages/PurchasesPage'
+import { RequestsPage } from '@/web/pages/RequestsPage'
 import { UsersPage } from '@/web/pages/UsersPage'
 
 // Tayyor veb sahifalar; qolganlari hozircha "Tez orada"
@@ -32,6 +35,7 @@ const webPages: Partial<Record<WebNavKey, ReactNode>> = {
   purchases: <PurchasesPage />,
   cash: <CashPage />,
   estimates: <EstimatesRoute />,
+  requests: <RequestsPage />,
   alerts: <AlertsPage />,
   users: <UsersPage />,
   objects: <ObjectsPage />,
@@ -42,6 +46,8 @@ const webSections = (Object.keys(webNavItems) as WebNavKey[]).filter((key) => ke
 const tgPages: Partial<Record<TgNavKey, ReactNode>> = {
   movement: <MovementPage />,
   purchase: <PurchasePage />,
+  request: <RequestPage />,
+  inventory: <InventoryPage />,
   mine: <MinePage />,
 }
 

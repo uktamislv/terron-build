@@ -24,3 +24,13 @@ describe('uuid', () => {
     expect(uuid()).toMatch(V4)
   })
 })
+
+describe('isUuid', () => {
+  it('faqat UUID shaklini qabul qiladi', async () => {
+    const { isUuid } = await import('./uuid')
+    expect(isUuid('3f2b8c1e-1d2a-4b5c-9d8e-0f1a2b3c4d5e')).toBe(true)
+    expect(isUuid('o-a')).toBe(false)
+    expect(isUuid('3f2b8c1e-1d2a-4b5c-9d8e-0f1a2b3c4d5e,to_object_id.neq.x')).toBe(false)
+    expect(isUuid(null)).toBe(false)
+  })
+})

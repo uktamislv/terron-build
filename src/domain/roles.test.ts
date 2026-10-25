@@ -25,12 +25,12 @@ const EXPECTED_WEB: Record<Role, WebNavKey[]> = {
   prorab: ['dashboard', 'movements', 'requests'],
   omborchi: ['dashboard', 'movements'],
   haydovchi: [],
-  tekshiruvchi: ['dashboard', 'movements'],
+  tekshiruvchi: ['dashboard'],
 }
 
 const EXPECTED_TG: Record<Role, TgNavKey[]> = {
-  super_admin: ['home', 'movement', 'purchase', 'mine'],
-  admin: ['home', 'movement', 'purchase', 'mine'],
+  super_admin: ['home', 'movement', 'purchase', 'inventory', 'mine'],
+  admin: ['home', 'movement', 'purchase', 'inventory', 'mine'],
   direktor: ['home', 'mine'],
   buxgalter: ['mine'],
   taminotchi: ['purchase', 'mine'],
@@ -49,7 +49,10 @@ const EXPECTED_CAN: Record<Action, Role[]> = {
   create_purchase: ['super_admin', 'admin', 'taminotchi', 'prorab', 'haydovchi'],
   create_movement: ['super_admin', 'admin', 'prorab', 'omborchi'],
   create_request: ['super_admin', 'admin', 'prorab'],
-  approve_request: ['super_admin', 'admin', 'taminotchi'],
+  approve_request: ['super_admin', 'admin'],
+  mark_request_purchased: ['super_admin', 'admin', 'taminotchi'],
+  manage_transfers: ['super_admin', 'admin'],
+  apply_inventory: ['super_admin', 'admin'],
   run_inventory: ['super_admin', 'admin', 'tekshiruvchi'],
   view_audit: ['super_admin', 'admin', 'direktor'],
   view_alerts: ['super_admin', 'admin', 'direktor', 'buxgalter'],
@@ -122,5 +125,16 @@ describe('can', () => {
   })
   it("noma'lum action → false", () => {
     expect(can('admin', 'drop_db' as Action)).toBe(false)
+  })
+})
+
+describe('Batch 8: ko‘r-ko‘rona sanash', () => {
+  it('tekshiruvchi veb’da ombor (qoldiq/harakatlar) ni ko‘rmaydi — faqat Bosh', () => {
+    expect(webNavFor('tekshiruvchi')).toEqual(['dashboard'])
+  })
+  it('so‘rovni faqat admin tasdiqlaydi; ta‘minotchi — faqat "Xarid qilindi"', () => {
+    expect(can('taminotchi', 'approve_request')).toBe(false)
+    expect(can('taminotchi', 'mark_request_purchased')).toBe(true)
+    expect(can('admin', 'approve_request')).toBe(true)
   })
 })

@@ -56,6 +56,8 @@ const REPORT_PAYLOAD = {
   self_received_count: 1,
   deleted_count: 0,
   failed_count: 0,
+  transfers_pending_count: 0,
+  chiqim_without_estimate_count: 0,
 }
 
 let seq = 0

@@ -48,6 +48,8 @@ function report(over: Partial<DailyReportPayload> = {}): DailyReportPayload {
     self_received_count: 0,
     deleted_count: 0,
     failed_count: 0,
+    transfers_pending_count: 0,
+    chiqim_without_estimate_count: 0,
     ...over,
   }
 }
@@ -303,12 +305,13 @@ describe('formatAlertMessage — yozuv_ochirildi', () => {
 
 describe('formatAlertMessage — boshqa turlar', () => {
   it.each([
-    ['normadan_oshish', 'Normadan oshish'],
-    ['inventarizatsiya_kamomadi', 'Inventarizatsiya kamomadi'],
-    ['smetadan_ortiq_sorov', "Smetadan ortiq so'rov"],
-  ])('%s', (type, title) => {
+    ['normadan_oshish', '📉 <b>Normadan oshish</b>'],
+    ['inventarizatsiya_kamomadi', '📦 <b>Inventarizatsiya kamomadi</b>'],
+    ['smetadan_ortiq_sorov', "📝 <b>Smetadan ortiq so'rov</b>"],
+    ['otkazma_farqi', "🔄 <b>O'tkazmada farq</b>"],
+  ])('%s — bo‘sh details', (type, head) => {
     expect(formatAlertMessage(alert({ type, details: { anything: 1 } }))).toBe(
-      `⚠️ <b>${title}</b>\nSement M400 · Obyekt A\n29.10.2026 14:32`,
+      `${head}\nSement M400 · Obyekt A\n29.10.2026 14:32`,
     )
   })
 
@@ -320,7 +323,7 @@ describe('formatAlertMessage — boshqa turlar', () => {
 
   it('noto‘g‘ri created_at — sana qatori tushiriladi', () => {
     expect(formatAlertMessage(alert({ type: 'normadan_oshish', created_at: '' }))).toBe(
-      '⚠️ <b>Normadan oshish</b>\nSement M400 · Obyekt A',
+      '📉 <b>Normadan oshish</b>\nSement M400 · Obyekt A',
     )
   })
 
@@ -502,8 +505,8 @@ describe('formatAlertDigest', () => {
         '⚠️ Xarid va qabul farqi: Sement · Obyekt A\n' +
         '⚠️ Narx odatdagidan yuqori: Qum · Obyekt B\n' +
         "🗑 Xarid o'chirildi: Shag‘al · Obyekt A\n" +
-        '⚠️ Normadan oshish: Beton\n' +
-        "⚠️ Smetadan ortiq so'rov\n" +
+        '📉 Normadan oshish: Beton\n' +
+        "📝 Smetadan ortiq so'rov\n" +
         '🔴 Xarid va qabul farqi: Armatura · Obyekt C\n' +
         '⚠️ Yangi ogohlantirish: Kafel · Obyekt A',
     )
@@ -646,5 +649,383 @@ describe('formatAlertMessage — smeta_ozgarishi', () => {
     ])
     expect(msg).toContain('narx — 1, smeta — 1')
     expect(msg).toContain("🗑 Joriy smeta o'chirildi: Obyekt A · v3 (Ali)")
+  })
+})
+
+describe('formatAlertMessage — Batch 8 turlari', () => {
+  it('normadan_oshish — to‘liq', () => {
+    expect(
+      formatAlertMessage(
+        alert({
+          type: 'normadan_oshish',
+          base_unit: null,
+          details: {
+            norm_qty_base: '1000',
+            allowed_qty_base: 1050,
+            consumed_qty_base: '1250.000000',
+            over_pct: '19.05',
+            waste_pct: 5,
+            estimate_version: 3,
+            not_in_estimate: false,
+            base_unit: 'kg',
+          },
+        }),
+      ),
+    ).toBe(
+      '📉 <b>Normadan oshish</b>\n' +
+        'Sement M400 · Obyekt A\n' +
+        'Sarf: 1 250 kg, norma (isrof bilan): 1 050 kg (+19,05 %)\n' +
+        'Smeta v3\n' +
+        '29.10.2026 14:32',
+    )
+  })
+
+  it('normadan_oshish — smetada yo‘q, jiddiy → 🔴', () => {
+    const msg = formatAlertMessage(
+      alert({
+        type: 'normadan_oshish',
+        severity: 'jiddiy',
+        details: { not_in_estimate: true, consumed_qty_base: 120, base_unit: 'kg' },
+      }),
+    )
+    expect(msg).toBe(
+      "🔴 <b>Normadan oshish</b>\nSement M400 · Obyekt A\nMaterial smetada yo'q, sarf: 120 kg\n29.10.2026 14:32",
+    )
+  })
+
+  it('smetadan_ortiq_sorov — to‘liq', () => {
+    expect(
+      formatAlertMessage(
+        alert({
+          type: 'smetadan_ortiq_sorov',
+          details: {
+            requested_qty_base: '500',
+            available_qty_base: '320',
+            over_qty_base: 180,
+            allowed_qty_base: '1000',
+            consumed_qty_base: '680',
+            estimate_version: '2',
+            not_in_estimate: false,
+            base_unit: 'kg',
+          },
+        }),
+      ),
+    ).toBe(
+      "📝 <b>Smetadan ortiq so'rov</b>\n" +
+        'Sement M400 · Obyekt A\n' +
+        "So'raldi: 500 kg, smetada qolgan: 320 kg (ortiqcha 180 kg)\n" +
+        'Smeta v2\n' +
+        '29.10.2026 14:32',
+    )
+  })
+
+  it('smetadan_ortiq_sorov — smetada yo‘q', () => {
+    expect(
+      formatAlertMessage(
+        alert({ type: 'smetadan_ortiq_sorov', details: { not_in_estimate: true, requested_qty_base: 50 } }),
+      ),
+    ).toContain("Material smetada yo'q, so'raldi: 50 kg")
+  })
+
+  it('otkazma_farqi — under', () => {
+    expect(
+      formatAlertMessage(
+        alert({
+          type: 'otkazma_farqi',
+          object_name: null,
+          details: {
+            sent_qty_base: '100',
+            received_qty_base: 90,
+            diff_qty_base: '10',
+            direction: 'under',
+            base_unit: 'kg',
+            from_object_name: 'Obyekt A',
+            to_object_name: 'Obyekt B',
+          },
+        }),
+      ),
+    ).toBe(
+      "🔄 <b>O'tkazmada farq</b>\n" +
+        'Sement M400: Obyekt A → Obyekt B\n' +
+        'Yuborildi: 100 kg, qabul: 90 kg (−10 kg)\n' +
+        '29.10.2026 14:32',
+    )
+  })
+
+  it('otkazma_farqi — over va ishorali diff', () => {
+    const msg = formatAlertMessage(
+      alert({
+        type: 'otkazma_farqi',
+        details: { sent_qty_base: 100, received_qty_base: 105, diff_qty_base: 5, direction: 'over', from_object_name: 'A' },
+      }),
+    )
+    expect(msg).toContain('Sement M400: A → ?')
+    expect(msg).toContain('Yuborildi: 100 kg, qabul: 105 kg (+5 kg)')
+    const msg2 = formatAlertMessage(
+      alert({ type: 'otkazma_farqi', details: { sent_qty_base: 10, received_qty_base: 8, diff_qty_base: '-2' } }),
+    )
+    expect(msg2).toContain('(−2 kg)')
+  })
+
+  it('inventarizatsiya_kamomadi — to‘liq, jiddiy', () => {
+    expect(
+      formatAlertMessage(
+        alert({
+          type: 'inventarizatsiya_kamomadi',
+          severity: 'jiddiy',
+          material_name: null,
+          details: {
+            items: [
+              {
+                material_name: 'Sement',
+                base_unit: 'kg',
+                expected: '500',
+                counted: 420,
+                shortage: '80',
+                shortage_value: '104000.00',
+              },
+              { material_name: 'Qum', base_unit: 'm³', expected: 10, counted: '9.5', shortage: 0.5, shortage_value: 75000 },
+            ],
+            total_shortage_value: '1250000',
+            more_count: 3,
+          },
+        }),
+      ),
+    ).toBe(
+      '🔴 <b>Inventarizatsiya kamomadi</b>\n' +
+        'Obyekt A\n' +
+        `• Sement: hisobda 500, sanaldi 420 kg (−80 kg, 104 000 ${SOM})\n` +
+        `• Qum: hisobda 10, sanaldi 9,5 m³ (−0,5 m³, 75 000 ${SOM})\n` +
+        '… va yana 3 ta\n' +
+        `Jami kamomad: 1 250 000 ${SOM}\n` +
+        '29.10.2026 14:32',
+    )
+  })
+
+  it('inventarizatsiya_kamomadi — oddiy → 📦, bo‘sh items', () => {
+    expect(
+      formatAlertMessage(alert({ type: 'inventarizatsiya_kamomadi', material_name: null, details: { items: [] } })),
+    ).toBe('📦 <b>Inventarizatsiya kamomadi</b>\nObyekt A\n29.10.2026 14:32')
+  })
+
+  it('HTML escape', () => {
+    const t = '<script>&"'
+    const msgs = [
+      formatAlertMessage(
+        alert({
+          type: 'normadan_oshish',
+          material_name: t,
+          details: { consumed_qty_base: 1, allowed_qty_base: 1, base_unit: t },
+        }),
+      ),
+      formatAlertMessage(
+        alert({
+          type: 'otkazma_farqi',
+          material_name: t,
+          details: { from_object_name: t, to_object_name: t, sent_qty_base: 1 },
+        }),
+      ),
+      formatAlertMessage(
+        alert({
+          type: 'inventarizatsiya_kamomadi',
+          object_name: t,
+          details: { items: [{ material_name: t, base_unit: t, expected: 2, counted: 1, shortage: 1 }] },
+        }),
+      ),
+      formatAlertMessage(
+        alert({ type: 'smetadan_ortiq_sorov', object_name: t, details: { requested_qty_base: 1, base_unit: t } }),
+      ),
+    ]
+    for (const m of msgs) {
+      expect(m).not.toContain('<script>')
+      expect(m).toContain('&lt;script&gt;&amp;&quot;')
+      expect(m.match(/<[^>]*>/g)).toEqual(['<b>', '</b>'])
+    }
+  })
+
+  it('inventarizatsiya 4096 — qisqartiriladi, "va yana" va jami saqlanadi', () => {
+    const long = '<'.repeat(300)
+    const items = Array.from({ length: 50 }, (_, i) => ({
+      material_name: `${long}${i}`,
+      base_unit: 'kg',
+      expected: 10,
+      counted: 5,
+      shortage: 5,
+      shortage_value: 1000,
+    }))
+    const msg = formatAlertMessage(
+      alert({ type: 'inventarizatsiya_kamomadi', details: { items, more_count: 2, total_shortage_value: 50000 } }),
+    )
+    expect(msg.length).toBeLessThanOrEqual(TELEGRAM_MAX_LENGTH)
+    const shown = msg.split('\n').filter((l) => l.startsWith('• ')).length
+    expect(shown).toBeGreaterThan(0)
+    expect(msg).toContain(`… va yana ${50 - shown + 2} ta`)
+    expect(msg).toContain(`Jami kamomad: 50 000 ${SOM}`)
+  })
+
+  it('digest — qisqa nomlar va o‘tkazma qatori', () => {
+    const msg = formatAlertDigest([
+      alert({ type: 'otkazma_farqi', details: { from_object_name: 'A', to_object_name: 'B' } }),
+      alert({ type: 'normadan_oshish' }),
+      alert({ type: 'smetadan_ortiq_sorov' }),
+      alert({ type: 'inventarizatsiya_kamomadi', material_name: null }),
+    ])
+    expect(msg).toContain("norma — 1, kamomad — 1, smetadan ortiq — 1, o'tkazma — 1")
+    expect(msg).toContain("🔄 O'tkazmada farq: Sement M400: A → B")
+    expect(msg).toContain('📦 Inventarizatsiya kamomadi: Obyekt A')
+  })
+})
+
+describe('Batch 8 reviewer tuzatishlari', () => {
+  it('1. otkazma_farqi not_received', () => {
+    expect(
+      formatAlertMessage(
+        alert({
+          type: 'otkazma_farqi',
+          details: {
+            direction: 'not_received',
+            sent_qty_base: '100',
+            base_unit: 'kg',
+            from_object_name: 'Obyekt A',
+            to_object_name: 'Obyekt B',
+            sent_at: '2026-10-27T05:00:00Z',
+            hours: 52,
+          },
+        }),
+      ),
+    ).toBe(
+      "⏳ <b>O'tkazma qabul qilinmadi</b>\n" +
+        'Sement M400: Obyekt A → Obyekt B\n' +
+        'Yuborildi: 100 kg, 52 soat oldin\n' +
+        '29.10.2026 14:32',
+    )
+  })
+
+  it('1. not_received — bo‘sh details va digest', () => {
+    expect(formatAlertMessage(alert({ type: 'otkazma_farqi', details: { direction: 'not_received' } }))).toBe(
+      "⏳ <b>O'tkazma qabul qilinmadi</b>\nSement M400 · Obyekt A\n29.10.2026 14:32",
+    )
+    expect(
+      formatAlertDigest([
+        alert({ type: 'otkazma_farqi', details: { direction: 'not_received', from_object_name: 'A', to_object_name: 'B' } }),
+      ]),
+    ).toContain("⏳ O'tkazma qabul qilinmadi: Sement M400: A → B")
+  })
+
+  it('2. inventarizatsiya — Sanalmagan bo‘limi', () => {
+    expect(
+      formatAlertMessage(
+        alert({
+          type: 'inventarizatsiya_kamomadi',
+          material_name: null,
+          details: {
+            items: [{ material_name: 'Sement', base_unit: 'kg', expected: 500, counted: 420, shortage: 80, shortage_value: 104000 }],
+            not_counted: [{ material_name: 'Armatura', base_unit: 'kg', expected: '2400', shortage_value: '3120000' }],
+            not_counted_more: 4,
+            total_shortage_value: 3224000,
+          },
+        }),
+      ),
+    ).toBe(
+      '📦 <b>Inventarizatsiya kamomadi</b>\n' +
+        'Obyekt A\n' +
+        `• Sement: hisobda 500, sanaldi 420 kg (−80 kg, 104 000 ${SOM})\n` +
+        'Sanalmagan:\n' +
+        `• Armatura: hisobda 2 400 kg, 3 120 000 ${SOM}\n` +
+        '… va yana 4 ta\n' +
+        `Jami kamomad: 3 224 000 ${SOM}\n` +
+        '29.10.2026 14:32',
+    )
+  })
+
+  it('2. faqat sanalmaganlar, escape', () => {
+    const msg = formatAlertMessage(
+      alert({
+        type: 'inventarizatsiya_kamomadi',
+        details: { not_counted: [{ material_name: '<b>X</b>', base_unit: '&', expected: 1 }] },
+      }),
+    )
+    expect(msg).toContain('Sanalmagan:\n• &lt;b&gt;X&lt;/b&gt;: hisobda 1 &amp;')
+    expect(msg.match(/<[^>]*>/g)).toEqual(['<b>', '</b>'])
+  })
+
+  it('2. 4096 — avval sanalmaganlar qisqartiriladi', () => {
+    const long = '"'.repeat(300)
+    const mk = (i: number) => ({ material_name: `${long}${i}`, base_unit: 'kg', expected: 10, counted: 5, shortage: 5 })
+    const msg = formatAlertMessage(
+      alert({
+        type: 'inventarizatsiya_kamomadi',
+        details: {
+          items: Array.from({ length: 3 }, (_, i) => mk(i)),
+          not_counted: Array.from({ length: 40 }, (_, i) => mk(i)),
+          total_shortage_value: 1,
+        },
+      }),
+    )
+    expect(msg.length).toBeLessThanOrEqual(TELEGRAM_MAX_LENGTH)
+    const lines = msg.split('\n')
+    const idx = lines.indexOf('Sanalmagan:')
+    expect(idx).toBeGreaterThan(0)
+    expect(lines.slice(0, idx).filter((l) => l.startsWith('• '))).toHaveLength(3)
+    const shownMissing = lines.slice(idx).filter((l) => l.startsWith('• ')).length
+    expect(msg).toContain(`… va yana ${40 - shownMissing} ta`)
+    expect(msg).toContain(`Jami kamomad: 1 ${SOM}`)
+  })
+
+  it('3. smeta_ozgarishi waste_changed', () => {
+    expect(
+      formatAlertMessage(
+        alert({
+          type: 'smeta_ozgarishi',
+          material_name: null,
+          details: { kind: 'waste_changed', material_name: 'Sement M400', before: '3.00', after: 15, actor_name: 'Ali' },
+        }),
+      ),
+    ).toBe("🧮 <b>Isrof foizi o'zgartirildi</b>\nSement M400: 3 % → 15 % (Ali)\n29.10.2026 14:32")
+    expect(
+      formatAlertDigest([alert({ type: 'smeta_ozgarishi', details: { kind: 'waste_changed', before: 3, after: 5 } })]),
+    ).toContain("🧮 Isrof foizi o'zgartirildi: Sement M400: 3 % → 5 %")
+  })
+
+  it('3. waste_changed — escape', () => {
+    const msg = formatAlertMessage(
+      alert({ type: 'smeta_ozgarishi', details: { kind: 'waste_changed', material_name: '<i>', actor_name: '&' } }),
+    )
+    expect(msg).toContain('&lt;i&gt; (&amp;)')
+  })
+
+  it('4. escalation — sarlavha oldida "📈 Kuchaydi: "', () => {
+    const msg = formatAlertMessage(alert({ type: 'normadan_oshish', severity: 'jiddiy', escalation: 2 }))
+    expect(msg.startsWith('📈 Kuchaydi: 🔴 <b>Normadan oshish</b>')).toBe(true)
+    expect(formatAlertMessage(alert({ type: 'normadan_oshish', details: { escalation: '1' } }))).toMatch(
+      /^📈 Kuchaydi: 📉 <b>/,
+    )
+    expect(formatAlertMessage(alert({ type: 'normadan_oshish', escalation: null }))).toMatch(/^📉 <b>/)
+    expect(formatAlertMessage(alert({ type: 'normadan_oshish', escalation: 0 }))).toMatch(/^📉 <b>/)
+    expect(formatAlertMessage(alert({ type: 'normadan_oshish', escalation: 7 }))).toMatch(/^📉 <b>/)
+    expect(formatAlertDigest([alert({ type: 'normadan_oshish', escalation: 3 })])).toContain(
+      '📈 Kuchaydi: 📉 Normadan oshish: Sement M400 · Obyekt A',
+    )
+  })
+
+  it('5. kunlik hisobot — o‘tkazmalar va smetasiz chiqim (0 bo‘lsa yo‘q)', () => {
+    const zero = formatDailyReport(report())
+    expect(zero).not.toContain('Qabul qilinmagan')
+    expect(zero).not.toContain('Smetasiz')
+    const msg = formatDailyReport(
+      report({ kirim_count: 3, chiqim_count: 2, transfers_pending_count: 2, chiqim_without_estimate_count: 1 }),
+    )
+    expect(msg).toContain('Kirim: 3 · Chiqim: 2\nSmetasiz obyektlarda chiqim: 1\n')
+    expect(msg).toContain("So'rovlar: 0\nQabul qilinmagan o'tkazmalar: 2\n")
+  })
+
+  it('6. ozi_qabul_qilgan kind = transfer', () => {
+    expect(
+      formatAlertMessage(
+        alert({ type: 'ozi_qabul_qilgan', severity: 'belgi', details: { kind: 'transfer', qty_base: 10 } }),
+      ),
+    ).toBe(
+      "🔖 <b>O'zi qabul qilgan</b>\nSement M400 · Obyekt A\nO'tkazmani yuboruvchining o'zi qabul qildi\nMiqdor: 10 kg\n29.10.2026 14:32",
+    )
   })
 })

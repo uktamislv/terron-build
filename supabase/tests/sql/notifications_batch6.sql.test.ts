@@ -346,6 +346,9 @@ describe('daily_report_stats', () => {
       alerts_by_type: {},
       self_received_count: 0,
       deleted_count: 0,
+      // Batch 8 (O3)
+      transfers_pending_count: 0,
+      chiqim_without_estimate_count: 1, // E firma obyektida smeta yo'q
     })
   })
 

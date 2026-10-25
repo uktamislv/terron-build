@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -77,7 +77,7 @@ Migratsiya egasi (`postgres`) `BYPASSRLS` bo'lishi shart (Supabase'da shunday): 
 
 Batch 7: `estimates`, `estimate_items` — qo'shish va `is_current`/qator mazmunini o'zgartirish faqat RPC (`import_estimate`, `set_current_estimate`) orqali; to'g'ridan-to'g'ri — faqat nom/sana/fayl nomi va soft delete ("Smeta importi" bo'limi).
 | `material_requests` | firma rollari; prorab: a'zo obyektlar | admin; prorab (a'zo obyekt) | admin, taminotchi |
-| `transfers` | firma rollari; prorab, omborchi: qaysidir tomoni a'zo obyekt | admin; prorab (`from_object` a'zo) | admin |
+| `transfers` | firma rollari; prorab, omborchi: qaysidir tomoni a'zo obyekt | Batch 8: faqat RPC `create_transfer` (admin; prorab — `from` a'zo) | Batch 8: faqat RPC `receive_transfer` / `cancel_transfer` |
 | `alerts` | admin, direktor, buxgalter | — (faqat tizim: trigger/Edge Function; Batch 5 qoidalari — `private.evaluate_*`) | admin — faqat `status`, `close_note` (Batch 5) |
 | `audit_log` | admin, direktor | — (faqat trigger) | — |
 | `company_settings` ichida | `companies` ustunlari sifatida | | |
@@ -245,6 +245,25 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `estimate_id_reused` | 23505 | `import_estimate` (Batch 7) | Shu `p_id` boshqa mazmun (hash) bilan ishlatilgan |
 | `estimate_direct_edit` | 42501 | `b_estimates_guard`, `b_compute_norm`, `estimate_alert` (Batch 7) | Smeta/qatorni RPC'siz yaratish yoki tahrirlash; obyekt/versiya o'zgarmaydi; begona firma qatori |
 | `estimate_restore_conflict` | 23505 | `b_estimates_guard` (Batch 7) | O'chirilgan joriy versiyani tiklash — obyektda boshqa joriy versiya bor |
+| `request_purchase_invalid` | 23514 | `b_material_requests_guard` (Batch 8) | `purchase_id` holat `xarid_qilindi` emas yoki xarid boshqa obyekt/materialniki |
+| `transfer_direct_edit` | 42501 | `b_transfers_guard` (Batch 8) | O'tkazmani RPC'siz yaratish / o'zgartirish (foydalanuvchi) |
+| `transfer_invalid` | 22023 | `create_transfer`, `receive_transfer`, `cancel_transfer` (Batch 8) | Majburiy maydon yo'q, from = to, miqdor ≤ 0 / raqam emas / juda katta, izoh/sabab > 500, material topilmadi |
+| `transfer_object_not_found` | P0002 | `create_transfer` (Batch 8) | Obyekt yo'q, o'chirilgan yoki boshqa firmaniki |
+| `transfer_forbidden` | 42501 | `create_transfer`, `receive_transfer`, `cancel_transfer` (Batch 8) | Rol / a'zolik / muallif emas |
+| `transfer_id_reused` | 23505 | `create_transfer` (Batch 8) | Shu `p_id` boshqa ma'lumot bilan ishlatilgan |
+| `transfer_not_found` | P0002 | `receive_transfer`, `cancel_transfer` (Batch 8) | O'tkazma yo'q, o'chirilgan yoki boshqa firmaniki |
+| `transfer_not_open` | 55000 | `receive_transfer`, `cancel_transfer` (Batch 8) | Bekor qilingan o'tkazmani qabul qilish / qabul qilinganini bekor qilish |
+| `transfer_already_received` | 55000 | `receive_transfer` (Batch 8) | Allaqachon boshqa miqdor bilan qabul qilingan |
+| `inventory_apply_direct` | 42501 | `b_inventory_counts_guard` (Batch 8) | `applied_at`/`applied_by` ni to'g'ridan-to'g'ri o'zgartirish |
+| `inventory_apply_forbidden` | 42501 | `apply_inventory_adjustments` (Batch 8) | Admin / super_admin emas |
+| `inventory_not_submitted` | 55000 | `apply_inventory_adjustments` (Batch 8) | Hisob hali yakunlanmagan (draft) |
+| `inventory_already_applied` | 55000 | `apply_inventory_adjustments` (Batch 8) | Qoldiq allaqachon tuzatilgan |
+| `inventory_locked` | 42501 | `b_inventory_items_lock` (Batch 8) | Yuborilgan hisob qatorlarini qo'shish / o'zgartirish (hamma uchun, RPC'dan tashqari) |
+| `inventory_forbidden` | 42501 | `inventory_candidate_materials` (Batch 8) | Rol tekshiruvchi / admin / super_admin emas |
+| `inventory_object_not_found` | P0002 | `inventory_candidate_materials` (Batch 8) | Obyekt yo'q, o'chirilgan yoki boshqa firmaniki |
+| `inventory_details_forbidden` | 42501 | `inventory_count_details` (Batch 8) | Rol admin / direktor / buxgalter / super_admin emas |
+
+Batch 8 qayta ishlatadi: `auth_required`, `inventory_not_found`, `purchase_not_open` (so'rovga bog'langan xarid yo'q / o'chirilgan), `ops_unit_not_found` / `ops_unit_material_mismatch` (`b_compute_counted`, o'tkazma harakatlari), `catalog_material_*` (o'tkazma, inventarizatsiya).
 
 `b_compute_norm` (smeta qatori) birlik xatolarida `ops_unit_not_found` / `ops_unit_material_mismatch` (23503) ni qayta ishlatadi.
 
@@ -461,6 +480,75 @@ Shartnoma va oqim: `docs/estimate-design.md`. Bu yerda — baza tomoni.
 ### `public.estimate_totals` (view, `security_invoker = true`)
 
 - `estimate_id, company_id, object_id, row_count, material_count, total_sum` (`Σ round(qty * unit_price, 2)`, narxsiz qator — 0), faqat o'chirilmagan qatorlar. Grant: `authenticated`, `service_role` — `select`.
+
+## So'rovlar, o'tkazmalar, inventarizatsiya, norma (Batch 8 — `20261101000001_requests.sql`)
+
+Shartnoma: `docs/requests-design.md`. Bu yerda — baza tomoni.
+
+### Norma — `private.norm_numbers`, `public.norm_usage`
+
+- `private.norm_numbers(company, object, material) → (o_estimate_id, o_estimate_version, o_norm_qty_base, o_waste_pct, o_allowed_qty_base, o_consumed_qty_base, o_base_unit)` — security definer, stable; qoida 4 va 6 uchun yagona hisob. Execute — hech kimga.
+- View `public.norm_usage` (`security_invoker`): `company_id, object_id, material_id, estimate_id, norm_qty_base, allowed_qty_base, consumed_qty_base, requested_open_qty_base, remaining_qty_base, usage_pct`. Joriy (o'chirilmagan) smetali obyektlar; materiallar = smetadagi (o'chirilmagan `material` qatorlari) ∪ chiqimi bor. Grant: `authenticated`, `service_role` — `select`. RLS manbalari: `estimates` (prorab — a'zo obyektlar; omborchi/haydovchi — hech narsa), `movements`, `material_requests`, `materials`.
+- **Formulalar va cast'lar** (domain bilan bit-bit): `norm = Σ norm_qty_base ::numeric(20,6)`; `allowed = round(norm * (1 + m.waste_pct / 100), 6)` (`waste_pct` — `numeric(6,2)`, `100` — butun literal); `consumed = Σ chiqim qty_base ::numeric(20,6)`; `requested_open = Σ qty_base (kutilmoqda, tasdiqlandi) ::numeric(20,6)`; `remaining = (allowed − consumed)::numeric(20,6)`; `usage_pct = round(consumed * 100 / allowed, 1)` (`allowed = 0` → null). `over_pct = round((consumed::numeric(20,6) − allowed::numeric(20,6)) * 100 / allowed::numeric(20,6), 2)`.
+- Indekslar: `estimate_items_norm_idx (company_id, estimate_id, material_id) where item_type = 'material' and deleted_at is null`; `movements_chiqim_idx (company_id, object_id, material_id) where type = 'chiqim' and deleted_at is null`; `material_requests_open_idx (company_id, object_id, material_id) where status in (kutilmoqda, tasdiqlandi) and deleted_at is null`.
+
+### Qoida 4 — `normadan_oshish` (`private.evaluate_norm(company, object, material)`)
+
+- (obyekt, material) bo'yicha `pg_advisory_xact_lock`. Joriy smeta yo'q → ochiq alertlar yopiladi (`no_current_estimate`). Boshqa smeta uchun ochiq alert → `estimate_changed`.
+- `norm = 0` yoki `allowed = 0`: sarf > 0 → `not_in_estimate` (ogohlantirish), aks holda ok. `consumed > allowed` → over (`over_pct ≥ 25` → jiddiy). Ok → ochiq alert yopiladi (`within_threshold`).
+- Bitta ochiq alert (obyekt, material) — zaxira unique `alerts_open_norm_key (object_id, material_id)`. `severity` va `details` o'zgarmasa — UPDATE yo'q. Admin qo'lda yopgan alert bir xil (`estimate_id`, `allowed`, `consumed`) da qayta yaratilmaydi; boshqa sonlarda — yangi alert (yangi Telegram xabar).
+- `details`: `{norm_qty_base, allowed_qty_base, consumed_qty_base, over_pct (null — not_in_estimate), waste_pct, estimate_id, estimate_version, not_in_estimate, base_unit}`; avtomatik yopishda + `auto_closed, closed_reason, closed_by_actor`.
+- Chaqiriladi: `movements.zz_norm_rules_ins` (chiqim INSERT), `zz_norm_rules_upd` (eski yoki yangi tur chiqim; `qty_base`/`deleted_at`/`type`/`object_id`/`material_id` — eski va yangi juftlik); `estimates.zz_norm_rules` (joriy versiya soft delete / tiklash → obyekt); `estimate_items.zz_norm_rules` (joriy smetadagi material qatori soft delete / tiklash); `import_estimate`, `set_current_estimate` (create or replace — Batch 7 mantiqi o'zgarmagan, oxirida `private.evaluate_object_norms`).
+- `private.evaluate_object_norms(company, object)` — joriy smeta materiallari ∪ chiqim materiallari ∪ ochiq alert materiallari, material id tartibida. Execute — `authenticated` (invoker smeta RPC'lari chaqiradi); foydalanuvchi sessiyasida faqat o'z firmasi (`estimate_direct_edit`).
+- `materials.waste_pct` o'zgarishi alertlarni darhol qayta baholamaydi — keyingi chiqim/smeta o'zgarishida.
+
+### Qoida 6 — `smetadan_ortiq_sorov` (`private.evaluate_request(request_id)`)
+
+- `available = allowed − consumed − other_open` (`other_open` — shu obyekt+materialdagi boshqa kutilmoqda/tasdiqlandi so'rovlar `Σ qty_base ::numeric(20,6)`); over: `requested > available`; `over_qty = requested − available`. Obyektda **joriy smeta umuman yo'q** → alert yaratilmaydi (ochig'i `no_current_estimate` bilan yopiladi; qoida 4 ham smetasiz obyektda alert bermaydi). Joriy smeta bor, material unda yo'q → `not_in_estimate = true` (allowed = 0 → har doim alert).
+- `details`: `{requested_qty_base, allowed_qty_base, consumed_qty_base, other_open_qty_base, available_qty_base, over_qty_base, estimate_version, not_in_estimate, base_unit}`; `severity = ogohlantirish`; `request_id`, `object_id`, `material_id` ustunlarda. Zaxira unique `alerts_open_request_key (request_id)`.
+- Triggerlar `material_requests.zz_alert_rules_ins` / `zz_alert_rules_upd`: INSERT; `qty_base`/`object_id`/`material_id` o'zgarishi, tiklash, `rad` dan qaytarish → qayta baholash; `rad` → yopiladi (`request_rejected`), soft delete → `request_deleted`; kam bo'lsa → `within_threshold`. `tasdiqlandi`/`xarid_qilindi` ga o'tish alertga tegmaydi.
+
+### `material_requests`
+
+- Yangi: `decision_note text` (≤ 500), `purchase_id uuid` — FK `(company_id, purchase_id) → purchases`, indeks `material_requests_company_purchase_idx` (partial), check `purchase_id is null or status = 'xarid_qilindi'`.
+- `b_material_requests_guard` (endi security definer): admin bo'lmagan — `status`, `note` (+ `purchase_id`, agar yangi holat `xarid_qilindi`); `decision_note` — faqat admin (INSERT'da boshqalar uchun null). `purchase_id` (INSERT yoki bog'lanish/obyekt/material/holat o'zgarsa, hamma uchun): holat `xarid_qilindi` emas → `request_purchase_invalid`; xarid yo'q/o'chirilgan → `purchase_not_open`; boshqa obyekt/material → `request_purchase_invalid`.
+
+### O'tkazmalar
+
+- Yangi ustunlar: `received_qty_base numeric(20,6)` (≥ 0), `received_at`, `received_by` (FK `(company_id, received_by) → profiles`; super_admin boshqa firmada — null), `cancel_reason` (≤ 500). Indekslar: `transfers_company_received_by_idx`, `transfers_open_to_idx (company_id, to_object_id) where status = 'yuborildi' and deleted_at is null`.
+- `b_transfers_guard` (before insert/update, security definer): `auth.uid()` bor va `private.transfer_rpc_active()` (GUC `terron.transfer_rpc`, Batch 7 uslubi) emas → `42501 transfer_direct_edit`. Tizim (service_role, migratsiya) — cheklovsiz. Natija: rol matritsasida `transfers` INSERT/UPDATE — hech kimga (faqat RPC). `transfer_*` harakatlarni to'g'ridan-to'g'ri yaratish (admin, Batch 1) o'zgarmadi.
+- RPC'lar (`security definer`, `search_path = ''`, execute — `authenticated`):
+  - `public.create_transfer(p_id uuid, p_from_object_id uuid, p_to_object_id uuid, p_material_id uuid, p_unit_id uuid, p_qty_input numeric, p_note text default null) → uuid`. Tartib: auth → maydonlar/miqdor (`0 < round(q,6)`, `< 1e14`)/izoh → `from` obyekt (firma, o'chirilmagan) va `to` (shu firma) → rol (admin/super_admin yoki prorab + `from` a'zo) → material shu firmada → `p_id` advisory lock, idempotentlik (bir xil firma/from/to/material/unit/qty → shu id, aks holda `transfer_id_reused`) → `transfers` (yuborildi) + `transfer_out` harakati (shu birlik va miqdor; `b_compute_qty`).
+  - `public.receive_transfer(p_transfer_id uuid, p_qty_received_input text default null, p_note text default null) → void`. Miqdor — o'tkazma birligida, matn (`^\s*[+]?(\d+(\.\d*)?|\.\d+)\s*$`, 6 xona); null/bo'sh → yuborilgan. Rol: admin/super_admin yoki prorab/omborchi + `to` a'zo. Qator `for update`. Allaqachon qabul qilingan: miqdorsiz yoki shu `qty_base` → o'zgarishsiz; boshqa → `transfer_already_received`. `bekor` → `transfer_not_open`. Miqdor > 0 → `transfer_in` (izoh harakatda); 0 → harakatsiz. Holat `qabul_qilindi`, `received_*`. Farq ≠ 0 → alert `otkazma_farqi` (`ogohlantirish`, kam ham, ko'p ham; `object_id = to`, `material_id`, `movement_id = transfer_in`): `details {transfer_id, sent_qty_base, received_qty_base, diff_qty_base (received − sent), direction (under/over), base_unit, from_object_name, to_object_name}`.
+  - `public.transfer_target_objects() → table(id uuid, name text)` — "qayerga" ro'yxati: chaqiruvchi firmasining `status = 'faol'`, o'chirilmagan obyektlari (faqat id, nom; nom tartibida). `stable security definer`; faqat admin, super_admin, prorab — boshqalar `42501 transfer_forbidden`; anon — yo'q.
+  - `public.cancel_transfer(p_transfer_id uuid, p_reason text default null) → void`. Yaratgan odam (`created_by`) yoki admin; `bekor` → o'zgarishsiz; `qabul_qilindi` → `transfer_not_open`. `transfer_out` soft delete (RPC ichida — `yozuv_ochirildi` alerti yaratilmaydi: `tg_soft_delete_alert` create or replace), holat `bekor`, `cancel_reason`.
+- Telegram: `zz_notify` sharti (`severity <> 'belgi' and type <> 'ozi_qabul_qilgan'`) `otkazma_farqi` ni o'zgarishsiz qamraydi; payload `object_name` (qabul obyekti), `material_name`, `base_unit`. Bot matn shabloni (Edge Function) `otkazma_farqi` uchun qo'shilishi kerak.
+
+### Inventarizatsiya
+
+- `inventory_count_items`: `qty_input numeric(20,6)` (≥ 0), `unit_id` (FK `(company_id, unit_id) → material_units`, indeks), check `(unit_id is null) = (qty_input is null)` (eski qatorlar — ikkalasi null). Unique `(inventory_count_id, material_id)` o'chirilmaganlar orasida — Batch 1 dan.
+- `b_compute_counted` (security definer, materials → material_units `for share`): `qty_counted := round(qty_input * factor, 6)`, klient qiymati e'tiborsiz. INSERT: `unit_id` yo'q → asosiy birlik; `qty_input` ham yo'q → `qty_input := qty_counted` (eski klient). UPDATE: ikkalasi null → `qty_counted` eski qiymat. Birlik xatolari — `ops_unit_*`. `private.unit_is_referenced` endi `inventory_count_items.unit_id` ni ham hisoblaydi.
+- `inventory_counts`: `applied_at`, `applied_by` (FK profiles). `b_inventory_counts_guard` (+ yangi `b_inventory_counts_guard_ins`): `authenticated` INSERT'da `applied_*` → null; UPDATE'da o'zgartirsa → `inventory_apply_direct`.
+- **Qoida 5** — `submit_inventory_count` (create or replace) oxirida: `qty_counted < qty_expected` qatorlar; `price_per_base = round(Σ total_amount / Σ qty_base, 4)::numeric(18,4)` (shu material, o'chirilmagan, `purchased_at ≥ now() − 90 kun`; yo'q → null); `expected`, `counted`, `shortage` — `::numeric(20,6)`; `shortage_value = round(shortage * price_per_base, 2)`; `total = Σ shortage_value` (hammasi null → null); `total ≥ 1 000 000` → `jiddiy`. Bitta alert (`object_id`, `inventory_count_id`; `material_id` null), zaxira unique `alerts_inventory_shortage_key`. `details {count_id, items: [{material_id, material_name, base_unit, expected, counted, shortage, shortage_value}] (20 tagacha, shortage desc, material_id), total_shortage_value, more_count}`. Ortiqcha — alertda yo'q.
+- `public.apply_inventory_adjustments(p_count_id uuid) → integer` (security definer; execute — `authenticated`): auth → hisob (`inventory_not_found`) → admin/super_admin (`inventory_apply_forbidden`) → `applied_at` bor → `inventory_already_applied` → holat `submitted` emas → `inventory_not_submitted`. Har `qty_counted ≠ qty_expected` (expected null — o'tkazib yuboriladi) qator uchun `inventory_adjust` harakati: asosiy birlik, `qty_input = counted − expected`, `inventory_count_id`, material id tartibida. `applied_at`, `applied_by`. Qaytaradi — harakatlar soni.
+
+### Review tuzatishlari (Batch 8, shu migratsiyada)
+
+- **Y1 — ko'r-ko'rona sanash.** `private.is_company_wide_ops()` = `is_company_wide()` minus `tekshiruvchi`. `movements_select`, `purchases_select` (drop + create) shu funksiyadan foydalanadi → tekshiruvchi `movements`, `purchases`, `stock_balances`, `purchase_receipts`, `norm_usage` (view'da qo'shimcha `not has_role('tekshiruvchi')`) da hech narsa ko'rmaydi. `public.inventory_candidate_materials(p_object_id uuid) → table(material_id uuid)` (definer, stable; tekshiruvchi / admin / super_admin; o'z firmasi): obyektda qoldig'i ≠ 0 yoki joriy smetada bor (o'chirilmagan) materiallar, miqdorsiz.
+- **O5 — `qty_expected` yashirin.** `inventory_count_items` SELECT — ustun grant (`qty_expected`, `price_per_base` siz). Yangi `price_per_base numeric(18,4)` — yuborish paytidagi 90 kunlik narx (`private.inventory_price`). `b_inventory_items_guard` ikkalasini authenticated yozuvidan himoyalaydi. `public.inventory_count_details(p_count_id uuid) → table(material_id uuid, material_name text, base_unit text, qty_input text, unit_id uuid, qty_counted text, qty_expected text, diff text, shortage_value text)` — admin / direktor / buxgalter / super_admin; raqamlar `text`; `diff = (counted − expected)::numeric(20,6)`; `shortage_value = round((expected − counted)::numeric(20,6) * price_per_base, 2)` (alert bilan aynan; faqat kamomadda).
+- **`submit_inventory_count` → `jsonb`** (drop + create): `{has_shortage: boolean, not_counted_count: int}` — raqamsiz. `not_counted_count` — qoldig'i ≠ 0, lekin qatori yo'q materiallar.
+- **Y2 — sanalmagan materiallar** (qoldiq > 0, qatori yo'q) kamomad alertiga: `details.not_counted: [{material_id, material_name, base_unit, expected, shortage_value}]` (20 tagacha, expected desc), `not_counted_more`; `total_shortage_value` ularni ham qo'shadi. Alert `details`: `{count_id, items, more_count, not_counted, not_counted_more, total_shortage_value}` (+ P5: tuzatilgandan keyin `applied_at`, `applied_by_name`; alert yopilmaydi).
+- **O4.** `b_inventory_items_lock`: hisob `status <> 'draft'` bo'lsa qator INSERT/UPDATE (soft delete ham) — hamma uchun (service_role, superuser ham) `42501 inventory_locked`; faqat inventarizatsiya RPC'lari ichida (GUC `terron.inventory_rpc`).
+- **Y3 — qabul qilinmagan o'tkazma.** `companies.transfer_receive_hours int default 48` (1..8760). `private.evaluate_due_transfers(p_now timestamptz default now()) → int` — `yuborildi` holatida `created_at + soat ≤ p_now` bo'lgan har o'tkazma uchun **bitta** `otkazma_farqi` (`ogohlantirish`, `object_id = to`): `details {transfer_id, direction: 'not_received', sent_qty_base, base_unit, from_object_name, to_object_name, sent_at, hours}` (hours — o'tgan butun soat). Qator `for update` qulfi (receive/cancel bilan poygasiz). Qabul → `closed_reason = 'transfer_received'`, bekor → `'transfer_cancelled'` (`private.close_transfer_alerts`). Cron `terron-evaluate-transfers` — `17 * * * *`. Indeks `alerts_company_transfer_idx (company_id, details->>'transfer_id') where details ? 'transfer_id'`. `create_transfer`: `to` obyekt `status = 'faol'` bo'lishi shart (`transfer_object_not_found`).
+- **Y4.** `receive_transfer`: qabul qiluvchi = yaratuvchi → `ozi_qabul_qilgan` (`belgi`, Telegram'ga yo'q), `movement_id = transfer_in`, `details {transfer_id, qty_base, buyer_id: null, receiver_id, kind: 'transfer'}`.
+- **Y5 — qoida 6.** `norm_numbers.o_delivered_qty_base` va `norm_usage.delivered_qty_base` = Σ (`kirim` + `transfer_in` − `transfer_out`), o'chirilmagan, shu obyekt, `::numeric(20,6)`. Formula: `available = allowed::numeric(20,6) − greatest(consumed::numeric(20,6), delivered::numeric(20,6)) − other_open::numeric(20,6)`. `remaining_qty_base` o'zgarmadi (`allowed − consumed`). Alert `details` ga `delivered_qty_base`.
+- **O7.** `evaluate_request` boshida `pg_advisory_xact_lock(hashtext('terron.request:' || object_id || ':' || material_id))`.
+- **O1 — kuchayish.** `notification_outbox.escalation int not null default 0`; unique `notification_outbox_alert_key` → `(alert_id, escalation) where alert_id is not null`; `tg_alerts_notify` (create or replace) yangi conflict maqsadi bilan. Qoida 4 ochiq alerti yangilanganda daraja (`private.norm_escalation_level`: over_pct ≥ 100 → 3, ≥ 50 → 2, `jiddiy` → 1) oshsa — `private.enqueue_alert_escalation(alert_id, level)`: outbox qatori (`escalation = level`, payload = asosiy shakl + `escalation`, joriy `details`, `created_at = now()`), har daraja bir marta, dispatch uyg'otiladi. `tg-dispatch` payload'ni o'zgarishsiz uzatadi (`AlertPayload.escalation`).
+- **O2.** `b_material_requests_guard`: admin bo'lmagan (taminotchi) — faqat `tasdiqlandi → xarid_qilindi`; tasdiqlash / rad etish — faqat admin.
+- **O3.** `daily_report_stats` (create or replace) + `transfers_pending_count` (hozir `yuborildi`), `chiqim_without_estimate_count` (oraliqdagi chiqimlar, obyektida joriy smeta yo'q).
+- **P4.** `materials.zz_waste_alert` (after update of `waste_pct`, qiymat o'zgarsa): `smeta_ozgarishi`, `ogohlantirish`, `object_id` null, `material_id`; `details {kind: 'waste_changed', material_id, material_name, before, after, actor_name}`.
+- **P9.** `cancel_transfer`: admin bo'lmagan yaratuvchi hali `from` obyekt a'zosi bo'lishi shart.
+- **Avtomatik yopish sabablari** (frontend tarjima qiladi): `within_threshold`, `estimate_changed`, `no_current_estimate`, `request_rejected`, `request_deleted`, `purchase_deleted`, `not_applicable`, `restored`, `transfer_received`, `transfer_cancelled`.
 
 ## Qoldiq
 

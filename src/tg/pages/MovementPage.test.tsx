@@ -55,6 +55,8 @@ vi.mock('@/data/movementsRepo', () => ({
   MOVEMENTS_PAGE_SIZE: 50,
 }))
 vi.mock('@/data/openPurchasesRepo', () => ({ listOpenPurchases: vi.fn(async () => []) }))
+vi.mock('@/data/requestsRepo', () => ({ listMyRequests: vi.fn(async () => []) }))
+vi.mock('@/data/transfersRepo', () => ({ listMyTransfers: vi.fn(async () => []), listIncomingTransfers: vi.fn(async () => []) }))
 vi.mock('@/data/purchasesRepo', () => ({ listMyPurchases: vi.fn(async () => []) }))
 vi.mock('@/data/stockRepo', () => ({ getStock: vi.fn(), listStock: vi.fn() }))
 vi.mock('@/data/usageRepo', () => ({ getMyMaterialUsage: vi.fn(async () => []) }))

@@ -18,6 +18,7 @@ export interface AlertFilters {
   severity?: AlertSeverity
   objectId?: string
   purchaseId?: string
+  inventoryCountId?: string
 }
 
 type RawAlert = Omit<Alert, 'object_name' | 'material_name' | 'base_unit'> & {
@@ -44,6 +45,7 @@ export async function listAlerts(filters: AlertFilters = {}, page = 0): Promise<
   if (filters.severity) q = q.eq('severity', filters.severity)
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.purchaseId) q = q.eq('purchase_id', filters.purchaseId)
+  if (filters.inventoryCountId) q = q.eq('inventory_count_id', filters.inventoryCountId)
   const start = page * ALERTS_PAGE_SIZE
   const { data, error, count } = await q
     .order('created_at', { ascending: false })

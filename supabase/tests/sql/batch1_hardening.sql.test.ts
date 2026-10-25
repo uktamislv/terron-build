@@ -760,36 +760,42 @@ describe('material_requests', () => {
     expect(r).toEqual({ qty: '42501', material: '42501', object: '42501', deleted: '42501', note: 1 })
   })
 
-  it('taminotchi: kutilmoqda → xarid_qilindi va rad → tasdiqlandi → 42501', async () => {
+  // Batch 8 (O2): tasdiqlash / rad etish — faqat admin; taminotchi — faqat tasdiqlandi → xarid_qilindi
+  it('taminotchi: kutilmoqda → xarid_qilindi / rad / tasdiqlandi va boshqa o`tishlar → 42501', async () => {
     const r = await asTam(async (tx) => [
       code(await upd(tx, `status = 'xarid_qilindi'`)),
       code(await upd(tx, `status = 'rad'`)),
       code(await upd(tx, `status = 'tasdiqlandi'`)),
       code(await upd(tx, `status = 'kutilmoqda'`)),
     ])
-    expect(r).toEqual(['42501', 1, '42501', '42501'])
+    expect(r).toEqual(['42501', '42501', '42501', 1]) // kutilmoqda → kutilmoqda — o'zgarishsiz
   })
 
-  it('taminotchi: kutilmoqda → tasdiqlandi → xarid_qilindi; decided_by/decided_at serverda (klient qiymati e`tiborsiz)', async () => {
+  it('taminotchi: (admin tasdiqlagan) tasdiqlandi → xarid_qilindi; decided_by/decided_at serverda (klient qiymati e`tiborsiz)', async () => {
     const r = await asTam(async (tx) => {
-      const a = await upd(tx, `status = 'tasdiqlandi', decided_by = $2, decided_at = '2000-01-01'`, [A.users.direktor.profileId])
+      // admin tasdiqlagan holat (tizim sifatida o'rnatiladi)
+      await tx.exec('reset role')
+      const sub = await scalar<string>(tx, `select current_setting('request.jwt.claim.sub', true)`)
+      await tx.query(`select set_config('request.jwt.claim.sub', $1, true)`, [A.users.admin.authUid])
+      await tx.query(`update public.material_requests set status = 'tasdiqlandi' where id = $1`, [A.ids.mr_obj1])
+      await tx.query(`select set_config('request.jwt.claim.sub', $1, true)`, [sub])
+      await tx.exec('set local role authenticated')
+      // faqat note — decided_* saqlanadi (klient boshqasini yuborsa ham)
+      const b = await upd(tx, `note = 'x', decided_by = $2`, [A.users.direktor.profileId])
+      const back = await upd(tx, `status = 'rad'`)
+      const a = await upd(tx, `status = 'xarid_qilindi', decided_by = $2, decided_at = '2000-01-01'`, [A.users.direktor.profileId])
       const s1 = await one<{ decided_by: string; recent: boolean }>(
         tx,
         `select decided_by, decided_at > now() - interval '1 minute' as recent from public.material_requests where id = $1`,
         [A.ids.mr_obj1],
       )
-      // faqat note — decided_* saqlanadi (klient boshqasini yuborsa ham)
-      const b = await upd(tx, `note = 'x', decided_by = $2`, [A.users.direktor.profileId])
-      const s2 = await scalar<string>(tx, `select decided_by from public.material_requests where id = $1`, [A.ids.mr_obj1])
-      const c = await upd(tx, `status = 'xarid_qilindi'`)
-      return { a: code(a), s1, b: code(b), s2, c: code(c) }
+      return { b: code(b), back: code(back), a: code(a), s1 }
     })
     expect(r).toEqual({
+      b: 1,
+      back: '42501',
       a: 1,
       s1: { decided_by: A.users.taminotchi.profileId, recent: true },
-      b: 1,
-      s2: A.users.taminotchi.profileId,
-      c: 1,
     })
   })
 
@@ -857,20 +863,23 @@ describe('inventarizatsiya', () => {
 
   it('tekshiruvchi qty_expected ni yoza olmaydi (insert → null, update → eski)', async () => {
     const r = await asUser(db, tek().authUid, async (tx) => {
-      const ins = await scalar<string | null>(
+      const id = await scalar<string>(
         tx,
         `insert into public.inventory_count_items (company_id, inventory_count_id, material_id, qty_counted, qty_expected, created_by)
-         values ($1, $2, $3, 1, 999, $4) returning qty_expected`,
+         values ($1, $2, $3, 1, 999, $4) returning id`,
         [A.id, A.ids.ic_obj1, A.ids.m2, tek().profileId],
       )
-      const upd = await scalar<string | null>(
-        tx,
-        `update public.inventory_count_items set qty_expected = 999, qty_counted = 6 where id = $1 returning qty_expected`,
-        [A.ids.ici_obj1],
-      )
-      return [ins, upd]
+      await tx.query(`update public.inventory_count_items set qty_expected = 999, qty_counted = 6 where id = $1`, [A.ids.ici_obj1])
+      // Batch 8 (O5): qty_expected ustunini authenticated o'qiy olmaydi
+      const read = code(await tryQuery(tx, `select qty_expected from public.inventory_count_items where id = $1`, [id]))
+      await tx.exec('reset role')
+      const ins = await scalar<string | null>(tx, `select qty_expected from public.inventory_count_items where id = $1`, [id])
+      const upd = await scalar<string | null>(tx, `select qty_expected from public.inventory_count_items where id = $1`, [
+        A.ids.ici_obj1,
+      ])
+      return [ins, upd, read]
     })
-    expect(r).toEqual([null, null])
+    expect(r).toEqual([null, null, '42501'])
   })
 
   it('submit_inventory_count: o`z draft hisobi → submitted, qty_expected stock_balances dan (yo`q material → 0)', async () => {
@@ -881,6 +890,8 @@ describe('inventarizatsiya', () => {
         [A.id, A.ids.ic_obj1, A.ids.m2, tek().profileId],
       )
       const sub = await tryQuery(tx, `select public.submit_inventory_count($1)`, [A.ids.ic_obj1])
+      // Batch 8 (O5): qty_expected — faqat tizim / inventory_count_details orqali o'qiladi
+      await tx.exec('reset role')
       const items = await rows<{ material_id: string; qty_expected: string }>(
         tx,
         `select material_id, qty_expected::text from public.inventory_count_items where inventory_count_id = $1`,

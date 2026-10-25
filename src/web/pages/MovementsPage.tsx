@@ -9,10 +9,12 @@ import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { MovementsTab } from '../movements/MovementsTab'
+import { InventoryTab } from '../movements/InventoryTab'
 import { StockTab } from '../movements/StockTab'
+import { TransfersTab } from '../movements/TransfersTab'
 
 const to = t.ombor
-type Tab = 'movements' | 'stock'
+type Tab = 'movements' | 'stock' | 'transfers' | 'inventory'
 
 /** Ombor: harakatlar jadvali va qoldiq. Ko'rinish RLS bilan cheklanadi. */
 export function MovementsPage() {
@@ -46,12 +48,14 @@ export function MovementsPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'movements', label: to.tabMovements },
     { key: 'stock', label: to.tabStock },
+    { key: 'transfers', label: to.tabTransfers },
+    { key: 'inventory', label: to.tabInventory },
   ]
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
       <h1 className="text-2xl font-bold text-brand-dark">{to.title}</h1>
-      <div role="tablist" aria-label={to.title} className="grid max-w-sm grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+      <div role="tablist" aria-label={to.title} className="grid max-w-2xl grid-cols-2 gap-1 sm:grid-cols-4 rounded-xl bg-slate-100 p-1">
         {tabs.map((x) => (
           <button
             key={x.key}
@@ -68,7 +72,9 @@ export function MovementsPage() {
         ))}
       </div>
       {refError && <Notice>{refError}</Notice>}
-      {tab === 'movements' ? (
+      {tab === 'transfers' && <TransfersTab objects={objects} canManage={can(me.role, 'manage_transfers')} />}
+      {tab === 'inventory' && <InventoryTab objects={objects} canApply={can(me.role, 'apply_inventory')} />}
+      {tab === 'movements' && (
         <MovementsTab
           objects={objects}
           materials={materials}
@@ -76,9 +82,8 @@ export function MovementsPage() {
           isAdmin={isAdmin}
           canSeeDeleted={isAdmin || me.role === 'direktor'}
         />
-      ) : (
-        <StockTab objects={objects} materials={materials} />
       )}
+      {tab === 'stock' && <StockTab objects={objects} materials={materials} />}
     </div>
   )
 }

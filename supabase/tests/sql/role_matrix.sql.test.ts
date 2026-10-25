@@ -89,8 +89,10 @@ const VISIBILITY: Partial<Record<BusinessTable, VisRule>> = {
     prorab: ['p_tam_obj1', 'p_pro_obj1'],
     omborchi: ['p_tam_obj1', 'p_pro_obj1'],
     haydovchi: ['p_hay_obj2'],
+    // Batch 8 (Y1): tekshiruvchi xarid va harakatlarni ko'rmaydi (ko'r-ko'rona sanash)
+    tekshiruvchi: [],
   }),
-  movements: byRole('movements', { prorab: ['mv_obj1'], omborchi: ['mv_obj1'], haydovchi: [] }),
+  movements: byRole('movements', { prorab: ['mv_obj1'], omborchi: ['mv_obj1'], haydovchi: [], tekshiruvchi: [] }),
   transfers: byRole('transfers', { prorab: ['tr_1to2'], omborchi: ['tr_1to2'], haydovchi: [] }),
   inventory_counts: byRole('inventory_counts', { prorab: ['ic_obj1'], omborchi: ['ic_obj1'], haydovchi: [] }),
   inventory_count_items: byRole('inventory_count_items', {
@@ -140,7 +142,9 @@ describe('ko`rish (SELECT) — yorliqli qatorlar', () => {
       rows<{ object_id: string }>(tx, `select object_id from public.stock_balances where company_id = $1`, [A.id]),
     )
     const labels = ['obj1', 'obj2'].filter((l) => objs.some((o) => o.object_id === A.ids[l]))
-    const expected = COMPANY_WIDE.includes(role) ? ['obj1', 'obj2'] : role === 'haydovchi' ? [] : ['obj1']
+    // Batch 8 (Y1): tekshiruvchi kutilgan qoldiqni ko'rmaydi
+    const expected =
+      role === 'tekshiruvchi' || role === 'haydovchi' ? [] : COMPANY_WIDE.includes(role) ? ['obj1', 'obj2'] : ['obj1']
     expect(labels).toEqual(expected)
   })
 
@@ -178,7 +182,8 @@ const CAN_INSERT: Record<BusinessTable, UserRole[]> = {
   estimate_items: [],
   estimate_import_templates: [...ADMINS, 'buxgalter'],
   material_requests: [...ADMINS, 'prorab'],
-  transfers: [...ADMINS, 'prorab'],
+  // Batch 8: o'tkazma faqat RPC (create_transfer) orqali — to'g'ridan-to'g'ri INSERT hech kimga
+  transfers: [],
   alerts: [],
 }
 
@@ -201,7 +206,8 @@ const CAN_UPDATE: Record<BusinessTable, UserRole[]> = {
   estimate_items: [...ADMINS, 'buxgalter'],
   estimate_import_templates: [...ADMINS, 'buxgalter'],
   material_requests: [...ADMINS, 'taminotchi'],
-  transfers: ADMINS,
+  // Batch 8: o'tkazma faqat RPC (receive_transfer / cancel_transfer) orqali o'zgaradi
+  transfers: [],
   alerts: ADMINS,
 }
 
