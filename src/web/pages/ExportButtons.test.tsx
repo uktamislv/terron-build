@@ -26,7 +26,7 @@ vi.mock('@/data/authRepo', () => ({
   telegramSignIn: vi.fn(),
   clearLocalSession: vi.fn(),
   changePassword: vi.fn(),
-  MIN_PASSWORD_LENGTH: 8,
+  MIN_PASSWORD_LENGTH: 10,
 }))
 vi.mock('@/data/objectsRepo', () => ({ listObjects: vi.fn(async () => [makeObject('3f2b8c1e-1d2a-4b5c-9d8e-0f1a2b3c4d5e', 'Obyekt A')]) }))
 vi.mock('@/data/materialsRepo', () => ({ listMaterials: vi.fn(async () => []) }))

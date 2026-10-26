@@ -16,7 +16,7 @@ export type SignInResult = { ok: true } | { ok: false; error: SignInError }
  */
 export type TelegramSignInStatus = 'ok' | 'need_contact' | 'inactive' | 'invalid' | 'reopen' | 'web_only'
 
-export const MIN_PASSWORD_LENGTH = 8
+export const MIN_PASSWORD_LENGTH = 10
 
 function toAuthSession(session: Session | null): AuthSession | null {
   if (!session) return null

@@ -1,3 +1,4 @@
+import { MIN_PASSWORD_LENGTH } from './authRepo'
 import { RepoError, type RepoErrorCode } from './errors'
 import { invokeFunction } from './functions'
 import type { LoginKind } from './types'
@@ -46,7 +47,7 @@ export function setLoginErrorCode(status: number, bodyError: string | undefined)
 export async function setLogin(
   input: SetLoginInput,
 ): Promise<{ login: string; loginKind: LoginKind; existingLoginReplaced: boolean }> {
-  if (input.password.length < 8) throw new RepoError('weak_password')
+  if (input.password.length < MIN_PASSWORD_LENGTH) throw new RepoError('weak_password')
   const email = input.email?.trim().toLowerCase()
   const result = await invokeFunction<{ ok: true; login: string; login_kind?: LoginKind; existing_login_replaced?: boolean }>('admin-users', {
     action: 'set_login',

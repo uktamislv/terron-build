@@ -131,8 +131,8 @@ describe('admin-users: kirish validatsiyasi (xato kodlari)', () => {
     expect(f.calls.update).toHaveLength(0)
   })
 
-  it('parol aynan 8 belgi — qabul qilinadi', async () => {
-    expect((await handleAdminUsers(AUTH, body({ password: '12345678' }), fake().deps)).status).toBe(200)
+  it('parol aynan 10 belgi — qabul qilinadi', async () => {
+    expect((await handleAdminUsers(AUTH, body({ password: '1234567890' }), fake().deps)).status).toBe(200)
   })
 })
 
