@@ -169,6 +169,10 @@ export interface Movement extends GeoColumns {
   unit_variant: string | null
   qty_base: Dec
   purchase_id: string | null
+  /** O'tkazma harakati — bog'langan (tuzatib bo'lmaydi). */
+  transfer_id?: string | null
+  /** Inventarizatsiya tuzatishi — bog'langan. */
+  inventory_count_id?: string | null
   photo_path: string | null
   /** Batch 12 (C): rasm SHA-256 (hex), klient hisoblaydi. */
   photo_sha256?: string | null
@@ -241,6 +245,9 @@ export type AlertType =
   | 'login_ozgardi'
   | 'podotchet_belgisi'
   | 'sotuvchi_stir_farqi'
+  // Audit 2 (20261109000001_audit2_fixes.sql)
+  | 'xarid_boshqa_nomidan'
+  | 'sotuvchi_birlashtirildi'
 
 export const ALERT_TYPES: readonly AlertType[] = [
   'xarid_qabul_farqi',
@@ -268,6 +275,8 @@ export const ALERT_TYPES: readonly AlertType[] = [
   'login_ozgardi',
   'podotchet_belgisi',
   'sotuvchi_stir_farqi',
+  'xarid_boshqa_nomidan',
+  'sotuvchi_birlashtirildi',
 ]
 
 export type AlertStatus = 'yangi' | 'korildi' | 'yopildi'
@@ -279,6 +288,9 @@ export type AlertSeverity = 'belgi' | 'ogohlantirish' | 'jiddiy'
 export const ALERT_SEVERITIES: readonly AlertSeverity[] = ['belgi', 'ogohlantirish', 'jiddiy']
 
 /** Xarid — obyekt, material, xaridor va sotuvchi nomlari, qabul holati bilan. Pul va miqdor — satr. */
+export type PaymentSource = 'podotchet' | 'firma'
+export const PAYMENT_SOURCES: readonly PaymentSource[] = ['podotchet', 'firma']
+
 export interface Purchase extends GeoColumns {
   id: string
   company_id: string
@@ -302,6 +314,11 @@ export interface Purchase extends GeoColumns {
   receipt_terminal_id?: string | null
   receipt_no?: string | null
   receipt_verified?: boolean
+  /**
+   * Pul manbai: 'podotchet' — xaridor qo'lidagi pul (podotchet hisobiga kiradi), 'firma' — firma to'lagan
+   * (podotchet va qo'ldagi pul yig'indilariga kirmaydi). Server qoidasi bilan to'ldiriladi.
+   */
+  payment_source?: PaymentSource
   /** Chekdagi jami (so'm), `numeric(18,2)` satr. */
   receipt_total?: Dec | null
   seller_tin?: string | null

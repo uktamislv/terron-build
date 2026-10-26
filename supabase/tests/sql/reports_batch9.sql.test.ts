@@ -310,6 +310,8 @@ const ZERO_SUMMARY = {
   pending_transfers_count: 0,
   pending_requests_count: 0,
   objects_over_norm_count: 0,
+  telegram_blocked_count: null, // audit2 S13: faqat admin/direktor/super_admin (o'z firmasi)
+  telegram_me_blocked: false,
 }
 
 // ============================================================================
@@ -331,6 +333,8 @@ describe('dashboard_summary', () => {
     alerts_open: 2,
     alerts_serious_open: 1,
     alerts_new_in_period: 3, // a1, a3 (yopilgan), a6 (yopilgan); belgi va o`chirilgan yo`q
+    telegram_blocked_count: 0, // audit2 S13
+    telegram_me_blocked: false,
     unreceived_purchases_count: 2, // haydovchi 2 kun (o1); taminotchi 4 kun (o2, kirimi o'chirilgan)
     pending_transfers_count: 2,
     pending_requests_count: 2,
@@ -343,7 +347,7 @@ describe('dashboard_summary', () => {
 
   it('direktor va buxgalter — admin bilan bir xil', async () => {
     expect(await summary('direktor', '2026-01-10', '2026-01-12')).toEqual(ADMIN_FULL)
-    expect(await summary('buxgalter', '2026-01-10', '2026-01-12')).toEqual(ADMIN_FULL)
+    expect(await summary('buxgalter', '2026-01-10', '2026-01-12')).toEqual({ ...ADMIN_FULL, telegram_blocked_count: null }) // audit2 S13: buxgalterga yo'q
   })
 
   it('obyekt filtri (o1): obyektga bog`langanlari toraydi, podotchet obyektsiz', async () => {

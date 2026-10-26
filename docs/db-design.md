@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, audit tuzatishlari)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, audit tuzatishlari 1–2 tur)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -63,7 +63,7 @@ Migratsiya egasi (`postgres`) `BYPASSRLS` bo'lishi shart (Supabase'da shunday): 
 | Jadval | Ko'rish | Qo'shish | O'zgartirish / soft delete |
 |---|---|---|---|
 | `companies` | o'z firmasi | super_admin | admin (o'z firmasi sozlamalari), super_admin |
-| `profiles` | admin, super_admin: firma a'zolari; boshqalar: faqat o'zi (audit_fixes; ism/rol — `profile_directory`) | admin | admin (admin/direktor profilining rol/telefon/holati — super_admin); o'zi — faqat `notify_workflow` |
+| `profiles` | admin, super_admin: firma a'zolari; boshqalar: faqat o'zi (audit_fixes; ism/rol — `profile_directory`) | admin | admin (admin/direktor profilining rol/ism/telefon/holati, admin/direktor yaratish va bu rollarni berish — super_admin); o'zi — faqat `notify_workflow` |
 | `objects` | firma rollari: hammasi; boshqalar: a'zo bo'lganlari | admin | admin |
 | `object_members` | firma rollari: hammasi; boshqalar: o'z qatorlari | admin | admin |
 | `materials`, `material_units`, `material_aliases` | firma a'zolari | admin | admin |
@@ -71,12 +71,12 @@ Migratsiya egasi (`postgres`) `BYPASSRLS` bo'lishi shart (Supabase'da shunday): 
 | `cash_advances` | admin, direktor, buxgalter: hammasi; boshqalar: o'ziga berilgani | admin, buxgalter | admin, buxgalter |
 | `purchases` | admin, direktor, buxgalter, taminotchi, tekshiruvchi: hammasi; prorab: a'zo obyektlar + o'zi xarid qilgani; haydovchi: faqat o'zi xarid qilgani | admin, taminotchi; haydovchi, prorab (a'zo obyekt); `buyer_id = my_profile_id()` (admin'dan tashqari) | admin |
 | `movements` | firma rollari: hammasi; prorab, omborchi: a'zo obyektlar | admin; prorab, omborchi (a'zo obyekt) — faqat kirim/chiqim (audit_fixes: transfer_* / inventory_adjust — faqat RPC) | admin (o'tkazma / inventarizatsiya harakatlari — faqat izoh) |
-| `inventory_counts`, `inventory_count_items` | firma rollari; prorab, omborchi: a'zo obyektlar | admin, tekshiruvchi | admin, tekshiruvchi (o'zi yaratgan, `status = 'draft'`) |
+| `inventory_counts`, `inventory_count_items` | firma rollari (tekshiruvchi — faqat o'zi yaratgan, audit 2-tur); prorab, omborchi: a'zo obyektlar | admin, tekshiruvchi | admin, tekshiruvchi (o'zi yaratgan, `status = 'draft'`) |
 | `estimates`, `estimate_items` | firma rollari; prorab: a'zo obyektlar | admin, buxgalter | admin, buxgalter |
 | `estimate_import_templates` (Batch 7) | firma a'zolari | admin, buxgalter | admin, buxgalter |
 
 Batch 7: `estimates`, `estimate_items` — qo'shish va `is_current`/qator mazmunini o'zgartirish faqat RPC (`import_estimate`, `set_current_estimate`) orqali; to'g'ridan-to'g'ri — faqat nom/sana/fayl nomi va soft delete ("Smeta importi" bo'limi).
-| `material_requests` | firma rollari; prorab: a'zo obyektlar | admin; prorab (a'zo obyekt) | admin, taminotchi |
+| `material_requests` | firma rollari; prorab: a'zo obyektlar; haydovchi: a'zo obyektlarning `tasdiqlandi` so'rovlari (audit 2-tur) | admin; prorab (a'zo obyekt) | admin, taminotchi |
 | `transfers` | firma rollari; prorab, omborchi: qaysidir tomoni a'zo obyekt | Batch 8: faqat RPC `create_transfer` (admin; prorab — `from` a'zo) | Batch 8: faqat RPC `receive_transfer` / `cancel_transfer` |
 | `alerts` | admin, direktor, buxgalter | — (faqat tizim: trigger/Edge Function; Batch 5 qoidalari — `private.evaluate_*`) | admin — faqat `status`, `close_note` (Batch 5) |
 | `audit_log` | admin, direktor | — (faqat trigger) | — |
@@ -722,6 +722,24 @@ Shartnoma va to'liq tafsilot: `docs/audit-fixes.md` (bandlar A1–A14, B1–B14,
 - **Yangi RPC:** `correct_entry(p_table, p_id, p_qty_input, p_unit_id, p_total_amount, p_note)`, `merge_suppliers(p_keep, p_merge)`, `notification_health()` — authenticated; `svc_set_photo_hash(p_table, p_id, p_sha256)`, `svc_alert_login_set(p_target_profile, p_actor)`, `svc_mark_chat_blocked(p_chat_id, p_blocked)` — service_role. `svc_complete_notification` — oxirida `p_blocked_chat_ids bigint[] default null`.
 - **Kunlik hisobot** ∪ `backdated_count`, `manual_closed_count`, `stuck_pending_count`, `failed_7d_count`, `cash_outstanding_sum`, `cash_owed_to_staff_sum`; **dashboard_summary** ∪ `cash_outstanding_sum`, `cash_owed_to_staff_sum`; "yangi alert" ta'rifi — `private.alerts_new_count` (ikkalasida).
 - **Cron:** `terron-cron-purge` (03:30 UTC) — `cron.job_run_details` 7 kundan eskilari. pg_net timeout — 60 s.
+
+## Audit tuzatishlari, 2-tur (`20261109000001_audit2_fixes.sql`)
+
+Shartnoma va to'liq tafsilot: `docs/audit-fixes.md` → "2-tur" (S1–S14, L1–L13, payloadlar, Edge Function shartnomasi).
+
+- **Enum** `alert_type` ∪ `xarid_boshqa_nomidan` (ogohlantirish ✉), `sotuvchi_birlashtirildi` (belgi).
+- **Ustunlar:** `suppliers.merged_into uuid` (FK `(company_id, merged_into) → suppliers`); `purchases.payment_source text not null ('podotchet' | 'firma')` — `b_buyer_guard` to'ldiradi (xaridorga `berildi` podotchet berilmagan → `firma`); `profile_directory` ∪ `deleted_at`, `is_available`.
+- **Chegaralar:** tinch oyna ≤ 12 soat (`companies_quiet_hours_window_check`).
+- **Tizim jadvallari (`private`, API'da yo'q, RLS enable + force, grant yo'q):** `private.photo_hash_queue` (`id, company_id, table_name, record_id, photo_path, status pending|sending|done|failed|stale, attempts, next_attempt_at, last_error, created_at, updated_at, done_at`; ochiq ish (yozuv, yo'l) bo'yicha bitta); `private.rate_limits` (`profile_id, bucket, hits timestamptz[], updated_at`). Ikkalasi biznes jadvali emas (notification_outbox kabi) — `created_by` / `deleted_at` / audit trigger yo'q, o'chirish ham yo'q (holat ustuni).
+- **Sozlama va sir:** `private.app_settings.photo_hash_url`; Vault `photo_hash_secret`.
+- **Outbox `kind`** ∪ `transfer_cancelled`, `purchase_deleted` (ref_id), `transfer_received`, `purchase_on_your_name`, `inventory_applied` (profile_id + ref_id), `alerts_digest` (bog'lanishsiz). Unique: `notification_outbox_workflow2_key (kind, ref_id)`, `notification_outbox_buyer_key (kind, ref_id, profile_id)`. Indeks `notification_outbox_company_status_idx (company_id, status, updated_at)`; `notification_outbox_ref_idx` olib tashlandi.
+- **RLS:** `inventory_counts_select` — tekshiruvchi faqat o'zi yaratgan; `private.is_blind_counter()` — `movements_select_own_deleted`, `purchases_select_own_deleted`, `cash_advances_select`, `receipt_lookups_select`, view'lar `stock_balances`, `cash_balances` (faqat `current_user = authenticated` da) tekshiruvchiga yopiq; `stock_forecast` — `stock_forbidden`, `my_material_usage` — bo'sh, `dashboard_summary` — nollar; `alerts_select_site` — omborchi `smetadan_ortiq_sorov` siz; `material_requests_select` — haydovchi a'zo obyektlarining `tasdiqlandi` so'rovlari.
+- **Triggerlar:** `zz_photo_hash_ins/upd` (movements, purchases); `b_buyer_guard`, `zz_other_buyer_ins/upd`, `zz_workflow_deleted` (purchases); `zz_tin_reeval` (suppliers); `b_profiles_protect_ins` (profiles); `zz_workflow_status` (transfers); `zz_workflow_applied` (inventory_counts); `zz_alert_digest` (alerts, deferred constraint trigger).
+- **Yangi RPC:** `cancel_own_entry(p_table, p_id, p_reason)`, `reset_chat_blocked(p_profile_id)` — authenticated; `svc_claim_photo_hash_jobs(p_limit)`, `svc_complete_photo_hash_job(p_job_id, p_sha256, p_error, p_final)`, `svc_touch_chat(p_chat_id)`, `svc_photo_hash_secret()` — service_role. **O'zgargan imzo:** `correct_entry(p_table, p_id, p_qty_input, p_unit_id, p_total_amount, p_note, p_reason, p_material_id, p_object_id)` (oxirgi 7 tasi default null), `svc_set_photo_hash(..., p_expected_path default null)`, `svc_alert_login_set(..., p_first_login default false)`; `check_purchase_price` — `volatile` (chastota cheklovi).
+- **Yordamchilar (`private`):** `quiet_window_minutes`, `lock_receipt_alloc`, `rate_limit_hit`, `wake_photo_hash`, `photo_hash_sweep`, `enqueue_alert_outbox`, `reevaluate_receipt_chain`, `duplicate_matches`, `reevaluate_duplicate`, `transfer_payload`, `purchase_payload`, `telegram_blocked_count`.
+- **Qoida 1 (o'zgargan):** `receipt_candidates` — qisman taqsimlash, orqa sanali xaridlar oxirida; `evaluate_purchase_receipt` — xarid qatorini qulflamaydi, `receipt_alloc` birinchi; zanjir yangi alert yaratmaydi (`terron.receipt_chain`).
+- **Cron:** `terron-photo-hash-sweep` (`*/5 * * * *`).
+- **Pul:** `cash_balances`, `private.cash_position`, kunlik hisobot pul yig'indilari — faqat `payment_source = 'podotchet'` xaridlar.
 
 ## Qoldiq
 

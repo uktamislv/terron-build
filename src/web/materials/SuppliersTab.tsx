@@ -2,8 +2,25 @@
 // birlashtirish (merge_suppliers, tasdiq bilan), o'chirish va tiklash.
 import { useCallback, useMemo, useState, type FormEvent } from 'react'
 import { Merge, Pencil, RotateCcw, Store, Trash2 } from 'lucide-react'
-import { ActionMenu, Badge, Button, DataTable, EmptyState, EntryRow, FilterBar, Modal, Notice, RetryNotice, SelectField, Spinner, TextAreaField, TextField } from '@/components/ui'
-import { listAllSuppliers, mergeSuppliers, restoreSupplier, softDeleteSupplier, updateSupplier } from '@/data/suppliersRepo'
+import {
+  ActionMenu,
+  Badge,
+  Button,
+  choiceClass,
+  cx,
+  DataTable,
+  EmptyState,
+  EntryRow,
+  FilterBar,
+  Modal,
+  Notice,
+  RetryNotice,
+  SearchBox,
+  SkeletonRows,
+  TextAreaField,
+  TextField,
+} from '@/components/ui'
+import { countPurchasesBySupplier, listAllSuppliers, mergeSuppliers, restoreSupplier, softDeleteSupplier, updateSupplier } from '@/data/suppliersRepo'
 import type { Supplier } from '@/data/types'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
@@ -81,7 +98,7 @@ export function SuppliersTab() {
       {done && <Notice tone="ok">{done}</Notice>}
       {actionError && !dialog && <Notice>{actionError}</Notice>}
       {list.error && <RetryNotice message={list.error} onRetry={reload} />}
-      {list.loading && <Spinner />}
+      {list.loading && <SkeletonRows rows={4} />}
       {rows && (
         <DataTable
           caption={ts.title}
@@ -104,12 +121,12 @@ export function SuppliersTab() {
             { key: 'phone', header: ts.colPhone, cell: (s) => <span className="tabular">{s.phone ?? '—'}</span> },
             { key: 'tin', header: ts.colTin, cell: (s) => <span className="tabular">{s.tin ?? '—'}</span> },
             { key: 'note', header: ts.colNote, cell: (s) => <span className="text-muted">{s.note ?? ''}</span> },
-            { key: 'actions', header: t.common.edit, srHeader: true, cell: actions },
+            { key: 'actions', header: ts.colActions, cell: actions },
           ]}
           renderMobile={(s) => (
             <EntryRow
               kind="neutral"
-              icon={<Store className="size-[18px]" strokeWidth={1.75} />}
+              icon={<Store className="size-5" strokeWidth={1.75} />}
               deleted={Boolean(s.deleted_at)}
               title={s.name}
               badge={s.deleted_at ? <Badge tone="danger">{t.movements.deleted}</Badge> : null}
@@ -158,14 +175,14 @@ export function SuppliersTab() {
           footer={
             <>
               <Button variant="secondary" onClick={close}>
-                {t.common.no}
+                {t.common.cancel}
               </Button>
               <Button
                 variant="danger"
                 loading={busy}
                 onClick={() => void run(() => softDeleteSupplier(dialog.supplier.id).then(() => ts.deleted(dialog.supplier.name)))}
               >
-                {t.common.yes}
+                {ts.delete}
               </Button>
             </>
           }
@@ -256,8 +273,14 @@ function MergeDialog({
   onMerge: (keepId: string) => void
 }) {
   const [keepId, setKeepId] = useState('')
+  const [query, setQuery] = useState('')
   const [confirming, setConfirming] = useState(false)
+  // Xaridlar soni — qo'shimcha: yuklanmasa ro'yxat baribir ishlaydi (son ko'rsatilmaydi)
+  const counts = useLoad(() => countPurchasesBySupplier(), `supplier-counts:${supplier.id}`)
   const keep = candidates.find((s) => s.id === keepId) ?? null
+  const shown = useMemo(() => filterSuppliers(candidates, query), [candidates, query])
+  const moving = counts.data?.get(supplier.id) ?? 0
+  const countOf = (id: string) => (counts.data ? ts.purchaseCount(counts.data.get(id) ?? 0) : null)
   return (
     <Modal
       title={ts.mergeTitle}
@@ -269,7 +292,7 @@ function MergeDialog({
           </Button>
           {confirming ? (
             <Button variant="danger" loading={busy} onClick={() => keep && onMerge(keep.id)}>
-              {ts.mergeConfirm}
+              {ts.mergeConfirm(moving)}
             </Button>
           ) : (
             <Button disabled={!keep} onClick={() => setConfirming(true)}>
@@ -282,16 +305,32 @@ function MergeDialog({
       <div className="flex flex-col gap-4">
         <p className="text-sm text-muted">{ts.mergeIntro(supplier.name)}</p>
         {!confirming && (
-          <SelectField label={ts.mergeInto} value={keepId} onChange={setKeepId}>
-            <option value="">{ts.mergeChoose}</option>
-            {candidates.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.tin ? `${s.name} (${s.tin})` : s.name}
-              </option>
-            ))}
-          </SelectField>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 text-sm font-medium text-ink">{ts.mergeInto}</legend>
+            <SearchBox label={ts.mergeSearch} placeholder={ts.searchPlaceholder} value={query} onChange={setQuery} size="md" />
+            {shown.length === 0 ? (
+              <p className="text-sm text-muted">{ts.mergeNone}</p>
+            ) : (
+              <div role="radiogroup" aria-label={ts.mergeInto} className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">
+                {shown.map((s) => (
+                  <label
+                    key={s.id}
+                    data-testid="merge-target"
+                    className={cx(choiceClass({ selected: keepId === s.id, shape: 'row', label: true, emphasis: false }), 'justify-between')}
+                  >
+                    <input type="radio" name="merge-target" className="sr-only" checked={keepId === s.id} onChange={() => setKeepId(s.id)} />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate font-semibold">{s.name}</span>
+                      {s.tin && <span className="tabular text-xs text-muted">{ts.tinShort(s.tin)}</span>}
+                    </span>
+                    {countOf(s.id) && <span className="tabular shrink-0 text-xs text-muted">{countOf(s.id)}</span>}
+                  </label>
+                ))}
+              </div>
+            )}
+          </fieldset>
         )}
-        {confirming && keep && <Notice tone="warn">{ts.mergeWarning(supplier.name, keep.name)}</Notice>}
+        {confirming && keep && <Notice tone="warn">{ts.mergeWarning(supplier.name, keep.name, moving)}</Notice>}
         {error && <Notice>{error}</Notice>}
       </div>
     </Modal>

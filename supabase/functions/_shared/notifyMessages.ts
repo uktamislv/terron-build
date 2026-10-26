@@ -169,6 +169,8 @@ export const NOTIFY_TEXTS = {
     login_ozgardi: "Login o'zgartirildi",
     podotchet_belgisi: 'Podotchet belgisi',
     sotuvchi_stir_farqi: 'Sotuvchi STIR farqi',
+    xarid_boshqa_nomidan: 'Boshqa odam nomidan xarid',
+    sotuvchi_birlashtirildi: 'Sotuvchilar birlashtirildi',
   },
   deletedTitles: {
     purchases: "Xarid o'chirildi",
@@ -220,6 +222,8 @@ export const NOTIFY_TEXTS = {
     login_ozgardi: 'login',
     podotchet_belgisi: 'podotchet belgisi',
     sotuvchi_stir_farqi: 'sotuvchi STIR',
+    xarid_boshqa_nomidan: 'boshqa nomidan xarid',
+    sotuvchi_birlashtirildi: 'sotuvchi birlashtirildi',
   } as Record<string, string>,
   noSource: {
     open_purchase: "Ochiq xarid bor edi, lekin kirim unga bog'lanmagan",
@@ -424,6 +428,57 @@ export const NOTIFY_TEXTS = {
     loginTitle: "Sizning loginingiz o'zgartirildi",
     loginActor: "O'zgartirdi: ",
     loginWarn: "Agar bu siz bo'lmasangiz — darhol adminga ayting.",
+    loginFirstTitle: 'Sizga login berildi',
+    // 2-tur
+    transferCancelled: "O'tkazma bekor qilindi",
+    transferReceived: "O'tkazma qabul qilindi",
+    cancelReason: 'Sabab: ',
+    cancelledBy: 'Bekor qildi: ',
+    sent: 'Yuborildi: ',
+    received: 'qabul: ',
+    receivedBy: 'Qabul qildi: ',
+    purchaseDeleted: 'Xarid bekor qilindi — obyektga kelmaydi',
+    buyer: 'Xaridor: ',
+    deletedBy: "O'chirdi: ",
+    reason: 'Sabab: ',
+    purchaseOnYourName: 'Sizning nomingizga xarid kiritildi',
+    purchaseOnYourNameWarn: "Agar siz qilmagan bo'lsangiz — adminga ayting.",
+    enteredBy: 'Kiritdi: ',
+    payment: "To'lov: ",
+    paymentSources: { podotchet: "podotchet (qo'lingizdagi puldan)", firma: 'firma hisobidan' } as Record<string, string>,
+    inventoryApplied: "Inventarizatsiya natijasi qo'llandi",
+    /** "Materiallar: 12, tuzatildi: 3" */
+    inventoryCounts: (items: string, adjusted: string) => `Materiallar: ${items}, tuzatildi: ${adjusted}`,
+    appliedBy: "Qo'lladi: ",
+  },
+  /** 2-tur: dayjest (bir xil turdagi bir nechta alert bitta xabarda). */
+  alertsDigest: {
+    /** "7 ta: Smetadan ortiq so'rov" */
+    title: (n: string, typeTitle: string) => `${n} ta: ${typeTitle}`,
+    /** "ortiqcha 120,5 kg" */
+    over: (q: string) => `ortiqcha ${q}`,
+    /** "+5 ta" */
+    more: (n: string) => `+${n} ta`,
+  },
+  otherBuyer: {
+    title: 'Boshqa odam nomidan xarid',
+    buyer: 'Xaridor: ',
+    actor: 'kiritdi: ',
+    viaUpdate: "(xaridor keyin o'zgartirildi)",
+    date: 'Sana: ',
+  },
+  supplierMerge: {
+    title: 'Sotuvchilar birlashtirildi',
+    /** "Ko'chirilgan xaridlar: 5 (o'chirilganlar: 1)" */
+    moved: (n: string, deleted: string | null) => `Ko'chirilgan xaridlar: ${n}${deleted ? ` (o'chirilganlar: ${deleted})` : ''}`,
+    filled: "To'ldirildi: ",
+    filledKeys: { tin: 'STIR', phone: 'telefon', note: 'izoh' } as Record<string, string>,
+    actor: 'Bajardi: ',
+  },
+  entryCancel: {
+    title: 'Muallif yozuvni bekor qildi',
+    reason: 'Sabab: ',
+    firstLogin: 'Birinchi marta login berildi',
   },
   /** Rol nomlari — `src/i18n/uz.ts` `roles` bilan bir xil. */
   roles: {
@@ -753,6 +808,8 @@ function alertEmoji(type: string, severity: string, details: Record<string, unkn
   if (type === 'sozlama_ozgardi') return '⚙️'
   if (type === 'login_ozgardi') return '🔐'
   if (type === 'sotuvchi_stir_farqi') return '🧾'
+  if (type === 'xarid_boshqa_nomidan') return '👤'
+  if (type === 'sotuvchi_birlashtirildi') return '🔗'
   if (type === 'normadan_oshish') return '📉'
   if (type === 'smetadan_ortiq_sorov') return '📝'
   if (type === 'otkazma_farqi') return '🔄'
@@ -1387,6 +1444,7 @@ function recordChangeActor(d: Record<string, unknown>): string {
 
 function recordChangeTitle(type: string, d: Record<string, unknown>): string {
   const t = NOTIFY_TEXTS.recordChange
+  if (d.via === 'cancel_own_entry') return NOTIFY_TEXTS.entryCancel.title
   if (type === 'yozuv_tuzatildi') return t.correctedTitle
   if (d.table === 'purchases') return t.titles.purchases ?? t.titles.other ?? ''
   if (d.table === 'movements') {
@@ -1401,8 +1459,9 @@ function recordChangeTitle(type: string, d: Record<string, unknown>): string {
 function recordChangeLines(p: AlertPayload): string[] {
   const d = p.details
   const material = nameHtml(p.material_name) ?? nameHtml(d.material_name)
+  if (d.via === 'cancel_own_entry') return cancelOwnEntryLines(p)
   const ctx = [material, nameHtml(p.object_name)].filter((x) => x).join(' · ')
-  return [ctx, ...recordChangeItems(p), recordChangeActor(d)]
+  return [ctx, ...recordChangeItems(p), reasonLine(d), recordChangeActor(d)]
 }
 
 /** Sozlama qiymati: vaqt "22:00", son, ha/yo'q, bo'sh "—". */
@@ -1439,7 +1498,11 @@ function loginChangeLines(p: AlertPayload): string[] {
   const actorRole = roleLabel(d.actor_role)
   // actor_role null — aktyor boshqa firmaniki (tizim egasi)
   const actor = actorName ? (actorRole ? `${actorName} · ${actorRole}` : `${actorName} (${t.actorExternal})`) : actorRole === null ? t.actorExternal : null
-  return [target ? t.target + target : '', actor ? t.actor + actor : '']
+  return [
+    d.first_login === true ? NOTIFY_TEXTS.entryCancel.firstLogin : '',
+    target ? t.target + target : '',
+    actor ? t.actor + actor : '',
+  ]
 }
 
 function cashFlagLines(p: AlertPayload): string[] {
@@ -1488,6 +1551,73 @@ function inventoryDuringLine(d: Record<string, unknown>): string {
   const parts = items.slice(0, 5).map((m) => `${nameHtml(m.material_name) ?? '?'} — ${nonNegInt(m.count) ?? '0'}`)
   const more = items.length > 5 ? `, ${NOTIFY_TEXTS.ellipsis}` : ''
   return `⚠️ ${NOTIFY_TEXTS.inventoryDuring.line(n)}${parts.length ? `: ${parts.join(', ')}${more}` : ''}`
+}
+
+// ---------------------------------------------------------------------------
+// 2-tur (20261109) — yangi alert turlari va o'zgargan details
+// ---------------------------------------------------------------------------
+
+/** `details.reason` → "Sabab: …" (bo'sh → ''). */
+function reasonLine(d: Record<string, unknown>): string {
+  const r = typeof d.reason === 'string' ? d.reason.replace(/\s+/g, ' ').trim() : ''
+  if (r === '') return ''
+  const chars = Array.from(r)
+  const clipped = chars.length > 300 ? chars.slice(0, 299).join('') + NOTIFY_TEXTS.ellipsis : r
+  return NOTIFY_TEXTS.entryCancel.reason + escapeHtml(clipped)
+}
+
+/** Muallif bekor qilgan yozuv: miqdor · summa, sabab, kim. */
+function cancelOwnEntryLines(p: AlertPayload): string[] {
+  const d = p.details
+  const material = nameHtml(p.material_name) ?? nameHtml(d.material_name)
+  const ctx = [material, nameHtml(p.object_name)].filter((x) => x).join(' · ')
+  const summary = [qtyText(d.qty_base, unitOf(p)), moneyText(d.amount)].filter((x) => x).join(' · ')
+  const actor = nameHtml(d.actor_name) ?? nameHtml(d.author_name)
+  return [ctx, summary, reasonLine(d), actor ? NOTIFY_TEXTS.workflow.cancelledBy + actor : '']
+}
+
+/** Boshqa odam nomidan xarid: xaridor, kim kiritdi, miqdor/summa, to'lov manbai, sana. */
+function otherBuyerLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.otherBuyer
+  const d = p.details
+  const material = nameHtml(p.material_name) ?? nameHtml(d.material_name)
+  const object = nameHtml(p.object_name) ?? nameHtml(d.object_name)
+  const buyer = nameHtml(d.buyer_name)
+  const actor = nameHtml(d.actor_name)
+  const unit = typeof d.base_unit === 'string' && d.base_unit.trim() !== '' ? d.base_unit : p.base_unit
+  const summary = [qtyText(d.qty_base, unit), moneyText(d.amount)].filter((x) => x).join(' · ')
+  const source = typeof d.payment_source === 'string' ? NOTIFY_TEXTS.workflow.paymentSources[d.payment_source] : undefined
+  const date = typeof d.purchased_at === 'string' ? formatDateTimeTashkent(d.purchased_at) : null
+  const who = [buyer ? t.buyer + buyer : null, actor ? t.actor + actor : null].filter((x) => x).join(' · ')
+  return [
+    [material, object].filter((x) => x).join(' · '),
+    who + (d.via === 'update' ? ` ${t.viaUpdate}` : ''),
+    summary,
+    source ? NOTIFY_TEXTS.workflow.payment + source : '',
+    date ? t.date + date : '',
+  ]
+}
+
+/** Sotuvchilar birlashtirildi: "Eski → Asosiy", ko'chirilgan xaridlar, to'ldirilgan maydonlar, kim. */
+function supplierMergeLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.supplierMerge
+  const d = p.details
+  const merged = nameHtml(d.merged_name) ?? '?'
+  const keep = nameHtml(d.keep_name) ?? '?'
+  const moved = nonNegInt(d.moved_count) ?? '0'
+  const movedDeleted = nonNegInt(d.moved_deleted_count)
+  const filledRaw = Array.isArray(d.filled) ? d.filled : []
+  const filled = filledRaw
+    .filter((k): k is string => typeof k === 'string')
+    .map((k) => t.filledKeys[k] ?? nameHtml(k) ?? '')
+    .filter((x) => x)
+  const actor = nameHtml(d.actor_name)
+  return [
+    `${merged} → ${keep}`,
+    t.moved(moved, movedDeleted && movedDeleted !== '0' ? movedDeleted : null),
+    filled.length ? t.filled + filled.join(', ') : '',
+    actor ? t.actor + actor : '',
+  ]
 }
 
 /** Tur sarlavhasi (escape kerak emas — bizning matnimiz). */
@@ -1554,6 +1684,10 @@ function alertTitle(type: string, details: Record<string, unknown>): string {
       return titles.podotchet_belgisi
     case 'sotuvchi_stir_farqi':
       return titles.sotuvchi_stir_farqi
+    case 'xarid_boshqa_nomidan':
+      return titles.xarid_boshqa_nomidan
+    case 'sotuvchi_birlashtirildi':
+      return titles.sotuvchi_birlashtirildi
     default:
       return NOTIFY_TEXTS.genericAlert
   }
@@ -1643,6 +1777,12 @@ export function formatAlertMessage(p: AlertPayload): string {
     case 'sotuvchi_stir_farqi':
       lines.push(...sellerTinLines(payload))
       break
+    case 'xarid_boshqa_nomidan':
+      lines.push(...otherBuyerLines(payload))
+      break
+    case 'sotuvchi_birlashtirildi':
+      lines.push(...supplierMergeLines(payload))
+      break
     default:
       lines.push(ctx)
   }
@@ -1678,6 +1818,8 @@ const ALERT_TYPE_ORDER = [
   'login_ozgardi',
   'podotchet_belgisi',
   'sotuvchi_stir_farqi',
+  'xarid_boshqa_nomidan',
+  'sotuvchi_birlashtirildi',
   'yozuv_tuzatildi',
   'ozi_qabul_qilgan',
 ]
@@ -2021,6 +2163,8 @@ export interface LoginChangedPayload {
   company_name: string | null
   actor_name: string | null
   changed_at: string | null
+  /** 2-tur: birinchi marta login berildi (almashtirish emas). */
+  first_login?: boolean | null
 }
 
 /** Foydalanuvchi izohi uchun maksimal uzunlik (escape'dan oldin). */
@@ -2148,12 +2292,256 @@ export function formatLoginChanged(p: LoginChangedPayload): string {
   const t = NOTIFY_TEXTS.workflow
   const actor = nameHtml(p.actor_name)
   return fitLines([
-    `🔐 <b>${t.loginTitle}</b>`,
+    `🔐 <b>${p.first_login === true ? t.loginFirstTitle : t.loginTitle}</b>`,
     nameHtml(p.profile_name) ?? '',
     actor ? t.loginActor + actor : '',
     isoTime(p.changed_at),
     `⚠️ ${t.loginWarn}`,
   ])
+}
+
+// ---------------------------------------------------------------------------
+// 2-tur (20261109) — yangi ish oqimi xabarlari va dayjest
+// ---------------------------------------------------------------------------
+
+export interface TransferWorkflowPayload extends TransferSentPayload {
+  status?: string | null
+  received_qty_base?: number | string | null
+  cancel_reason?: string | null
+  sent_by_id?: string | null
+  received_by_name?: string | null
+  received_at?: string | null
+  cancelled_by_id?: string | null
+  cancelled_by_name?: string | null
+  cancelled_at?: string | null
+}
+
+export interface PurchaseDeletedPayload extends PurchaseForObjectPayload {
+  deleted_at: string | null
+  deleted_by_name: string | null
+  reason: string | null
+}
+
+export interface PurchaseOnYourNamePayload {
+  purchase_id: string
+  alert_id?: string | null
+  company_name: string | null
+  buyer_id?: string | null
+  buyer_name: string | null
+  actor_name: string | null
+  object_id?: string | null
+  object_name: string | null
+  material_id?: string | null
+  material_name: string | null
+  qty_input: number | string | null
+  unit_input: string | null
+  qty_base: number | string | null
+  base_unit: string | null
+  total_amount: number | string | null
+  payment_source: string | null
+  purchased_at: string | null
+}
+
+export interface InventoryAppliedPayload {
+  count_id: string
+  company_name: string | null
+  object_id?: string | null
+  object_name: string | null
+  counted_at: string | null
+  submitted_at: string | null
+  applied_at: string | null
+  applied_by_name: string | null
+  items_count: number | string | null
+  adjusted_count: number | string | null
+}
+
+export interface AlertsDigestItem {
+  alert_id?: string
+  request_id?: string | null
+  object_id?: string | null
+  object_name?: string | null
+  material_id?: string | null
+  material_name?: string | null
+  over_qty_base?: number | string | null
+  base_unit?: string | null
+}
+
+export interface AlertsDigestPayload {
+  company_name: string | null
+  alert_type: string
+  count: number | string
+  alert_ids?: string[]
+  items: AlertsDigestItem[]
+  more_count: number | string | null
+  created_at: string | null
+}
+
+/** "Sement: A → B" */
+function transferRoute(p: { material_name: unknown; from_object_name: unknown; to_object_name: unknown }): string {
+  const route = `${nameHtml(p.from_object_name) ?? '?'} → ${nameHtml(p.to_object_name) ?? '?'}`
+  const material = nameHtml(p.material_name)
+  return material ? `${material}: ${route}` : route
+}
+
+/** Qabul qiluvchi obyekt xodimlariga: o'tkazma bekor qilindi. */
+export function formatTransferCancelled(p: TransferWorkflowPayload): string {
+  const t = NOTIFY_TEXTS.workflow
+  const reason = noteHtml(p.cancel_reason)
+  const by = nameHtml(p.cancelled_by_name)
+  return fitLines([
+    `🚫 <b>${t.transferCancelled}</b>`,
+    transferRoute(p),
+    workflowQty(p) ?? '',
+    reason ? t.cancelReason + reason : '',
+    by ? t.cancelledBy + by : '',
+    isoTime(p.cancelled_at ?? p.created_at),
+  ])
+}
+
+/** Yuboruvchiga: o'tkazma qabul qilindi ("Yuborildi: 3 qop (150 kg), qabul: 145 kg (−5 kg)"). */
+export function formatTransferReceived(p: TransferWorkflowPayload): string {
+  const t = NOTIFY_TEXTS.workflow
+  const unit = typeof p.base_unit === 'string' ? p.base_unit : null
+  const sent = workflowQty(p)
+  const received = qtyText(p.received_qty_base, unit)
+  let diff = ''
+  const a = toDecString(p.received_qty_base)
+  const b = toDecString(p.qty_base)
+  if (a !== null && b !== null) {
+    const scale = Math.max((a.split('.')[1] ?? '').length, (b.split('.')[1] ?? '').length)
+    const toInt = (s: string) => {
+      const neg = s.startsWith('-')
+      const [i = '0', f = ''] = (neg ? s.slice(1) : s).split('.')
+      const v = BigInt(i + (f + '0'.repeat(scale)).slice(0, scale))
+      return neg ? -v : v
+    }
+    const d = toInt(a) - toInt(b)
+    if (d !== 0n) {
+      const abs = (d < 0n ? -d : d).toString().padStart(scale + 1, '0')
+      const str = scale > 0 ? `${abs.slice(0, -scale)}.${abs.slice(-scale)}` : abs
+      const q = qtyText(str, unit)
+      if (q) diff = ` (${d < 0n ? MINUS : '+'}${q})`
+    }
+  }
+  const by = nameHtml(p.received_by_name)
+  const amounts = [sent ? t.sent + sent : null, received ? t.received + received + diff : null].filter((x) => x).join(', ')
+  return fitLines([
+    `📦 <b>${t.transferReceived}</b>`,
+    transferRoute(p),
+    amounts,
+    by ? t.receivedBy + by : '',
+    isoTime(p.received_at ?? p.created_at),
+  ])
+}
+
+/** Obyekt xodimlariga: kutilgan xarid bekor qilindi. */
+export function formatPurchaseDeleted(p: PurchaseDeletedPayload): string {
+  const t = NOTIFY_TEXTS.workflow
+  const buyer = nameHtml(p.buyer_name)
+  const by = nameHtml(p.deleted_by_name)
+  const reason = noteHtml(p.reason)
+  return fitLines([
+    `🗑 <b>${t.purchaseDeleted}</b>`,
+    [nameHtml(p.material_name), nameHtml(p.object_name)].filter((x) => x).join(' · '),
+    workflowQty(p) ?? '',
+    buyer ? t.buyer + buyer : '',
+    by ? t.deletedBy + by : '',
+    reason ? t.reason + reason : '',
+    isoTime(p.deleted_at),
+  ])
+}
+
+/** Xaridorga: uning nomiga boshqa odam xarid kiritdi. */
+export function formatPurchaseOnYourName(p: PurchaseOnYourNamePayload): string {
+  const t = NOTIFY_TEXTS.workflow
+  const actor = nameHtml(p.actor_name)
+  const source = typeof p.payment_source === 'string' ? t.paymentSources[p.payment_source] : undefined
+  const summary = [workflowQty(p), moneyText(p.total_amount)].filter((x) => x).join(' · ')
+  return fitLines([
+    `⚠️ <b>${t.purchaseOnYourName}</b>`,
+    [nameHtml(p.material_name), nameHtml(p.object_name)].filter((x) => x).join(' · '),
+    summary,
+    source ? t.payment + source : '',
+    actor ? t.enteredBy + actor : '',
+    isoTime(p.purchased_at),
+    t.purchaseOnYourNameWarn,
+  ])
+}
+
+/** Hisob muallifiga: inventarizatsiya qo'llandi (miqdorlarsiz — ko'r-ko'rona sanash). */
+export function formatInventoryApplied(p: InventoryAppliedPayload): string {
+  const t = NOTIFY_TEXTS.workflow
+  const items = nonNegInt(p.items_count)
+  const adjusted = nonNegInt(p.adjusted_count)
+  const by = nameHtml(p.applied_by_name)
+  return fitLines([
+    `📋 <b>${t.inventoryApplied}</b>`,
+    nameHtml(p.object_name) ?? '',
+    items !== null || adjusted !== null ? t.inventoryCounts(items ?? '0', adjusted ?? '0') : '',
+    by ? t.appliedBy + by : '',
+    isoTime(p.applied_at),
+  ])
+}
+
+/** Direktor va adminlarga: bir xil turdagi bir nechta alert bitta xabarda ("7 ta: …", ro'yxat, "+N ta"). */
+export function formatAlertsDigest(p: AlertsDigestPayload): string {
+  const t = NOTIFY_TEXTS.alertsDigest
+  const type = typeof p.alert_type === 'string' ? p.alert_type : ''
+  const raw = Array.isArray(p.items) ? p.items : []
+  const items = raw
+    .filter((it): it is AlertsDigestItem => !!it && typeof it === 'object')
+    .map((it) => {
+      const ctx = [nameHtml(it.material_name), nameHtml(it.object_name)].filter((x) => x).join(' · ') || '?'
+      const over = qtyText(it.over_qty_base, typeof it.base_unit === 'string' ? it.base_unit : null)
+      return `• ${ctx}${over ? ` — ${t.over(over)}` : ''}`
+    })
+  const total = nonNegInt(p.count) ?? count(items.length)
+  const baseMore = Number((nonNegInt(p.more_count) ?? '0').replace(/ /g, ''))
+  const head = `${alertEmoji(type, 'ogohlantirish')} <b>${t.title(total, alertTitle(type, {}))}</b>`
+  const build = (kept: string[]) => {
+    const rest = baseMore + items.length - kept.length
+    return [head, nameHtml(p.company_name) ?? '', ...kept, rest > 0 ? t.more(count(rest)) : '', isoTime(p.created_at)]
+      .filter((l) => l !== '')
+      .join('\n')
+  }
+  const kept = [...items]
+  let text = build(kept)
+  while (text.length > TELEGRAM_MAX_LENGTH && kept.length > 0) {
+    kept.pop()
+    text = build(kept)
+  }
+  return text.length <= TELEGRAM_MAX_LENGTH ? text : fitLines([head])
+}
+
+/**
+ * Ish oqimi xabari "Ochish" havolasi: `?request=<id>` / `?transfer=<id>` / `?purchase=<id>`
+ * (payload'da id bo'lsa); qolganlari — oddiy Mini App URL. Frontend request va transfer ni
+ * ochadi; purchase — hozircha bosh sahifa.
+ */
+export function workflowOpenUrl(baseUrl: string, kind: string, payload: unknown): string {
+  const p = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+  const pick = (key: string, param: string): string | null => {
+    const v = p[key]
+    return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+      ? withParam(baseUrl, param, v.toLowerCase())
+      : null
+  }
+  if (kind.startsWith('request_')) return pick('request_id', 'request') ?? baseUrl
+  if (kind.startsWith('transfer_')) return pick('transfer_id', 'transfer') ?? baseUrl
+  if (kind === 'purchase_for_object' || kind === 'purchase_deleted' || kind === 'purchase_on_your_name') {
+    return pick('purchase_id', 'purchase') ?? baseUrl
+  }
+  return baseUrl
+}
+
+function withParam(baseUrl: string, key: string, value: string): string {
+  try {
+    const u = new URL(baseUrl)
+    u.searchParams.set(key, value)
+    return u.toString()
+  } catch {
+    return baseUrl
+  }
 }
 
 // ---------------------------------------------------------------------------

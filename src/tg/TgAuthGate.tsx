@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '@/auth/authContext'
 import { ProfileErrorScreen } from '@/auth/screens'
-import { Clock, LoaderCircle, Monitor, Phone, RefreshCw, Send, ShieldX, WifiOff } from 'lucide-react'
+import { Clock, Copy, ExternalLink, LoaderCircle, Monitor, Phone, RefreshCw, Send, ShieldX, WifiOff } from 'lucide-react'
 import { BrandMark, Button, cx, FullPageSpinner, Notice } from '@/components/ui'
-import { clearLocalSession, telegramSignIn, type TelegramSignInStatus } from '@/data/authRepo'
+import { clearLocalSession, getSession, telegramSignIn, type TelegramSignInStatus } from '@/data/authRepo'
 import { t } from '@/i18n'
-import { botLink, closeApp, getInitData, haptic, isInsideTelegram, requestContact, stripLaunchParamsFromUrl } from './telegram'
+import { botLink, closeApp, getInitData, haptic, isInsideTelegram, openExternalLink, requestContact, stripLaunchParamsFromUrl } from './telegram'
 
 type GateState =
   | 'outside'
@@ -38,6 +38,14 @@ async function signInOnce(refreshSession: () => Promise<void>): Promise<Telegram
   if (status === 'ok') {
     stripLaunchParamsFromUrl()
     await refreshSession()
+  } else if (status === 'reopen') {
+    // initData eskirgan yoki takroriy — bu "begona foydalanuvchi" emas. Qurilmada yaroqli sessiya bo'lsa,
+    // u bilan davom etiladi (sessiya o'chirilmaydi); sessiya yo'q bo'lsagina "Qayta oching" ekrani.
+    const session = await getSession().catch(() => null)
+    if (session) {
+      await refreshSession()
+      return 'ok'
+    }
   } else {
     // Server bu Telegram foydalanuvchisini tanimadi — qurilmadagi eski sessiya (boshqa odamniki
     // bo'lishi mumkin) ishlatilmasin
@@ -74,6 +82,43 @@ function Screen({ children, icon, tone = 'default' }: { children: ReactNode; ico
 
 const title = 'text-2xl leading-tight font-semibold text-ink'
 const text = 'max-w-xs text-base text-muted'
+
+/** Veb panel manzili (shu domen, "/"). */
+function webPanelUrl(): string {
+  return `${window.location.origin}/`
+}
+
+/** "Veb paneldan foydalaning": havola, "Ochish" (tizim brauzerida) va "Havolani nusxalash". */
+function WebOnlyActions() {
+  const [copied, setCopied] = useState(false)
+  const url = webPanelUrl()
+  const copy = async () => {
+    haptic.tap()
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+    } catch {
+      // Nusxalash taqiqlangan — havola ekranda ko'rinib turibdi
+      setCopied(false)
+    }
+  }
+  return (
+    <div className="flex w-full flex-col gap-2">
+      <p className="tabular rounded-xl border border-line bg-paper px-4 py-3 text-base font-semibold break-all text-navy" data-testid="web-panel-url">
+        {url}
+      </p>
+      <Button size="lg" icon={<ExternalLink aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => openExternalLink(url)}>
+        {t.tg.gate.webOnlyOpen}
+      </Button>
+      <Button size="lg" variant="secondary" icon={<Copy aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => void copy()}>
+        {copied ? t.tg.gate.webOnlyCopied : t.tg.gate.webOnlyCopy}
+      </Button>
+      <p aria-live="polite" className="sr-only">
+        {copied ? t.tg.gate.webOnlyCopied : ''}
+      </p>
+    </div>
+  )
+}
 
 /**
  * Mini App kirishi. Har ochilganda xom initData serverda (tg-auth) tekshiriladi —
@@ -189,13 +234,25 @@ export function TgAuthGate({ children, pollIntervalMs = 2000, pollTimeoutMs = 30
     case 'inactive':
       return (
         <Screen icon={<ShieldX strokeWidth={1.5} />} tone="danger">
-          <p role="alert" className={text}>{t.tg.gate.inactive}</p>
+          <h1 className={title}>{t.tg.gate.inactiveTitle}</h1>
+          <p role="alert" className={text}>
+            {t.tg.gate.inactive}
+          </p>
+          <Button size="lg" variant="secondary" className="mt-2" onClick={closeApp}>
+            {t.tg.gate.closeApp}
+          </Button>
         </Screen>
       )
     case 'invalid':
       return (
         <Screen icon={<ShieldX strokeWidth={1.5} />} tone="danger">
-          <p role="alert" className={text}>{t.tg.gate.invalid}</p>
+          <h1 className={title}>{t.tg.gate.invalidTitle}</h1>
+          <p role="alert" className={text}>
+            {t.tg.gate.invalid}
+          </p>
+          <Button size="lg" variant="secondary" className="mt-2" onClick={closeApp}>
+            {t.tg.gate.closeApp}
+          </Button>
         </Screen>
       )
     case 'reopen':
@@ -218,7 +275,8 @@ export function TgAuthGate({ children, pollIntervalMs = 2000, pollTimeoutMs = 30
           <p role="alert" className={text}>
             {t.tg.gate.webOnlyText}
           </p>
-          <Button size="lg" variant="secondary" className="mt-2" onClick={closeApp}>
+          <WebOnlyActions />
+          <Button size="lg" variant="ghost" onClick={closeApp}>
             {t.tg.gate.closeApp}
           </Button>
         </Screen>
@@ -241,7 +299,13 @@ export function TgAuthGate({ children, pollIntervalMs = 2000, pollTimeoutMs = 30
       if (notice === 'noAccess') {
         return (
           <Screen icon={<ShieldX strokeWidth={1.5} />} tone="danger">
-            <p role="alert" className={text}>{t.tg.gate.inactive}</p>
+            <h1 className={title}>{t.tg.gate.inactiveTitle}</h1>
+            <p role="alert" className={text}>
+              {t.tg.gate.inactive}
+            </p>
+            <Button size="lg" variant="secondary" className="mt-2" onClick={closeApp}>
+              {t.tg.gate.closeApp}
+            </Button>
           </Screen>
         )
       }

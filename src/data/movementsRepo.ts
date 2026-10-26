@@ -9,7 +9,7 @@ import type { GeoFix, Movement, MovementKind } from './types'
 // numeric ustunlar `::text` — aniqlik yo'qolmasin. Embed'lar FK nomi bilan (kompozit FK'lar).
 const MOVEMENT_COLUMNS =
   'id, company_id, type, object_id, material_id, unit_id, qty_input::text, unit_input, unit_variant, qty_base::text, ' +
-  'purchase_id, photo_path, photo_sha256, occurred_at, note, created_by, created_at, deleted_at, ' +
+  'purchase_id, transfer_id, inventory_count_id, photo_path, photo_sha256, occurred_at, note, created_by, created_at, deleted_at, ' +
   GEO_SELECT
 const MOVEMENT_SELECT =
   `${MOVEMENT_COLUMNS}, ` +

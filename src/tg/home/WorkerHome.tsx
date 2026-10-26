@@ -19,13 +19,14 @@ import { todayOnly } from './usage'
 const th = t.tg.home
 const TODAY_LIMIT = 20
 
-export function WorkerHome({ profile }: { profile: Profile }) {
+export function WorkerHome({ profile, sections }: { profile: Profile; sections?: ReactNode }) {
   const recent = useLoad(() => listMyMovements(profile.id, TODAY_LIMIT), profile.id)
   return (
     <WorkerHomeView
       name={profile.full_name}
       roleLabel={t.roles[profile.role]}
       today={{ ...recent, data: recent.data ? todayOnly(recent.data) : null }}
+      sections={sections}
       onStart={(type) => {
         haptic.tap()
         // Kirim/chiqim ekrani shu turni tanlangan holda ochiladi (eslab qolingan tur)
@@ -96,11 +97,14 @@ export function WorkerHomeView({
   roleLabel,
   today,
   onStart,
+  sections,
 }: {
   name: string | null
   roleLabel?: string
   today: Loaded<Movement[]>
   onStart: (type: EntryType) => void
+  /** "Bo'limlar" — plitkalar ostida (Qoldiq, Tasdiqlash, Sanash). */
+  sections?: ReactNode
 }) {
   return (
     <div className="flex flex-col gap-5">
@@ -109,6 +113,7 @@ export function WorkerHomeView({
         <ActionTile type="kirim" onStart={onStart} count={countOf(today.data, 'kirim')} />
         <ActionTile type="chiqim" onStart={onStart} count={countOf(today.data, 'chiqim')} />
       </section>
+      {sections}
       <section aria-label={th.today} className="flex flex-col gap-2">
         <SectionTitle>{th.today}</SectionTitle>
         {today.error && <RetryNotice message={today.error} onRetry={today.reload} />}

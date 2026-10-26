@@ -4,6 +4,7 @@ import {
   handleTgAuth,
   InitDataReplayGuard,
   REPLAY_GRACE_MS,
+  TG_AUTH_RELOAD_MAX_AGE_SEC,
   TG_AUTH_MAX_AGE_SEC,
   type TgAuthDeps,
   type TgProfile,
@@ -52,6 +53,7 @@ interface FakeOpts {
   replayGuard?: InitDataReplayGuard
   /** Soat (ms) — standart NOW_SEC * 1000. */
   nowMs?: () => number
+  touches?: number[]
 }
 
 function fake(opts: FakeOpts = {}) {
@@ -70,6 +72,9 @@ function fake(opts: FakeOpts = {}) {
     env: { botToken: 'botToken' in opts ? opts.botToken : TOKEN },
     now: opts.nowMs ?? (() => NOW_SEC * 1000),
     ...(opts.replayGuard ? { replayGuard: opts.replayGuard } : {}),
+    touchChat: async (chatId) => {
+      opts.touches?.push(chatId)
+    },
     findProfileByTelegramId: async (id) => {
       if (opts.throwOnFind) throw new Error('db down')
       findCount++
@@ -435,5 +440,60 @@ describe('tg-auth: audit — super_admin va initData takrori', () => {
     expect(g.use('a', 40_000, 100_000)).toBe(false) // muddat ichida, grace'dan keyin — takror
     for (const k of ['b', 'c', 'd', 'e']) g.use(k, 0, 10_000_000)
     expect(g.size).toBe(3)
+  })
+})
+
+describe('tg-auth: 2-tur — qayta yuklash (eski initData + amaldagi sessiya) va svc_touch_chat', () => {
+  const linked = () => ({ profile: profile({ auth_user_id: 'au-1' }), authEmails: { 'au-1': 'a@x.uz' }, jwtUser: { tok: 'au-1' } })
+
+  it('3 soatlik initData + mos access_token → 200, session null (yangi sessiya yo‘q)', async () => {
+    const touches: number[] = []
+    const f = fake({ ...linked(), touches })
+    const r = await handleTgAuth({ initData: await initDataFor(TG_ID, NOW_SEC - 3 * 3600), access_token: 'tok' }, f.deps)
+    expect(r).toEqual({ status: 200, body: { status: 'ok', session: null, profile: OK_PROFILE } })
+    expect(f.calls.session).toHaveLength(0)
+    expect(touches).toEqual([TG_ID])
+  })
+
+  it('3 soatlik initData, token yo‘q yoki boshqa user → 401 (yangi sessiya faqat 15 daqiqalik initData bilan)', async () => {
+    const old = await initDataFor(TG_ID, NOW_SEC - 3 * 3600)
+    const noTok = fake(linked())
+    expect(await handleTgAuth({ initData: old }, noTok.deps)).toEqual({ status: 401, body: { error: 'invalid_init_data' } })
+    const otherUser = fake({ ...linked(), jwtUser: { tok: 'au-other' } })
+    expect((await handleTgAuth({ initData: old, access_token: 'tok' }, otherUser.deps)).status).toBe(401)
+    expect(noTok.calls.session).toHaveLength(0)
+    expect(otherUser.calls.session).toHaveLength(0)
+  })
+
+  it('24 soatdan eski — amaldagi sessiya bilan ham 401', async () => {
+    expect(TG_AUTH_RELOAD_MAX_AGE_SEC).toBe(86_400)
+    const f = fake(linked())
+    const r = await handleTgAuth({ initData: await initDataFor(TG_ID, NOW_SEC - 86_400 - 10), access_token: 'tok' }, f.deps)
+    expect(r.status).toBe(401)
+  })
+
+  it('qayta yuklash replay guard’ni band qilmaydi va undan to‘silmaydi', async () => {
+    const guard = new InitDataReplayGuard()
+    let now = NOW_SEC * 1000
+    const initData = await initDataFor(TG_ID, NOW_SEC - 60)
+    expect((await handleTgAuth({ initData }, fake({ ...linked(), replayGuard: guard, nowMs: () => now }).deps)).status).toBe(200)
+    now += 5 * 60_000
+    // xuddi shu initData — amaldagi sessiya bilan: ruxsat
+    const r = await handleTgAuth({ initData, access_token: 'tok' }, fake({ ...linked(), replayGuard: guard, nowMs: () => now }).deps)
+    expect(r.status).toBe(200)
+    // sessiyasiz — takror: rad
+    const again = await handleTgAuth({ initData }, fake({ ...linked(), replayGuard: guard, nowMs: () => now }).deps)
+    expect(again).toEqual({ status: 401, body: { error: 'init_data_replayed' } })
+  })
+
+  it('yangi sessiya berilganda touch; need_contact / inactive / role_web_only — touch yo‘q', async () => {
+    const t1: number[] = []
+    await handleTgAuth({ initData: await initDataFor() }, fake({ touches: t1 }).deps)
+    expect(t1).toEqual([TG_ID])
+    for (const p of [null, profile({ is_active: false }), profile({ role: 'super_admin' })]) {
+      const t: number[] = []
+      await handleTgAuth({ initData: await initDataFor() }, fake({ profile: p, touches: t }).deps)
+      expect(t).toEqual([])
+    }
   })
 })

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Button, Notice, RetryNotice, SelectField, SkeletonRows, TextField } from '@/components/ui'
+import { Button, Checkbox, Notice, RetryNotice, SelectField, SkeletonRows, TextField } from '@/components/ui'
 import { getCompanySettings, updateCompanySettings } from '@/data/companiesRepo'
 import { formatSumInput } from '@/domain/cash'
 import { t } from '@/i18n'
@@ -140,9 +140,7 @@ export function CompanySettingsForm({ companyId, canEdit, onSaved }: { companyId
           {ts.quietIntro}
         </p>
         <label className="inline-flex min-h-11 items-center gap-3 self-start text-sm text-ink">
-          <input
-            type="checkbox"
-            className="size-5 border-line-strong accent-brand"
+          <Checkbox
             checked={quietOn}
             disabled={!canEdit}
             onChange={(e) => toggleQuiet(e.target.checked)}

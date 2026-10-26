@@ -1,6 +1,6 @@
 // Har bir rol uchun qisqa qo'llanma (o'zbek, lotin). Bir rol = bir A4 sahifa.
 // Tugma va ekran nomlari `uz.ts` dagi matnlar bilan bir xil bo'lishi kerak.
-// Nusxa: docs/qollanma/<rol>.md (shu matndan).
+// Nusxa: docs/qollanma/<rol>.md — `npm run guides:md` (src/i18n/guidesMarkdown.ts) bilan yaratiladi.
 import type { Role } from '@/domain/roles'
 
 export type GuideAlert = { name: string; meaning: string; whatToDo: string }
@@ -31,35 +31,56 @@ export const guideHeadings = {
 const BUG_REPORT =
   'Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.'
 
+/** Ish xabarlari (so'rov, o'tkazma, xarid) — har kim o'zi yoqadi yoki o'chiradi. */
+const WORK_MESSAGES_TG = '“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring.'
+const WORK_MESSAGES_WEB = '“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — yon menyuda, “Parol” yonida yoqing yoki o‘chiring.'
+
+/** Mini App "Yozuvlar" (prorab, omborchi) — o'z yozuvini tuzatish (B: aniq matn). */
+const SELF_FIX =
+  'Xato miqdor, birlik, material yoki obyektni 30 daqiqa ichida o‘zingiz to‘g‘rilaysiz: “Yozuvlar” → yozuv → “Tuzatish” (sabab majburiy). Ikki marta kiritilgan bo‘lsa — “Bekor qilish (o‘chirish)”. Xaridga bog‘langan kirim — adminga ayting.'
+
+/** Sana: standart "Bugun", obyekt qatoridagi chip. */
+const ENTRY_DATE =
+  'Sana standart — “Bugun”. Kechagi ishni kiritsangiz, “Bugun ▾” ni bosib “Kecha” yoki “Boshqa sana” (oxirgi 3 kun) ni tanlang.'
+
 const admin: RoleGuide = {
   title: 'Admin uchun qo‘llanma',
   intro:
-    'Siz firma ichida tizimni boshqarasiz: foydalanuvchilar, obyektlar, materiallar va sozlamalar. So‘rovlarni tasdiqlaysiz, ogohlantirishlarni ko‘rib yopasiz, xato yozuvlarni o‘chirasiz va tiklaysiz.',
+    'Siz firma ichida tizimni boshqarasiz: foydalanuvchilar, obyektlar, materiallar, sotuvchilar va sozlamalar. So‘rovlarni tasdiqlaysiz, ogohlantirishlarni yopasiz, xato yozuvlarni tuzatasiz, o‘chirasiz va tiklaysiz.',
   daily: [
     {
       title: 'Boshlash (bir marta)',
       steps: [
         '“Obyektlar” → “Obyekt qo‘shish”. Kerak bo‘lsa, joylashuvni kiriting.',
-        '“Foydalanuvchilar” → “Foydalanuvchi qo‘shish”: ism, telefon raqami, rol va obyektlar. Odam Telegram ilovasini ochib, raqamini ulashadi.',
-        'Veb kerak bo‘lsa — “Veb login berish”. Parol faqat bir marta ko‘rsatiladi.',
-        '“Materiallar” da birliklar va muqobil nomlarni tekshiring. “Sozlamalar” da chegaralarni belgilang.',
+        '“Foydalanuvchilar” → “Foydalanuvchi qo‘shish”: ism, telefon, rol va obyektlar. Odam Telegram ilovasini ochib, raqamini ulashadi. Veb kerak bo‘lsa — “Veb login berish”.',
+        '“Materiallar” da birliklar va muqobil nomlarni, “Sotuvchilar” da takror yozilgan sotuvchilarni tekshiring (“Birlashtirish”).',
+        '“Sozlamalar”: chegaralar va “Tinch soatlar” — bu vaqtda Telegram xabarlari kutib turadi.',
       ],
     },
     {
       title: 'Har kuni',
       steps: [
-        '“Ogohlantirishlar” ni oching: har birini tekshiring, “Ko‘rildi” yoki “Yopish” (sabab bilan).',
+        '“Ogohlantirishlar”: har birini tekshiring, “Ko‘rildi” yoki “Yopish” — yopishda sabab majburiy.',
         '“So‘rovlar”: “Tasdiqlash” yoki “Rad etish” (sababini yozing).',
         '“Ombor” → “Inventarizatsiya”: farq bo‘lsa, tekshirib “Qoldiqni tuzatish”.',
-        'Xato yozuvni “O‘chirish”; kerak bo‘lsa “Tarix” → “O‘chirilganlar” dan “Tiklash”.',
+        'Xato yozuvni “Tuzatish” yoki “O‘chirish”; kerak bo‘lsa “Tarix” → “O‘chirilganlar” dan “Tiklash”.',
+        '“Sozlamalar” → “Telegram”: xabarlar yetib borayaptimi; botni bloklagan odam botni qayta ochsa — “Qayta tekshirish”.',
+      ],
+    },
+    {
+      title: 'Telegram ilovasida',
+      steps: [
+        '“Bosh” → “Bo‘limlar”: “So‘rovlarni tasdiqlash” (kutayotganlar soni bilan), “Qoldiq” va “Sanash”.',
+        'Ish xabaridagi havola shu so‘rovni darhol ochadi.',
       ],
     },
   ],
   rules: [
     'Hech narsa butunlay o‘chmaydi — o‘chirilgan yozuv tarixda qoladi va tiklanadi.',
     'Ketgan xodimni “Nofaol qilish” bilan to‘xtating, o‘chirmang.',
-    'Telefon raqami o‘zgarsa, veb login va Telegram bog‘lanishi uziladi.',
-    'Materialni qoldig‘i bor bo‘lsa o‘chirib bo‘lmaydi — “Nofaol qilish”.',
+    'Admin va direktor profilining telefoni, roli va faolligini faqat tizim egasi o‘zgartiradi.',
+    'Sizning tuzatishingiz va o‘chirishingiz haqida direktorga ogohlantirish boradi.',
+    'Materialning qoldig‘i bor bo‘lsa o‘chirib bo‘lmaydi — “Nofaol qilish”.',
   ],
   alerts: [
     {
@@ -84,7 +105,10 @@ const admin: RoleGuide = {
     },
   ],
   help:
-    'Ogohlantirish Telegram’da ham keladi: “Ko‘rildi” tugmasini u yerda ham bosish mumkin. ' + BUG_REPORT,
+    'Ogohlantirish Telegram’da ham keladi: “Ko‘rildi” tugmasini u yerda ham bosish mumkin. ' +
+    WORK_MESSAGES_WEB +
+    ' ' +
+    BUG_REPORT,
 }
 
 export const guides: Record<Role, RoleGuide> = {
@@ -108,24 +132,24 @@ export const guides: Record<Role, RoleGuide> = {
         steps: [
           'Kunlik hisobotni o‘qing: kirim, chiqim, xaridlar, so‘rovlar, farqlar soni.',
           'Telegram ilovasini oching. “Bosh” ekranda bugungi holat, smeta ishlatilishi va ogohlantirishlar.',
-          '“Tugayotganlar” ro‘yxatida qaysi material necha kunga yetishini ko‘ring.',
+          '“Bo‘limlar” → “Qoldiq”: obyektdagi materiallar va necha kunga yetishi.',
           'Ogohlantirish xabaridagi “Ochish” tugmasi uni Telegram ilovasida ochadi.',
         ],
       },
       {
         title: 'Veb panelda',
         steps: [
-          '“Bosh sahifa”: davr va obyektni tanlang. Kartochkalar, “Smeta va haqiqiy”, “Xarajat taqsimoti”.',
+          '“Bosh sahifa”: davr va obyektni tanlang. “Smeta va haqiqiy” — obyekt bo‘yicha smeta jami va xaridlar (so‘m).',
           '“Ogohlantirishlar” — barcha farqlar ro‘yxati.',
           '“Podotchet” — kimning qo‘lida qancha pul bor.',
-          '“Tarix” — kim, qachon, nimani o‘zgartirgan yoki o‘chirgan.',
+          '“Tarix” — kim, qachon, nimani o‘zgartirgan yoki o‘chirgan (oldin va keyin).',
         ],
       },
     ],
     rules: [
       'Siz faqat ko‘rasiz. Ogohlantirishni yopish va yozuvni tiklashni admin qiladi.',
       'Ochiq ogohlantirish uzoq yopilmasa, tizim qayta eslatadi.',
-      'Excel kerak bo‘lsa, sahifadagi eksport tugmasidan foydalaning.',
+      '“Ish xabarlari” sizga tegishli emas — sizga ogohlantirishlar va kunlik hisobot keladi.',
     ],
     alerts: [
       {
@@ -134,19 +158,19 @@ export const guides: Record<Role, RoleGuide> = {
         whatToDo: 'Admindan sababini so‘rang.',
       },
       {
-        name: 'Narx og‘ishi',
-        meaning: 'Material odatdagidan qimmat olingan.',
-        whatToDo: '“Xaridlar” da chekni ko‘ring.',
-      },
-      {
         name: 'Normadan oshish',
         meaning: 'Obyektda smeta normasidan ko‘p material ishlatilgan.',
         whatToDo: 'Prorab bilan gaplashing.',
       },
       {
-        name: 'Inventarizatsiya kamomadi',
-        meaning: 'Sanalganda material hisobdagidan kam chiqdi.',
-        whatToDo: 'Admin tekshirib, xulosa bersin.',
+        name: 'Yozuv o‘zgartirildi',
+        meaning: 'Admin kiritilgan yozuvning miqdori, summasi yoki sanasini o‘zgartirdi.',
+        whatToDo: '“Tarix” da oldingi va yangi qiymatni ko‘ring.',
+      },
+      {
+        name: 'Yozuv tuzatildi',
+        meaning: 'Muallif o‘z yozuvini 30 daqiqa ichida, sabab bilan tuzatdi.',
+        whatToDo: 'Sababini o‘qing; shubhali bo‘lsa — “Tarix”.',
       },
       {
         name: 'Yozuv o‘chirildi',
@@ -154,9 +178,14 @@ export const guides: Record<Role, RoleGuide> = {
         whatToDo: '“Tarix” da kim va nima uchun o‘chirganini ko‘ring.',
       },
       {
-        name: 'Smeta o‘zgarishi',
-        meaning: 'Smetaning yangi versiyasi joriy qilindi va normalar oshdi.',
-        whatToDo: 'Farqni “Smeta” → “Solishtirish” da ko‘ring.',
+        name: 'Sozlama o‘zgardi / Login o‘zgardi',
+        meaning: 'Admin firma chegaralarini yoki kimningdir veb loginini o‘zgartirdi.',
+        whatToDo: 'Kutilmagan bo‘lsa, admindan so‘rang.',
+      },
+      {
+        name: 'Podotchet belgisi / Sotuvchi STIR farqi',
+        meaning: 'Pul eski sana bilan yozilgan yoki chekdagi sotuvchi tanlanganidan boshqa.',
+        whatToDo: 'Buxgalter yoki admindan izoh so‘rang.',
       },
     ],
     help: 'Savol bo‘lsa, firmangiz adminiga murojaat qiling. ' + BUG_REPORT,
@@ -171,8 +200,9 @@ export const guides: Record<Role, RoleGuide> = {
         title: 'Pul berish (podotchet)',
         steps: [
           '“Podotchet” → “Pul berish”.',
-          '“Kimga” ni tanlang, summa va sanani kiriting, “Saqlash”.',
+          '“Kimga” ni tanlang, summa va sanani (oxirgi 3 kun) kiriting, “Saqlash”.',
           'Odam ortiqcha pulni qaytarsa — “Qaytarish”, “Kimdan” ni tanlang.',
+          'Izoh xato bo‘lsa — yozuvni ochib “Izohni tahrirlash”.',
           '“Qo‘ldagi pul” jadvalida har kimning berilgan, sarflangan va qo‘lidagi puli ko‘rinadi.',
         ],
       },
@@ -193,7 +223,7 @@ export const guides: Record<Role, RoleGuide> = {
       },
     ],
     rules: [
-      'Berilgan pul summasini o‘zgartirib bo‘lmaydi. Xato bo‘lsa — o‘chirib, qayta bering.',
+      'Berilgan pul summasi va sanasini o‘zgartirib bo‘lmaydi. Xato bo‘lsa — o‘chirib, qayta bering.',
       'Pulni faqat xarid kiritadigan xodimga berish mumkin.',
       'Yangi materialni katalogga faqat admin qo‘shadi.',
     ],
@@ -219,37 +249,38 @@ export const guides: Record<Role, RoleGuide> = {
         whatToDo: 'Xaridni tekshiring.',
       },
     ],
-    help: 'Savol bo‘lsa, firmangiz adminiga murojaat qiling. ' + BUG_REPORT,
+    help: WORK_MESSAGES_WEB + ' Savol bo‘lsa, firmangiz adminiga murojaat qiling. ' + BUG_REPORT,
   },
 
   taminotchi: {
     title: 'Ta’minotchi uchun qo‘llanma',
     intro:
-      'Siz material sotib olasiz va har bir xaridni Telegram ilovasida kiritasiz. Tasdiqlangan so‘rovlar bo‘yicha xarid qilasiz. Qo‘lingizdagi pul doim ko‘rinib turadi.',
+      'Siz material sotib olasiz va har bir xaridni Telegram ilovasida yoki veb panelda (“Xaridlar” → “Xarid qo‘shish”) kiritasiz. Tasdiqlangan so‘rovlar bo‘yicha xarid qilasiz. Qo‘lingizdagi pul doim ko‘rinib turadi.',
     daily: [
       {
         title: 'Xarid kiritish (Telegram ilovasi)',
         steps: [
-          '“Xarid” ni oching. Yuqorida “Qo‘limda” — qo‘lingizdagi pul.',
-          'So‘rov bo‘yicha olsangiz, “Tasdiqlangan so‘rovlar” dan uni bosing — ma’lumotlar o‘zi to‘ldiriladi.',
+          '“Xarid” ni oching. Yuqorida “Qo‘limda” — qo‘lingizdagi pul; bosing — “Pul tarixi”.',
+          '“Tasdiqlangan so‘rovlar” barcha obyektlar bo‘yicha guruhlangan: so‘rovni bossangiz, obyekt va ma’lumotlar o‘zi to‘ldiriladi.',
           'Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing: summa va sotuvchi o‘zi to‘ldiriladi.',
-          'Material, miqdor, “Jami summa (chekdagi)”, obyekt va sotuvchini tanlang.',
+          'Material, miqdor, “Jami summa (chekdagi)”, obyekt va sotuvchini tanlang. Kechagi xarid — “Kecha”.',
           '“Saqlash” ni bosing.',
         ],
       },
       {
         title: 'Veb panelda',
         steps: [
-          '“So‘rovlar” da tasdiqlanganlarni ko‘ring. So‘rov bo‘yicha kiritilgan xarid so‘rovni o‘zi yopadi; aks holda — “Xarid qilindi”.',
-          '“Xaridlar” da xaridingiz obyektda qabul qilinganini kuzating.',
+          '“Xaridlar” → “Xarid qo‘shish” — xuddi shu ma’lumotlar, oxirgi obyekt eslab qolinadi.',
+          '“So‘rovlar” da tasdiqlanganlarni ko‘ring. So‘rov bo‘yicha kiritilgan xarid so‘rovni o‘zi yopadi.',
+          'Xato xaridni 30 daqiqa ichida “Tuzatish” (sabab bilan).',
         ],
       },
     ],
     rules: [
       'Har xaridni o‘sha kuni kiriting. Summa — chekdagi jami summa.',
-      'Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda va “majburiy” belgili materialda chek rasmisiz saqlanmaydi. QR skanerlangan chekda rasm shart emas.',
+      'Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda va “majburiy” belgili materialda chek rasmisiz saqlanmaydi. Soliq.uz tasdiqlagan QR chekda rasm shart emas.',
       'Bitta chekni ikki xaridda ishlatib bo‘lmaydi.',
-      'Telegram ilovasi joylashuvni so‘raydi — ruxsat bering.',
+      'Xato xaridni Telegram ilovasida ham 30 daqiqa ichida tuzatasiz: “Yozuvlar” → xarid → “Tuzatish”.',
     ],
     alerts: [
       {
@@ -274,7 +305,10 @@ export const guides: Record<Role, RoleGuide> = {
       },
     ],
     help:
-      'Tasdiqlangan so‘rov muddati o‘tsa, Telegram’da eslatma keladi. Savol bo‘lsa — adminga. ' + BUG_REPORT,
+      'Tasdiqlangan so‘rov muddati o‘tsa, Telegram’da eslatma keladi. ' +
+      WORK_MESSAGES_TG +
+      ' “Yozuvlar” da xaridlaringiz, pul yozuvlari va xabarlaringiz. Savol bo‘lsa — adminga. ' +
+      BUG_REPORT,
   },
 
   prorab: {
@@ -285,9 +319,9 @@ export const guides: Record<Role, RoleGuide> = {
       {
         title: 'Material keldi yoki ishlatildi',
         steps: [
-          '“Bosh” da “Kirim” yoki “Chiqim” ni bosing (yoki pastki menyuda “Kirim-chiqim”).',
+          '“Bosh” da “Kirim” yoki “Chiqim” ni bosing (yoki pastki menyuda “Ombor”).',
           'Obyektni tanlang. Bitta obyekt bo‘lsa, o‘zi tanlanadi.',
-          'Material tugmasini bosing, birlikni tanlang, miqdorni yozing.',
+          'Material tugmasini bosing, miqdorni yozing, ostidagi birlikni tanlang.',
           'Kirim xarid bo‘yicha kelgan bo‘lsa, “Bog‘langan xarid” dan keraklisini “Bog‘lash”.',
           '“Saqlash” ni bosing.',
         ],
@@ -295,26 +329,27 @@ export const guides: Record<Role, RoleGuide> = {
       {
         title: 'Xarid',
         steps: [
-          '“Xarid” da “Qo‘limda” — qo‘lingizdagi pul.',
+          '“Xarid” da “Qo‘limda” — qo‘lingizdagi pul; bosing — “Pul tarixi”.',
           'Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing.',
           'Material, miqdor, “Jami summa (chekdagi)” va obyektni kiriting, “Saqlash”.',
         ],
       },
       {
-        title: 'So‘rov va o‘tkazma',
+        title: 'So‘rov, o‘tkazma, qoldiq',
         steps: [
           '“So‘rov” da material, miqdor va “Qachon kerak” ni tanlang → “So‘rov yuborish”.',
-          'Boshqa obyektga berish: “O‘tkazma” → “O‘tkazmani yuborish”.',
+          'Boshqa obyektga berish: “O‘tkazma” → “O‘tkazmani yuborish”. Hali qabul qilinmagan bo‘lsa, “Yozuvlar” dan “O‘tkazmani bekor qilish”.',
           'Sizga o‘tkazma kelsa: “Kelayotgan o‘tkazmalar” → sanab, “Qabul qilish”.',
+          '“Bo‘limlar” → “Qoldiq”: materiallar va necha kunga yetishi; qatorni bossangiz — chiqim.',
         ],
       },
     ],
     rules: [
+      ENTRY_DATE,
+      SELF_FIX,
+      'Rasm odatda ixtiyoriy. Katta summali xaridda va “majburiy” belgili materialda rasmsiz saqlanmaydi.',
+      '“Bosh” dagi “Obyekt ogohlantirishlari” — obyektingizdagi farqlar; admin ko‘rib chiqadi.',
       'Telegram ilovasi joylashuvni so‘raydi — ruxsat bering.',
-      'Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda va “majburiy” belgili materialda rasmsiz saqlanmaydi. QR skanerlangan chekda rasm shart emas.',
-      'Material kelishi bilan yozing, kechga qoldirmang.',
-      '“Xuddi shunday yozuv bor” chiqsa, “Yozuvlarim” ni tekshiring.',
-      'Xato yozuvni o‘zingiz o‘chira olmaysiz — adminga ayting.',
     ],
     alerts: [
       {
@@ -339,7 +374,10 @@ export const guides: Record<Role, RoleGuide> = {
       },
     ],
     help:
-      '“Yozuvlarim” da kiritganlaringiz va so‘rovlaringiz holati ko‘rinadi. Savol bo‘lsa — adminga. ' + BUG_REPORT,
+      '“Yozuvlar” da kirim-chiqim, xarid, so‘rov, o‘tkazma, pul va xabarlaringiz; turi va sanasi bo‘yicha filtrlang. ' +
+      WORK_MESSAGES_TG +
+      ' Savol bo‘lsa — adminga. ' +
+      BUG_REPORT,
   },
 
   omborchi: {
@@ -352,7 +390,7 @@ export const guides: Record<Role, RoleGuide> = {
         steps: [
           '“Bosh” da “Kirim” ni bosing.',
           'Obyektni tanlang (bitta bo‘lsa, o‘zi tanlanadi).',
-          'Material tugmasini bosing, birlikni tanlang, sanab miqdorni yozing.',
+          'Material tugmasini bosing, sanab miqdorni yozing, ostidagi birlikni tanlang.',
           'Xarid bo‘yicha kelgan bo‘lsa, “Bog‘langan xarid” dan uni “Bog‘lash”.',
           '“Saqlash” ni bosing.',
         ],
@@ -360,25 +398,25 @@ export const guides: Record<Role, RoleGuide> = {
       {
         title: 'Material berildi (chiqim)',
         steps: [
-          '“Bosh” da “Chiqim” ni bosing.',
-          'Material, birlik va miqdorni tanlang. “Qoldiq: … → …” ni tekshiring.',
+          '“Bosh” da “Chiqim” ni bosing yoki “Bo‘limlar” → “Qoldiq” dan materialni bosing.',
+          'Miqdor va birlikni kiriting. “Qoldiq: … → …” ni tekshiring.',
           '“Saqlash” ni bosing.',
         ],
       },
       {
         title: 'O‘tkazma keldi',
         steps: [
-          '“Kirim / chiqim” ekranida “Kelayotgan o‘tkazmalar” ni oching.',
+          '“Ombor” ekranida “Kelayotgan o‘tkazmalar” ni oching (xabardagi havola ham shu yerga olib keladi).',
           'Kelgan miqdorni sanang, “Qabul qilish”.',
         ],
       },
     ],
     rules: [
-      'Telegram ilovasi joylashuvni so‘raydi — ruxsat bering.',
-      'Rasm odatda ixtiyoriy. “Majburiy” belgili materialda rasmsiz saqlanmaydi.',
+      ENTRY_DATE,
+      SELF_FIX,
       'Haydovchi aytgan emas, o‘zingiz sanagan miqdorni yozing.',
-      '“Xuddi shunday yozuv bor” chiqsa, “Yozuvlarim” ni tekshiring.',
-      'Xato yozuvni o‘zingiz o‘chira olmaysiz — adminga ayting.',
+      '“Bosh” dagi “Obyekt ogohlantirishlari” — obyektingizdagi farqlar; admin ko‘rib chiqadi.',
+      'Telegram ilovasi joylashuvni so‘raydi — ruxsat bering.',
     ],
     alerts: [
       {
@@ -402,7 +440,11 @@ export const guides: Record<Role, RoleGuide> = {
         whatToDo: 'Yuborgan obyekt bilan gaplashing.',
       },
     ],
-    help: 'Savol bo‘lsa — prorab yoki adminga. ' + BUG_REPORT,
+    help:
+      '“Yozuvlar” da kirim-chiqimlaringiz va xabarlaringiz; turi va sanasi bo‘yicha filtrlang. ' +
+      WORK_MESSAGES_TG +
+      ' Savol bo‘lsa — prorab yoki adminga. ' +
+      BUG_REPORT,
   },
 
   haydovchi: {
@@ -413,17 +455,17 @@ export const guides: Record<Role, RoleGuide> = {
       {
         title: 'Xarid kiritish',
         steps: [
-          'Telegram ilovasida “Xarid” ni oching. “Qo‘limda” — qo‘lingizdagi pul.',
-          'So‘rov bo‘yicha olsangiz, “Tasdiqlangan so‘rovlar” dan uni bosing.',
+          'Telegram ilovasida “Xarid” ni oching. “Qo‘limda” — qo‘lingizdagi pul; bosing — “Pul tarixi”.',
           'Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing: summa va sotuvchi o‘zi to‘ldiriladi.',
-          'Material, miqdor, “Jami summa (chekdagi)” va obyektni tanlang.',
+          'Material, miqdor, “Jami summa (chekdagi)” va obyektni tanlang. Kechagi xarid — “Kecha”.',
           '“Saqlash” ni bosing. “Qo‘limda” yangi summani ko‘rsatadi.',
         ],
       },
       {
         title: 'Tekshirish',
         steps: [
-          '“Yozuvlarim” da kiritgan xaridlaringizni ko‘ring.',
+          '“Yozuvlar” da xaridlaringiz, berilgan va qaytarilgan pul.',
+          'Xato xaridni 30 daqiqa ichida tuzatasiz: “Yozuvlar” → xarid → “Tuzatish” (sabab majburiy).',
           'Har dushanba Telegram’da pul hisobotingiz keladi: berildi, sarflandi, qoldiq.',
         ],
       },
@@ -431,7 +473,7 @@ export const guides: Record<Role, RoleGuide> = {
     rules: [
       'Har xaridni do‘kondan chiqishingiz bilan kiriting.',
       'Summa — chekdagi jami summa. Chekni saqlang.',
-      'Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda chek rasmisiz saqlanmaydi. QR skanerlangan chekda rasm shart emas.',
+      'Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda chek rasmisiz saqlanmaydi. Soliq.uz tasdiqlagan QR chekda rasm shart emas.',
       'Ortib qolgan pulni buxgalterga qaytaring.',
       'Telegram ilovasi joylashuvni so‘raydi — ruxsat bering.',
     ],
@@ -452,7 +494,7 @@ export const guides: Record<Role, RoleGuide> = {
         whatToDo: 'Xaridlarni kiriting yoki qolgan pulni qaytaring.',
       },
     ],
-    help: 'Savol bo‘lsa — adminga. ' + BUG_REPORT,
+    help: WORK_MESSAGES_TG + ' Savol bo‘lsa — adminga. ' + BUG_REPORT,
   },
 
   tekshiruvchi: {
@@ -473,7 +515,7 @@ export const guides: Record<Role, RoleGuide> = {
         title: 'Yakunlash',
         steps: [
           'Hammasi sanalgach, “Yakunlash” ni bosing va tasdiqlang.',
-          'Natija admin va direktorga yuboriladi.',
+          'Natija admin va direktorga yuboriladi. Sanashlaringiz “Yozuvlar” da ko‘rinadi.',
         ],
       },
     ],
@@ -490,7 +532,7 @@ export const guides: Record<Role, RoleGuide> = {
         whatToDo: 'Hech narsa qilmang — admin tekshiradi. So‘rasa, qayta sanang.',
       },
     ],
-    help: 'Savol bo‘lsa — adminga. ' + BUG_REPORT,
+    help: WORK_MESSAGES_TG + ' Savol bo‘lsa — adminga. ' + BUG_REPORT,
   },
 }
 

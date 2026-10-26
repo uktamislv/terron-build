@@ -20,7 +20,7 @@
 import type { Alert } from '@/data/types'
 import { parseDec } from '@/domain/decimal'
 import { t } from '@/i18n'
-import { formatDate, formatDateTime, formatQty, formatSum } from '@/lib/format'
+import { formatDate, formatDateTime, formatQty, formatQtyUnit, formatSum } from '@/lib/format'
 
 const td = t.alertsPage.details
 
@@ -36,7 +36,7 @@ function dec(details: Record<string, unknown>, ...keys: string[]): string | null
 }
 
 function qty(value: string, unit: string | null): string {
-  return `${formatQty(value)} ${unit ?? ''}`.trim()
+  return formatQtyUnit(value, unit)
 }
 
 export function alertDetailText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): string {
@@ -417,9 +417,14 @@ function auditText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): string | n
       const changes = entryChanges(d).join('; ')
       const actor = str(d, 'actor_name')
       const author = str(d, 'author_name')
-      if (a.type === 'yozuv_tuzatildi') return td.entryCorrected(entryWhat(d), str(d, 'material_name'), changes, author || actor)
+      // Sabab (correct_entry / cancel_own_entry) — oxirida
+      const reason = str(d, 'reason')
+      const why = reason ? td.reasonPart(reason) : ''
+      if (a.type === 'yozuv_tuzatildi' && d.via === 'cancel_own_entry')
+        return td.entryCancelled(entryWhat(d), str(d, 'material_name'), author || actor) + why
+      if (a.type === 'yozuv_tuzatildi') return td.entryCorrected(entryWhat(d), str(d, 'material_name'), changes, author || actor) + why
       const who = [actor, author && author !== actor ? td.entryAuthor(author) : ''].filter(Boolean).join('; ')
-      return td.entryChanged(entryWhat(d), str(d, 'material_name'), changes, who)
+      return td.entryChanged(entryWhat(d), str(d, 'material_name'), changes, who) + why
     }
     case 'sozlama_ozgardi': {
       const changes = (Array.isArray(d.changes) ? (d.changes as unknown[]) : [])
@@ -432,6 +437,7 @@ function auditText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): string | n
     case 'login_ozgardi': {
       const role = str(d, 'target_role')
       const roleLabel = Object.hasOwn(t.roles, role) ? t.roles[role as keyof typeof t.roles] : ''
+      if (d.first_login === true) return td.loginFirst(str(d, 'target_name'), roleLabel, str(d, 'actor_name'))
       return td.loginChanged(str(d, 'target_name'), roleLabel, str(d, 'actor_name'))
     }
     case 'podotchet_belgisi': {
@@ -447,6 +453,16 @@ function auditText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): string | n
     }
     case 'sotuvchi_stir_farqi':
       return td.sellerTin(str(d, 'seller_tin'), str(d, 'supplier_name'), str(d, 'supplier_tin'))
+    case 'xarid_boshqa_nomidan': {
+      const amount = dec(d, 'amount')
+      const sum = amount !== null ? formatSum(amount) : ''
+      const firma = d.payment_source === 'firma' ? ` (${td.purchaseOnBehalfFirma})` : ''
+      return td.purchaseOnBehalf(str(d, 'actor_name'), str(d, 'buyer_name'), str(d, 'material_name'), sum) + firma
+    }
+    case 'sotuvchi_birlashtirildi': {
+      const moved = dec(d, 'moved_count')
+      return td.supplierMerged(str(d, 'merged_name'), str(d, 'keep_name'), moved !== null ? Number(moved) : 0, str(d, 'actor_name'))
+    }
     default:
       return null
   }
@@ -477,7 +493,13 @@ function automationText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): strin
         const cause = td.negativeCause(typeLabel, q !== null ? qty(q, u) : '', deleted)
         return `${td.negativeStock(after !== null ? qty(after, u) : '?', '')} (${cause})`
       }
-      return td.negativeStock(after !== null ? qty(after, u) : '?', q !== null ? qty(q, u) : '')
+      const reopenN = dec(d, 'reopen_count')
+      const reopenAt = str(d, 'reopened_at')
+      const reopened =
+        reopenN !== null && Number(reopenN) > 0
+          ? td.negativeReopened(formatQty(reopenN, 0), reopenAt && !Number.isNaN(Date.parse(reopenAt)) ? formatDateTime(reopenAt) : '')
+          : ''
+      return td.negativeStock(after !== null ? qty(after, u) : '?', q !== null ? qty(q, u) : '') + reopened
     }
     case 'takroriy_yozuv': {
       const table = str(d, 'table')

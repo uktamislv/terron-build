@@ -68,6 +68,7 @@ vi.mock('@/data/suppliersRepo', async (orig) => ({
   updateSupplier: vi.fn(async () => undefined),
   softDeleteSupplier: vi.fn(async () => undefined),
   restoreSupplier: vi.fn(async () => undefined),
+  countPurchasesBySupplier: vi.fn(async () => new Map([['s1', 5], ['s2', 2]])),
 }))
 vi.mock('@/data/requestsRepo', () => ({ listApprovedRequests: vi.fn(async () => []) }))
 vi.mock('@/data/movementsRepo', () => ({
@@ -94,6 +95,7 @@ vi.mock('@/data/companiesRepo', async (orig) => {
     getCompanySettings: vi.fn(async () => actual.DEFAULT_COMPANY_SETTINGS),
     updateCompanySettings: vi.fn(async () => undefined),
     getNotificationHealth: vi.fn(),
+    resetChatBlocked: vi.fn(async () => true),
   }
 })
 vi.mock('@/data/cashRepo', async (orig) => ({
@@ -224,7 +226,7 @@ describe('admin tuzatishi (correct_entry, istalgan vaqtda)', () => {
     fireEvent.click(await within(detail).findByRole('button', { name: t.correction.action }))
     const form = within(await screen.findByRole('dialog', { name: t.correction.title }))
     fireEvent.change(form.getByLabelText(t.correction.total), { target: { value: '1200000' } })
-    fireEvent.change(form.getByLabelText(t.correction.note), { target: { value: 'chekda 1 200 000' } })
+    fireEvent.change(form.getByLabelText(t.correction.reason), { target: { value: 'chekda 1 200 000' } })
     fireEvent.click(form.getByRole('button', { name: t.correction.save }))
     await waitFor(() =>
       expect(correctionsRepo.correctEntry).toHaveBeenCalledWith({
@@ -233,7 +235,10 @@ describe('admin tuzatishi (correct_entry, istalgan vaqtda)', () => {
         qtyInput: null,
         unitId: null,
         totalAmount: '1200000',
-        note: 'chekda 1 200 000',
+        reason: 'chekda 1 200 000',
+        note: null,
+        materialId: null,
+        objectId: null,
       }),
     )
   })
@@ -265,6 +270,8 @@ describe('admin tuzatishi (correct_entry, istalgan vaqtda)', () => {
       unit_variant: null,
       qty_base: '100',
       purchase_id: null,
+      transfer_id: null,
+      inventory_count_id: null,
       photo_path: null,
       occurred_at: '2026-09-01T05:00:00Z',
       note: null,
@@ -284,7 +291,7 @@ describe('admin tuzatishi (correct_entry, istalgan vaqtda)', () => {
     const form = within(await screen.findByRole('dialog', { name: t.correction.title }))
     expect(form.getByText(t.correction.adminHint)).toBeInTheDocument()
     fireEvent.change(form.getByLabelText(t.correction.qty), { target: { value: '3' } })
-    fireEvent.change(form.getByLabelText(t.correction.note), { target: { value: 'sanoq xatosi' } })
+    fireEvent.change(form.getByLabelText(t.correction.reason), { target: { value: 'sanoq xatosi' } })
     fireEvent.click(form.getByRole('button', { name: t.correction.save }))
     await waitFor(() => expect(correctionsRepo.correctEntry).toHaveBeenCalledWith(expect.objectContaining({ table: 'movements', id: 'mv1', qtyInput: '3' })))
   })
@@ -311,10 +318,13 @@ describe('Materiallar → Sotuvchilar (admin)', () => {
     fireEvent.click(within(rows[1] as HTMLElement).getByRole('button', { name: t.ui.actions }))
     fireEvent.click(within(rows[1] as HTMLElement).getByRole('menuitem', { name: t.suppliers.merge }))
     const dialog = within(await screen.findByRole('dialog', { name: t.suppliers.mergeTitle }))
-    fireEvent.change(dialog.getByLabelText(t.suppliers.mergeInto), { target: { value: 's1' } })
+    // Qidiruvli ro'yxat: STIR va xaridlar soni ko'rinadi
+    expect(await dialog.findByText(t.suppliers.purchaseCount(5))).toBeInTheDocument()
+    fireEvent.change(dialog.getByRole('searchbox', { name: t.suppliers.mergeSearch }), { target: { value: 'boz' } })
+    fireEvent.click(dialog.getByRole('radio', { name: /Bozor/ }))
     fireEvent.click(screen.getByRole('button', { name: t.suppliers.mergeNext }))
-    expect(dialog.getByText(t.suppliers.mergeWarning('Bozor (eski)', 'Bozor'))).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: t.suppliers.mergeConfirm }))
+    expect(dialog.getByText(t.suppliers.mergeWarning('Bozor (eski)', 'Bozor', 2))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t.suppliers.mergeConfirm(2) }))
     await waitFor(() => expect(suppliersRepo.mergeSuppliers).toHaveBeenCalledWith('s1', 's2'))
     expect(await screen.findByText(t.suppliers.merged('Bozor (eski)', 'Bozor', 2))).toBeInTheDocument()
 
@@ -434,8 +444,14 @@ describe('/settings — tinch soatlar va Telegram holati', () => {
     expect(await screen.findByTestId('telegram-health')).toHaveAttribute('data-level', 'danger')
     expect(screen.getByText(t.settings.health.fixHint)).toBeInTheDocument()
     expect(screen.getByText('Forbidden: bot was blocked')).toBeInTheDocument()
+    // Tur va holat — o'zbekcha
+    expect(screen.getByText(t.settings.health.kinds.alert as string)).toBeInTheDocument()
+    expect(screen.getByText(t.settings.health.statuses.failed as string)).toBeInTheDocument()
     expect(screen.getByText(t.settings.health.blockedHint)).toBeInTheDocument()
     expect(screen.getByText(t.settings.health.never)).toBeInTheDocument()
+    // "Qayta tekshirish" — reset_chat_blocked
+    fireEvent.click(screen.getByRole('button', { name: t.settings.health.recheckLabel('Ali') }))
+    await waitFor(() => expect(companiesRepo.resetChatBlocked).toHaveBeenCalledWith('p1'))
   })
 })
 
@@ -450,6 +466,12 @@ describe('/users — bot bloklangan, himoyalangan profil', () => {
     const card = async (name: string) => within((await screen.findByText(name)).closest('li') as HTMLElement)
     const prorab = await card('Prorab Uka')
     expect(prorab.getByText(t.users.botBlocked)).toBeInTheDocument()
+    // Izoh: ekran o'quvchiga (sr-only) va "(i)" Popover — title atributi emas
+    expect(prorab.getByText(`: ${t.users.botBlockedHint}`)).toHaveClass('sr-only')
+    fireEvent.click(prorab.getByRole('button', { name: t.users.hintOpen(t.users.botBlocked) }))
+    expect(await screen.findByRole('dialog', { name: t.users.botBlocked })).toHaveTextContent(t.users.botBlockedHint)
+    fireEvent.click(prorab.getByRole('button', { name: t.users.hintOpen(t.users.botBlocked) }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: t.users.botBlocked })).not.toBeInTheDocument())
     expect(prorab.getByRole('button', { name: t.users.deactivate })).toBeInTheDocument()
     const dir = await card('Direktor Aka')
     expect(dir.getByText(t.users.protectedBadge)).toBeInTheDocument()

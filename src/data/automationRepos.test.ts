@@ -149,10 +149,10 @@ describe('movementsRepo / purchasesRepo — Batch 12 ustunlari', () => {
     expect(String(arg('select'))).toContain('receipt_verified')
   })
 
-  it('receipt_already_used — server xabari ko‘rsatiladi', () => {
-    const err = toRepoError({ code: '23505', hint: 'receipt_already_used', message: 'Ali, 24.10.2026 14:00' })
+  it('receipt_already_used — ism va vaqt parametr sifatida (server matni xom ko‘rsatilmaydi)', () => {
+    const err = toRepoError({ code: '23505', hint: 'receipt_already_used', message: 'Bu chek allaqachon ishlatilgan: Ali, 24.10.2026 14:00' })
     expect(err.code).toBe('receipt_already_used')
-    expect(err.userMessage).toBe('Ali, 24.10.2026 14:00')
+    expect(err.params).toEqual(['Ali', '24.10.2026 14:00'])
   })
 
   it('yangi hint kalitlari — har biriga i18n matni', () => {
@@ -170,7 +170,7 @@ describe('movementsRepo / purchasesRepo — Batch 12 ustunlari', () => {
       expect(SERVER_HINTS).toHaveProperty(k)
       expect(t.errors[k]).toBeTruthy()
     }
-    expect(SERVER_HINTS.transfer_insufficient_stock.showServerMessage).toBe(true)
+    expect(SERVER_HINTS.transfer_insufficient_stock.showServerMessage).toBe(false)
   })
 })
 
@@ -319,7 +319,7 @@ describe('receiptLookup — Edge Function shartnomasi', () => {
     const r = await receiptLookup('https://ofd.soliq.uz/check?t=UZ1&r=9&s=1')
     expect(functions.invokeFunction).toHaveBeenCalledWith('receipt-lookup', { url: 'https://ofd.soliq.uz/check?t=UZ1&r=9&s=1' })
     expect(r.total).toBe('250000')
-    expect(r.items).toEqual([{ name: 'Sement', qty: '5', price: '50000', sum: '250000' }])
+    expect(r.items).toEqual([{ name: 'Sement', qty: '5', price: '50000', sum: '250000', unit: null }])
   })
 
   it.each([

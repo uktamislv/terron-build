@@ -21,22 +21,23 @@ export function TgHomePage() {
     if (role && (can(role, 'create_movement') || can(role, 'create_purchase'))) void captureLocation()
   }, [role])
   if (!profile) return null
+  // Pastki menyuga sig'magan va qo'shimcha bo'limlar: "Qoldiq", "So'rovlarni tasdiqlash", "Sanash" —
+  // asosiy plitkalar ostida ixcham qator
+  const sections = <HomeSections role={profile.role} />
   return (
     <div className="flex flex-col gap-5">
       {/* Batch 12 (J): Telegram xabaridagi "Ochish" → shu ogohlantirish */}
       <AlertDeepLink role={profile.role} />
       {DIRECTOR_HOME.includes(profile.role) ? (
-        <DirectorHome name={profile.full_name} />
+        <DirectorHome name={profile.full_name} sections={sections} />
       ) : (
-        // Prorab / omborchi: "Kirim" va "Chiqim" plitkalari + bugungi yozuvlar
-        <WorkerHome profile={profile} />
+        // Prorab / omborchi: "Kirim" va "Chiqim" plitkalari, ostida "Bo'limlar", keyin bugungi yozuvlar
+        <WorkerHome profile={profile} sections={sections} />
       )}
       {/* Prorab / omborchi: a'zo obyektlardagi ogohlantirishlar (faqat ko'rish) */}
       {(profile.role === 'prorab' || profile.role === 'omborchi') && <SiteAlerts profileId={profile.id} />}
-      {/* Pastki menyuga sig'magan va qo'shimcha bo'limlar: "Qoldiq", "So'rovlarni tasdiqlash", "Sanash" */}
-      <HomeSections role={profile.role} />
       {/* Batch 12 (K): tugayotgan materiallar (prorab, omborchi, direktor, admin) */}
-      <RunningLow companyId={profile.company_id} role={profile.role} />
+      <RunningLow companyId={profile.company_id} role={profile.role} profileId={profile.id} />
     </div>
   )
 }

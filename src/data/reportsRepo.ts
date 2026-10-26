@@ -13,6 +13,10 @@ export interface DashboardSummary {
   /** Batch 12 (I): davrda qaytarilgan pul (`cash_issued_sum` — faqat berilgan). */
   cash_returned_sum: Dec
   cash_on_hand_total: Dec
+  /** Musbat balanslar yig'indisi (xodimlar qo'lidagi pul). */
+  cash_outstanding_sum: Dec
+  /** Manfiy balanslar yig'indisi (firma xodimlarga qarzdor — o'z pulidan sarflagan). */
+  cash_owed_to_staff_sum: Dec
   alerts_open: number
   alerts_serious_open: number
   alerts_new_in_period: number
@@ -20,6 +24,10 @@ export interface DashboardSummary {
   pending_transfers_count: number
   pending_requests_count: number
   objects_over_norm_count: number
+  /** Botni bloklagan faol xodimlar (admin/direktor ko'radi; boshqalarga 0). */
+  telegram_blocked_count: number
+  /** Joriy foydalanuvchining o'zi botni bloklagan — Telegram xabarlari kelmaydi. */
+  telegram_me_blocked: boolean
 }
 
 export interface DailyRow {
@@ -73,8 +81,9 @@ const COUNT_KEYS = [
   'pending_transfers_count',
   'pending_requests_count',
   'objects_over_norm_count',
+  'telegram_blocked_count',
 ] as const
-const MONEY_KEYS = ['purchases_sum', 'cash_issued_sum', 'cash_returned_sum', 'cash_on_hand_total'] as const
+const MONEY_KEYS = ['purchases_sum', 'cash_issued_sum', 'cash_returned_sum', 'cash_on_hand_total', 'cash_outstanding_sum', 'cash_owed_to_staff_sum'] as const
 
 function int(v: unknown): number {
   const n = Number(v ?? 0)
@@ -99,7 +108,7 @@ export function normalizeSummary(raw: unknown): DashboardSummary {
   const out = {} as Record<string, number | Dec>
   for (const k of COUNT_KEYS) out[k] = int(o[k])
   for (const k of MONEY_KEYS) out[k] = dec(o[k])
-  return out as unknown as DashboardSummary
+  return { ...(out as unknown as DashboardSummary), telegram_me_blocked: o.telegram_me_blocked === true }
 }
 
 /** Bosh sahifa kartochkalari. Noto'g'ri davr — `report_period_invalid`. */
@@ -148,5 +157,51 @@ export async function getNormOverview(objectId?: string | null): Promise<NormOve
     allowed_qty_base: dec(d.allowed_qty_base),
     consumed_qty_base: dec(d.consumed_qty_base),
     usage_pct: decOrNull(d.usage_pct),
+  }))
+}
+
+/** Obyekt bo'yicha smeta jami va haqiqiy xarajat (so'm) — bitta o'qda pul (turli birliklar aralashmaydi). */
+export interface EstimateSpendRow {
+  object_id: string
+  object_name: string | null
+  /** Joriy smeta jami (`estimate_totals.total_sum`); joriy smeta yo'q — null. */
+  estimate_sum: Dec | null
+  /** Tanlangan davrdagi xaridlar summasi (`spend_breakdown`, obyekt bo'yicha). */
+  spent_sum: Dec
+}
+
+/**
+ * Smeta va haqiqiy (pul): obyektlarning joriy smetasi jami (`estimate_totals`) va davrdagi xaridlar
+ * (`spend_breakdown` → obyekt). RLS — chaqiruvchi ko'ra oladigan obyektlar.
+ */
+export async function getEstimateVsSpend(r: ReportRange): Promise<EstimateSpendRow[]> {
+  const sb = getSupabase()
+  let q = sb.from('estimates').select('id, object_id').eq('is_current', true).is('deleted_at', null)
+  if (r.objectId) q = q.eq('object_id', r.objectId)
+  const [{ data: estimates, error: estError }, spend] = await Promise.all([q, getSpendBreakdown(r, 'object')])
+  if (estError) throw toRepoError(estError)
+  const current = (estimates ?? []) as { id: string; object_id: string }[]
+  const totals = new Map<string, Dec>()
+  if (current.length > 0) {
+    const { data, error } = await sb
+      .from('estimate_totals')
+      .select('estimate_id, object_id, total_sum::text')
+      .in('estimate_id', current.map((e) => e.id))
+    if (error) throw toRepoError(error)
+    for (const t of (data ?? []) as unknown as { object_id: string; total_sum: string | null }[]) {
+      totals.set(t.object_id, dec(t.total_sum))
+    }
+  }
+  const ids = new Set<string>([...totals.keys(), ...spend.filter((s) => s.key).map((s) => s.key as string)])
+  if (ids.size === 0) return []
+  const { data: objects, error: objError } = await sb.from('objects').select('id, name').in('id', [...ids])
+  if (objError) throw toRepoError(objError)
+  const names = new Map(((objects ?? []) as { id: string; name: string }[]).map((o) => [o.id, o.name]))
+  const spent = new Map(spend.filter((s) => s.key).map((s) => [s.key as string, s.purchases_sum]))
+  return [...ids].map((id) => ({
+    object_id: id,
+    object_name: names.get(id) ?? spend.find((s) => s.key === id)?.label ?? null,
+    estimate_sum: totals.get(id) ?? null,
+    spent_sum: spent.get(id) ?? '0',
   }))
 }

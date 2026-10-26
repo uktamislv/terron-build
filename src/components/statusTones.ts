@@ -1,15 +1,18 @@
 import type { InventoryStatus, RequestStatus, TransferStatus } from '@/data/types'
 import type { BadgeTone } from '@/components/ui'
 
+// Reja holatlari (so'rov, o'tkazma, sanash) — muammo emas: `info` / `ok` / `neutral`.
+// `warn` va `danger` faqat ogohlantirishlar (alerts) uchun (docs/design-system.md, "Holat semantikasi").
+
 export const REQUEST_TONE: Record<RequestStatus, BadgeTone> = {
-  kutilmoqda: 'warn',
+  kutilmoqda: 'info',
   tasdiqlandi: 'info',
-  rad: 'danger',
+  rad: 'neutral',
   xarid_qilindi: 'ok',
 }
 
 export const TRANSFER_TONE: Record<TransferStatus, BadgeTone> = {
-  yuborildi: 'warn',
+  yuborildi: 'info',
   qabul_qilindi: 'ok',
   bekor: 'neutral',
 }

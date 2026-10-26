@@ -53,7 +53,7 @@ function fake(
     link: [] as { profileId: string; authUserId: string; kind: LoginKind }[],
     loginKind: [] as { profileId: string; kind: LoginKind }[],
     deleted: [] as string[],
-    loginAlerts: [] as { target: string; actor: string }[],
+    loginAlerts: [] as { target: string; actor: string; first: boolean }[],
     audit: [] as AuthEvent[],
     logs: [] as unknown[],
   }
@@ -77,8 +77,8 @@ function fake(
     findAuthUserByEmail: async () => opts.existingByEmail ?? null,
     findProfileIdByAuthUserId: async (id) => opts.linkedProfileOf?.[id] ?? null,
     lastProfileCompanyByAuthUserId: async (id) => opts.lastCompanyOf?.[id] ?? null,
-    alertLoginSet: async (target, actor) => {
-      calls.loginAlerts.push({ target, actor })
+    alertLoginSet: async (target, actor, first) => {
+      calls.loginAlerts.push({ target, actor, first })
       if (opts.alertThrows) throw new Error('rpc down')
     },
     deleteAuthUser: async (id) => {
@@ -410,7 +410,7 @@ describe('admin-users: login_ozgardi alerti (svc_alert_login_set)', () => {
   it('mavjud login almashtirilsa — chaqiriladi (maqsad, aktyor)', async () => {
     const f = fake({ target: target({ auth_user_id: 'auth-me' }) })
     expect((await handleAdminUsers(AUTH, body(), f.deps)).status).toBe(200)
-    expect(f.calls.loginAlerts).toEqual([{ target: TARGET_ID, actor: 'admin-a' }])
+    expect(f.calls.loginAlerts).toEqual([{ target: TARGET_ID, actor: 'admin-a', first: false }])
   })
   it('birinchi login — chaqirilmaydi', async () => {
     const f = fake()
@@ -426,6 +426,27 @@ describe('admin-users: login_ozgardi alerti (svc_alert_login_set)', () => {
   it('xato javoblarda (403, 409) — chaqirilmaydi', async () => {
     const f = fake({ target: target({ role: 'direktor', auth_user_id: 'auth-dir' }) })
     await handleAdminUsers(AUTH, body(), f.deps)
+    expect(f.calls.loginAlerts).toEqual([])
+  })
+})
+
+describe('admin-users: 2-tur — himoyalangan rolga birinchi login', () => {
+  it('admin direktorga birinchi login bersa → svc_alert_login_set(first_login = true)', async () => {
+    const f = fake({ target: target({ role: 'direktor', auth_user_id: null }) })
+    expect((await handleAdminUsers(AUTH, body(), f.deps)).status).toBe(200)
+    expect(f.calls.loginAlerts).toEqual([{ target: TARGET_ID, actor: 'admin-a', first: true }])
+  })
+  it("super_admin bersa — alert yo'q; oddiy rol (prorab) birinchi login — alert yo'q", async () => {
+    const sa = fake({ caller: superAdmin, target: target({ role: 'direktor', auth_user_id: null }) })
+    await handleAdminUsers(AUTH, body(), sa.deps)
+    expect(sa.calls.loginAlerts).toEqual([])
+    const pr = fake()
+    await handleAdminUsers(AUTH, body(), pr.deps)
+    expect(pr.calls.loginAlerts).toEqual([])
+  })
+  it("admin boshqa adminga — avvalgidek 403 (alert yo'q)", async () => {
+    const f = fake({ target: target({ role: 'admin', auth_user_id: null }) })
+    expect((await handleAdminUsers(AUTH, body(), f.deps)).status).toBe(403)
     expect(f.calls.loginAlerts).toEqual([])
   })
 })

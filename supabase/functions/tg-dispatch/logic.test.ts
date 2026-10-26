@@ -711,3 +711,60 @@ describe('audit — ish oqimi kindlari (request_*, transfer_sent, purchase_for_o
     expect(COMPLETE_SENDS_BLOCKED_CHAT_IDS).toBe(true)
   })
 })
+
+describe('2-tur — yangi kindlar, deep link, sozlama 400', () => {
+  const U = '11111111-2222-4333-8444-555555555555'
+  const k = (kind: string, id: string, payload: unknown): OutboxRow => ({
+    id, company_id: 'c1', kind, payload, attempts: 1, delivered_chat_ids: [],
+  })
+  const TR = {
+    transfer_id: U, company_name: 'F', status: 'bekor', from_object_name: 'A', to_object_name: 'B', material_name: 'S',
+    qty_input: 1, unit_input: 'kg', qty_base: 1, received_qty_base: 1, base_unit: 'kg', note: null, cancel_reason: null,
+    sent_by_name: null, received_by_name: null, created_at: '2026-10-29T09:32:00Z', received_at: null,
+  }
+  const url = 'https://app.example.uz/tg'
+
+  it('yangi kindlar yuboriladi (noma‘lum kind emas), deep link bilan', async () => {
+    const rows = [
+      k('transfer_cancelled', 'n1', TR),
+      k('transfer_received', 'n2', { ...TR, status: 'qabul_qilindi' }),
+      k('purchase_deleted', 'n3', { purchase_id: U, deleted_at: null }),
+      k('purchase_on_your_name', 'n4', { purchase_id: U }),
+      k('inventory_applied', 'n5', { count_id: U, items_count: 1, adjusted_count: 0 }),
+      k('alerts_digest', 'n6', { alert_type: 'smetadan_ortiq_sorov', count: 2, items: [], more_count: 0 }),
+      k('request_created', 'n7', { request_id: U }),
+    ]
+    const f = fake({ rows, recipients: { c1: [R(1, 'prorab')] }, miniAppUrl: url })
+    const r = await handleDispatch(SECRET, f.deps)
+    expect(r.body).toEqual({ processed: 7, sent: 7, failed: 0 })
+    const urls = f.sent.map((s) => (s.markup as { inline_keyboard: { web_app: { url: string } }[][] }).inline_keyboard[0]?.[0]?.web_app.url)
+    expect(urls).toEqual([
+      `${url}?transfer=${U}`,
+      `${url}?transfer=${U}`,
+      `${url}?purchase=${U}`,
+      `${url}?purchase=${U}`,
+      url,
+      url,
+      `${url}?request=${U}`,
+    ])
+  })
+
+  it('400 tugma / URL xatosi → failed EMAS: TOKEN_RETRY_SEC bilan keyinga, qolganlari ham', async () => {
+    expect(classifyTelegramResponse(400, { description: 'Bad Request: BUTTON_URL_INVALID' })).toMatchObject({ kind: 'config_error' })
+    expect(
+      classifyTelegramResponse(400, { description: "Bad Request: inline keyboard button Web App URL 'x' is invalid" }),
+    ).toMatchObject({ kind: 'config_error' })
+    expect(classifyTelegramResponse(400, { description: "Bad Request: can't parse entities" })).toMatchObject({ kind: 'invalid_message' })
+    const f = fake({
+      rows: [row('alert', { id: 'a1' }), row('daily_report', { id: 'd1' })],
+      recipients: { c1: [R(1)] },
+      send: () => classifyTelegramResponse(400, { description: 'Bad Request: BUTTON_URL_INVALID' }),
+    })
+    await handleDispatch(SECRET, f.deps)
+    expect(f.completed.map((c) => [c.id, c.retryAfterSec, c.final])).toEqual([
+      ['a1', TOKEN_RETRY_SEC, undefined],
+      ['d1', TOKEN_RETRY_SEC, undefined],
+    ])
+    expect(f.sent).toHaveLength(1)
+  })
+})

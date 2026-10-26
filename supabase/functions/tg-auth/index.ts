@@ -10,6 +10,7 @@ import {
   createSession,
   deleteAuthUser,
   findAuthUserByEmail,
+  getAdminClient,
   getAuthUserEmail,
   getAuthUserIdFromJwt,
   linkAuthUser,
@@ -23,6 +24,15 @@ const deps: TgAuthDeps = {
   now: () => Date.now(),
   // Izolyat bo'yicha xotirada (cheklov: boshqa izolyat / qayta ishga tushish — ko'rmaydi).
   replayGuard: new InitDataReplayGuard(),
+  touchChat: async (chatId) => {
+    const { error } = await getAdminClient().rpc('svc_touch_chat', { p_chat_id: chatId })
+    if (!error) return
+    if (error.code === 'PGRST202') {
+      log('warn', "tg-auth: svc_touch_chat hali yo'q")
+      return
+    }
+    throw new Error(`svc_touch_chat: ${error.message}`)
+  },
   findProfileByTelegramId: async (telegramUserId: number) => {
     const p = await profileByTelegramId(telegramUserId)
     if (p === null) return null

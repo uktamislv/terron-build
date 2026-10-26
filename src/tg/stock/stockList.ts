@@ -3,6 +3,7 @@ import type { StockForecastRow } from '@/data/forecastRepo'
 import type { Material, StockBalance } from '@/data/types'
 import { cmp, isNegative, isZero } from '@/domain/decimal'
 import { isRunningOut } from '@/domain/forecast'
+import { inputUnitView } from '@/domain/units'
 import { matchesQuery } from '@/web/materials/materialFilter'
 
 export interface StockItem {
@@ -15,11 +16,18 @@ export interface StockItem {
   /** Tugayapti (`days_left ≤ forecast_days_warn`) yoki tugagan. */
   low: boolean
   negative: boolean
+  /** Qoldiq 0, lekin yaqinda sarflangan yoki prognozi bor — "Tugagan". */
+  empty: boolean
+  /** Foydalanuvchi odatda kiritadigan birlikdagi ko'rinish ("12 qop") yoki null. */
+  inputView: { qty: string; unit: string } | null
 }
 
 /**
- * Qoldiq qatorlari (0 bo'lmaganlar) prognoz bilan birlashtiriladi; qidiruv nom va muqobil nomlar bo'yicha.
- * Tartib: manfiy, keyin tugayotganlar (kam kun birinchi), keyin nom bo'yicha.
+ * Qoldiq qatorlari prognoz bilan birlashtiriladi; qidiruv nom va muqobil nomlar bo'yicha.
+ * Qoldig'i 0 bo'lgan material faqat yaqinda sarflangan (o'rtacha kunlik chiqim > 0) yoki prognoz qatori
+ * bo'lsa ko'rsatiladi — "Tugagan" (yo'qolib qolmasin, aynan shu material kerak bo'ladi).
+ * Tartib: manfiy, keyin tugagan/tugayotganlar (kam kun birinchi), keyin nom bo'yicha.
+ * `lastUnitOf` — material bo'yicha foydalanuvchining oxirgi birligi (entryPrefs).
  */
 export function buildStockList(
   stock: readonly StockBalance[],
@@ -27,28 +35,37 @@ export function buildStockList(
   materials: readonly Material[],
   query: string,
   warnDays: number,
+  lastUnitOf: (materialId: string) => string | null = () => null,
 ): StockItem[] {
   const byMaterial = new Map(materials.map((m) => [m.id, m]))
   const fc = new Map(forecast.map((f) => [f.materialId, f]))
+  const qtyOf = new Map<string, string>()
+  for (const s of stock) qtyOf.set(s.material_id, s.qty_base)
+  // Qoldiq ko'rinishida yo'q (0), lekin prognozda bor materiallar
+  for (const f of forecast) if (!qtyOf.has(f.materialId)) qtyOf.set(f.materialId, f.stockQtyBase)
+
   const items: StockItem[] = []
-  for (const s of stock) {
-    if (isZero(s.qty_base)) continue
-    const m = byMaterial.get(s.material_id)
+  for (const [materialId, qtyBase] of qtyOf) {
+    const f = fc.get(materialId)
+    const zero = isZero(qtyBase)
+    if (zero && !f) continue
+    const m = byMaterial.get(materialId)
     if (!m || !matchesQuery(m, query)) continue
-    const f = fc.get(s.material_id)
     const daysLeft = f?.daysLeft ?? null
-    const negative = isNegative(s.qty_base)
+    const negative = isNegative(qtyBase)
     items.push({
-      materialId: s.material_id,
+      materialId,
       name: m.name,
       baseUnit: m.base_unit,
-      qtyBase: s.qty_base,
+      qtyBase,
       daysLeft,
-      low: negative || isRunningOut(daysLeft, warnDays),
+      low: negative || zero || isRunningOut(daysLeft, warnDays),
       negative,
+      empty: zero,
+      inputView: zero ? null : inputUnitView(qtyBase, m.units, lastUnitOf(materialId)),
     })
   }
-  const rank = (i: StockItem) => (i.negative ? 0 : i.low ? 1 : 2)
+  const rank = (i: StockItem) => (i.negative ? 0 : i.empty ? 1 : i.low ? 2 : 3)
   return items.sort(
     (a, b) =>
       rank(a) - rank(b) ||

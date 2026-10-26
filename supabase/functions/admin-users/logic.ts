@@ -45,12 +45,19 @@ export interface AdminUsersDeps extends AuthAdminDeps {
    * Mavjud login almashtirildi: `svc_alert_login_set(p_target_profile, p_actor)` — `login_ozgardi`
    * alerti va egasiga `login_changed` xabari. Xato tashlasa — faqat log (parol allaqachon o'rnatilgan).
    */
-  alertLoginSet: (targetProfileId: string, actorProfileId: string) => Promise<void>
+  alertLoginSet: (targetProfileId: string, actorProfileId: string, firstLogin: boolean) => Promise<void>
   /** `profiles.login_kind` ni yozadi (auth_user_id bor profil). */
   setLoginKind: (profileId: string, kind: LoginKind) => Promise<void>
   logAuthEvent: LogAuthEventFn
   log: LogFn
 }
+
+/**
+ * Faqat tizim egasi (super_admin) yaratadigan / beradigan rollar (DB: `profile_protected`).
+ * admin-users faqat login beradi (profil yaratmaydi, rol o'zgartirmaydi) — service_role bilan
+ * yozganda trigger ushlamaydi, shuning uchun login berishdagi cheklovlar shu yerda tekshiriladi.
+ */
+export const PROTECTED_ROLES: readonly string[] = ['admin', 'direktor']
 
 export const MIN_PASSWORD_LEN = 8
 /** bcrypt 72 baytdan keyingisini e'tiborsiz qoldiradi — ortig'ini rad etamiz. */
@@ -126,6 +133,12 @@ export async function handleAdminUsers(
     }
     /** Maqsadda login bor edi — parol almashtiriladi (UI ogohlantiradi; DB maqsadga alert yozadi). */
     const existingLoginReplaced = target.auth_user_id !== null
+    /**
+     * 2-tur S7: admin (tizim egasi emas) himoyalangan rol (direktor / admin) profiliga BIRINCHI loginni
+     * bersa — direktor va adminlarga `login_ozgardi` (first_login) alerti.
+     */
+    const protectedFirstLogin =
+      caller.role !== 'super_admin' && target.auth_user_id === null && PROTECTED_ROLES.includes(target.role)
 
     const loginEmail = email ?? loginEmailFromPhone(target.phone)
     const login = email ?? target.phone
@@ -187,9 +200,9 @@ export async function handleAdminUsers(
     } catch (e) {
       deps.log('error', 'admin-users: audit yozilmadi', { error: errMessage(e), profile_id: target.id })
     }
-    if (existingLoginReplaced) {
+    if (existingLoginReplaced || protectedFirstLogin) {
       try {
-        await deps.alertLoginSet(target.id, caller.id)
+        await deps.alertLoginSet(target.id, caller.id, !existingLoginReplaced)
       } catch (e) {
         deps.log('error', 'admin-users: login_ozgardi alerti yozilmadi', { error: errMessage(e), profile_id: target.id })
       }

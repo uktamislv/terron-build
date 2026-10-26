@@ -6,6 +6,7 @@ export const colors = {
   brand600: '#1A52E0',
   brand700: '#1747C4',
   navy: '#0B2A6B',
+  navyMuted: '#BCC8E3',
   ice: '#EAF1FF',
   iceHover: '#DCE8FF',
   paper: '#FFFFFF',

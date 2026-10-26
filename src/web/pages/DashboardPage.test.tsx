@@ -37,6 +37,7 @@ vi.mock('@/data/reportsRepo', async (orig) => {
       { day: r.from, kirim_count: 5, chiqim_count: 1, purchases_sum: '1500000', alerts_count: 0 },
     ]),
     getSpendBreakdown: vi.fn(async () => [{ key: 'm1', label: 'Sement', purchases_sum: '1500000', purchases_count: 2 }]),
+    getEstimateVsSpend: vi.fn(async () => []),
     getNormOverview: vi.fn(async () => []),
   }
 })
@@ -162,9 +163,14 @@ describe('DashboardPage', () => {
     await screen.findByTestId('card-kirim')
     expect(reports.getDashboardSummary).toHaveBeenCalledWith({ from: '2026-09-03', to: '2026-09-10', objectId: null })
     expect(screen.getByRole('button', { name: t.reports.custom })).toHaveAttribute('aria-pressed', 'true')
+    // DateField: 'Dan' ≤ 'Gacha' (min/max bog'langan) — noto'g'ri sana maydon ostida ko'rsatiladi
     fireEvent.change(screen.getByLabelText(t.reports.from), { target: { value: '15.09.2026' } })
+    expect(await screen.findByText(t.ui.dateOutOfRange)).toBeInTheDocument()
+    expect(screen.getByLabelText(t.reports.from)).toHaveAttribute('aria-invalid', 'true')
+    // Davr 366 kundan uzun — xato guruh ostida (role=alert), URL o'zgarmaydi
+    fireEvent.change(screen.getByLabelText(t.reports.from), { target: { value: '01.01.2025' } })
     fireEvent.click(screen.getByRole('button', { name: t.reports.apply }))
-    expect(await screen.findByText(t.reports.rangeErrors.reversed)).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(t.reports.rangeErrors.too_long)
     expect(router.state.location.search).toBe('?from=2026-09-03&to=2026-09-10')
     fireEvent.change(screen.getByLabelText(t.reports.from), { target: { value: '01.09.2026' } })
     fireEvent.click(screen.getByRole('button', { name: t.reports.apply }))

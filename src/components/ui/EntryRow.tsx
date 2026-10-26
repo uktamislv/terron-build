@@ -30,7 +30,7 @@ const iconTone: Record<EntryKind, string> = {
   ok: 'bg-ok-bg text-ok',
 }
 
-const ic = 'size-[18px]'
+const ic = 'size-5'
 const defaultIcon: Partial<Record<EntryKind, ReactNode>> = {
   kirim: <ArrowDownLeft className={ic} strokeWidth={2} />,
   chiqim: <ArrowUpRight className={ic} strokeWidth={2} />,

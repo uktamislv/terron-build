@@ -86,7 +86,7 @@ describe('createBugReport', () => {
     expect((err as RepoError).code).toBe('bug_report_rate_limited')
     expect(errorText(err)).toBe(t.errors.bug_report_rate_limited)
     expect(SERVER_HINTS.bug_report_rate_limited.showServerMessage).toBe(false)
-    expect(toRepoError({ code: '23514', hint: 'bug_report_rate_limited', message: 'x' }).userMessage).toBeNull()
+    expect(toRepoError({ code: '23514', hint: 'bug_report_rate_limited', message: 'x' }).params).toBeNull()
   })
 
   it('qayta yuborish: shu id allaqachon bor (pkey) — muvaffaqiyat', async () => {

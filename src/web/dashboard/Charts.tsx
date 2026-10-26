@@ -18,7 +18,7 @@ import {
 import { colors } from '@/components/ui/tokens'
 import { t } from '@/i18n'
 import { formatQty, formatSum } from '@/lib/format'
-import { axisNumber, PALETTE, type CashPoint, type DailyPoint, type NormPoint, type SpendPoint } from './chartData'
+import { axisNumber, PALETTE, type CashPoint, type DailyPoint, type EstimateSpendPoint, type NormPoint, type SpendPoint } from './chartData'
 
 
 const tc = t.reports.charts
@@ -188,6 +188,38 @@ export function CashChart({ data }: { data: CashPoint[] }) {
           ))}
           {/* Manfiy ustun — rang yagona belgi bo'lmasin: qiymat minus bilan yoziladi */}
           <LabelList dataKey="value" content={NegativeLabel} />
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
+function EstimateSpendTip({ active, payload }: TipProps<EstimateSpendPoint>) {
+  const p = active ? payload?.[0]?.payload : undefined
+  if (!p) return null
+  return (
+    <TipBox title={p.name}>
+      <TipRow color={PALETTE.light} label={tc.estimateSum} value={p.estimateText === null ? tc.noEstimate : formatSum(p.estimateText)} />
+      <TipRow color={p.over ? PALETTE.danger : PALETTE.dark} label={tc.spentSum} value={formatSum(p.spentText)} />
+    </TipBox>
+  )
+}
+
+/** Smeta va haqiqiy — obyekt bo'yicha pul: smeta jami (och) va davrdagi xaridlar (navy; smetadan oshsa — qizil). */
+export function EstimateSpendChart({ data }: { data: EstimateSpendPoint[] }) {
+  return (
+    <ResponsiveContainer width="100%" height={barHeight(data.length)}>
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, bottom: 0, left: 4 }} barGap={2}>
+        <CartesianGrid stroke={PALETTE.grid} horizontal={false} />
+        <XAxis type="number" tick={AXIS} tickFormatter={axisNumber} axisLine={false} tickLine={false} />
+        <YAxis type="category" dataKey="name" tick={AXIS} width={110} axisLine={false} tickLine={false} />
+        <Tooltip content={<EstimateSpendTip />} cursor={{ fill: PALETTE.light }} />
+        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Bar dataKey="estimate" name={tc.estimateSum} fill={PALETTE.light} stroke={PALETTE.brand} maxBarSize={14} />
+        <Bar dataKey="spent" name={tc.spentSum} fill={PALETTE.dark} maxBarSize={14}>
+          {data.map((p) => (
+            <Cell key={p.objectId} fill={p.over ? PALETTE.danger : PALETTE.dark} />
+          ))}
         </Bar>
       </BarChart>
     </ResponsiveContainer>

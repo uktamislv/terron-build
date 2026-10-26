@@ -48,11 +48,21 @@ export interface TgAuthDeps extends AuthAdminDeps {
   createSession: (email: string) => Promise<TgSession>
   /** initData takroriy ishlatilishidan himoya (index.ts — izolyat bo'yicha bitta nusxa). */
   replayGuard?: InitDataReplayGuard
+  /**
+   * Muvaffaqiyatli kirish — `svc_touch_chat(p_chat_id)` (shaxsiy chat id = Telegram user id).
+   * Xato — faqat log.
+   */
+  touchChat?: (chatId: number) => Promise<void>
   logAuthEvent: LogAuthEventFn
   log: LogFn
 }
 
-/** initData Mini App ochilganda olinadi — 15 daqiqadan eski bo'lmasin (audit: 1 soat → 15 daqiqa). */
+/**
+ * Amaldagi sessiyani tasdiqlash (qayta yuklash) uchun initData imzosi qabul qilinadigan eng katta yosh.
+ * Yangi sessiya berilmaydi — faqat `access_token` egasi profilga mos ekani tasdiqlanadi.
+ */
+export const TG_AUTH_RELOAD_MAX_AGE_SEC = 86_400
+/** YANGI sessiya uchun initData 15 daqiqadan eski bo'lmasin (audit: 1 soat → 15 daqiqa). */
 export const TG_AUTH_MAX_AGE_SEC = 900
 /**
  * Bir xil initData (hash) bilan qayta YANGI sessiya so'rash — shu oraliqdan keyin rad etiladi.
@@ -139,16 +149,21 @@ export async function handleTgAuth(body: unknown, deps: TgAuthDeps): Promise<Han
     return respond(500, { error: 'server_misconfigured' })
   }
 
+  // Yangi sessiya uchun muddat (15 daqiqa); imzo tekshiruvi esa uzunroq (24 soat) — Mini App qayta
+  // yuklanganda (initData o'sha, sessiya amaldagi) foydalanuvchi chiqarib yuborilmasin.
   const maxAgeSec = deps.env.maxAgeSec ?? TG_AUTH_MAX_AGE_SEC
+  const nowSec = Math.floor(deps.now() / 1000)
   const verified = await verifyInitData(initData, botToken, {
-    nowSec: Math.floor(deps.now() / 1000),
-    maxAgeSec,
+    nowSec,
+    maxAgeSec: Math.max(maxAgeSec, TG_AUTH_RELOAD_MAX_AGE_SEC),
   })
   if (!verified.ok) {
     deps.log('warn', 'tg-auth: initData rad etildi', { reason: verified.reason })
     return respond(401, { error: 'invalid_init_data' })
   }
   const tgUserId = verified.user.id
+  /** initData yangi sessiya berish uchun yetarlicha yangimi (15 daqiqa). */
+  const freshForNewSession = nowSec - verified.authDate <= maxAgeSec
 
   try {
     let profile = await deps.findProfileByTelegramId(tgUserId)
@@ -165,8 +180,15 @@ export async function handleTgAuth(body: unknown, deps: TgAuthDeps): Promise<Han
     if (accessToken !== null && profile.auth_user_id !== null) {
       const uid = await deps.getAuthUserIdFromJwt(accessToken)
       if (uid !== null && uid === profile.auth_user_id) {
+        await touchChat(deps, tgUserId)
         return respond(200, { status: 'ok', session: null, profile: publicProfile(profile) })
       }
+    }
+
+    // Yangi sessiya — faqat yangi initData bilan (eski initData — faqat amaldagi sessiyani tasdiqlash uchun).
+    if (!freshForNewSession) {
+      deps.log('warn', 'tg-auth: initData yangi sessiya uchun eski', { telegram_user_id: tgUserId })
+      return respond(401, { error: 'invalid_init_data' })
     }
 
     // Yangi sessiya: shu initData bilan avval sessiya berilgan bo'lsa (grace'dan keyin) — rad.
@@ -216,6 +238,7 @@ export async function handleTgAuth(body: unknown, deps: TgAuthDeps): Promise<Han
     }
 
     const session = await deps.createSession(email)
+    await touchChat(deps, tgUserId)
     return respond(200, {
       status: 'ok',
       session: {
@@ -285,4 +308,14 @@ async function ensureTgAuthUser(
   const second = await create()
   if (!second.ok) throw new TgAuthError(`qayta yaratib bo'lmadi: ${second.reason}`)
   return { id: second.id, email, alreadyLinkedHere: false }
+}
+
+/** `svc_touch_chat` — xato bo'lsa faqat log (kirish buzilmaydi). */
+async function touchChat(deps: TgAuthDeps, chatId: number): Promise<void> {
+  if (deps.touchChat === undefined) return
+  try {
+    await deps.touchChat(chatId)
+  } catch (e) {
+    deps.log('warn', 'tg-auth: svc_touch_chat xatosi', { error: errMessage(e), telegram_user_id: chatId })
+  }
 }

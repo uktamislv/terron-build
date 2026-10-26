@@ -73,7 +73,7 @@ const ACTION_BADGE: Record<ActionKind, BadgeTone> = {
   auth: 'neutral',
 }
 
-const iconCls = 'size-[18px]'
+const iconCls = 'size-5'
 const ACTION_ICON: Record<ActionKind, ReactNode> = {
   create: <Plus className={iconCls} strokeWidth={2} />,
   update: <Pencil className={iconCls} strokeWidth={1.75} />,
@@ -449,11 +449,11 @@ export function DeletedList({
                   to={historyHref(r.table_name, r.record_id)}
                   className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-brand hover:bg-ice"
                 >
-                  <History className="size-[18px]" {...ic} />
+                  <History className="size-5" {...ic} />
                   {th.link}
                 </Link>
                 {canRestore && isRestorable(r.table_name) && (
-                  <Button variant="ghost" size="sm" disabled={busy} icon={<RotateCcw className="size-[18px]" {...ic} />} onClick={() => onRestore(r)}>
+                  <Button variant="ghost" size="sm" disabled={busy} icon={<RotateCcw className="size-5" {...ic} />} onClick={() => onRestore(r)}>
                     {th.restore}
                   </Button>
                 )}

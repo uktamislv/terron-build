@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { HandCoins, History, Pencil, Plus, RotateCcw, Trash2, Undo2, UserRound, Wallet } from 'lucide-react'
-import { Badge, Button, DataTable, DetailRows, DetailSheet, EmptyState, EntryRow, FilterBar, Modal, Money, Notice, PageHeader, RetryNotice, Spinner, TextAreaField } from '@/components/ui'
+import { CashHistoryRow } from '@/components/CashHistoryRow'
+import { History, Pencil, Plus, RotateCcw, Trash2, Undo2, UserRound, Wallet } from 'lucide-react'
+import { Badge, Button, DataTable, DetailRows, DetailSheet, EmptyState, EntryRow, FilterBar, Modal, Money, Notice, PageHeader, RetryNotice, SkeletonRows, TextAreaField } from '@/components/ui'
 import {
   emptyBalance,
   listAllCashHistory,
@@ -12,7 +13,7 @@ import {
   updateAdvanceNote,
   type CashHistoryEntry,
 } from '@/data/cashRepo'
-import { listDirectory } from '@/data/profileDirectory'
+import { isAvailable, listDirectory } from '@/data/profileDirectory'
 import type { CashBalance, PersonRef } from '@/data/types'
 import { isNegative, isZero } from '@/domain/decimal'
 import { can } from '@/domain/roles'
@@ -112,7 +113,7 @@ export function CashPage() {
 
   // Xarid kiritadigan rollar (pul oluvchilar) + balansi bor har kim
   const recipients = useMemo(
-    () => profiles.filter((p) => p.is_active && can(p.role, 'create_purchase')),
+    () => profiles.filter((p) => isAvailable(p) && can(p.role, 'create_purchase')),
     [profiles],
   )
   const rows = useMemo(() => {
@@ -217,7 +218,7 @@ export function CashPage() {
       <section className="flex flex-col gap-3" aria-label={tc.balancesTitle}>
         <h2 className="text-lg font-semibold text-ink md:text-xl">{tc.balancesTitle}</h2>
         {balanceError && <RetryNotice message={balanceError} onRetry={reload} />}
-        {!balances && !balanceError && <Spinner />}
+        {!balances && !balanceError && <SkeletonRows rows={3} />}
         {balances && (
           <DataTable
             caption={tc.balancesTitle}
@@ -247,7 +248,7 @@ export function CashPage() {
               return (
                 <EntryRow
                   kind={tone === 'negative' ? 'danger' : tone === 'positive' ? 'ok' : 'neutral'}
-                  icon={<UserRound className="size-[18px]" strokeWidth={1.75} />}
+                  icon={<UserRound className="size-5" strokeWidth={1.75} />}
                   title={profile.full_name}
                   meta={
                     <>
@@ -294,47 +295,16 @@ export function CashPage() {
         />
         {historyError && <RetryNotice message={historyError} onRetry={reload} />}
         {actionError && !dialog && <Notice>{actionError}</Notice>}
-        {!history && !historyError && <Spinner />}
+        {!history && !historyError && <SkeletonRows rows={3} />}
         {history && history.length === 0 && <EmptyState compact icon={<History strokeWidth={1.5} />} title={tc.noHistory} />}
         {history && history.length > 0 && (
           <ul className="flex flex-col gap-2" aria-label={tc.historyTitle}>
             {history.map((h) => (
-              <EntryRow
+              <CashHistoryRow
                 key={`${h.kind}:${h.id}`}
-                as="li"
                 testId="cash-history-row"
-                kind={h.kind === 'issued' ? 'ok' : h.kind === 'returned' ? 'neutral' : 'xarid'}
-                icon={
-                  h.kind === 'issued' ? (
-                    <HandCoins className="size-[18px]" strokeWidth={1.75} />
-                  ) : h.kind === 'returned' ? (
-                    <Undo2 className="size-[18px]" strokeWidth={1.75} />
-                  ) : undefined
-                }
-                deleted={Boolean(h.deletedAt)}
-                title={h.profileName}
-                badge={
-                  <>
-                    <Badge tone={h.kind === 'issued' ? 'ok' : h.kind === 'returned' ? 'neutral' : 'info'}>{tc.kinds[h.kind]}</Badge>
-                    {h.deletedAt && <Badge tone="danger">{t.movements.deleted}</Badge>}
-                  </>
-                }
-                meta={
-                  <>
-                    <span className="tabular">{formatDateTime(h.at)}</span>
-                    {h.kind === 'spent' && (h.materialName || h.objectName) && (
-                      <span>{[h.materialName, h.objectName].filter(Boolean).join(', ')}</span>
-                    )}
-                    {h.kind !== 'spent' && h.createdByName && <span>{h.createdByName}</span>}
-                    {h.note && <span className="text-ink/80">{h.note}</span>}
-                  </>
-                }
-                trailing={
-                  <span className={`tabular inline-flex items-baseline ${h.kind === 'issued' ? 'text-ok' : 'text-ink'}`}>
-                    <span className="text-base font-semibold">{h.kind === 'issued' ? '+' : '−'}</span>
-                    <Money value={h.amount} tone={h.kind === 'issued' ? 'ok' : undefined} />
-                  </span>
-                }
+                entry={h}
+                perspective="person"
                 onClick={() => setDialog({ kind: 'detail', entry: h })}
               />
             ))}
@@ -345,6 +315,7 @@ export function CashPage() {
       {dialog?.kind === 'issue' && (
         <IssueAdvanceDialog
           companyId={me.company_id}
+          isAdmin={me.role === 'admin' || me.role === 'super_admin'}
           recipients={recipients}
           initial={dialog.initial}
           onClose={closeDialog}
@@ -359,6 +330,7 @@ export function CashPage() {
       {dialog?.kind === 'giveBack' && (
         <IssueAdvanceDialog
           companyId={me.company_id}
+          isAdmin={me.role === 'admin' || me.role === 'super_admin'}
           recipients={recipients}
           kind="qaytarildi"
           onClose={closeDialog}
@@ -417,7 +389,7 @@ export function CashPage() {
         >
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap gap-2">
-              <Badge tone={dialog.entry.kind === 'issued' ? 'ok' : 'info'}>{tc.kinds[dialog.entry.kind]}</Badge>
+              <Badge tone={dialog.entry.kind === 'issued' ? 'ok' : dialog.entry.kind === 'returned' ? 'neutral' : 'info'}>{tc.kinds[dialog.entry.kind]}</Badge>
               {dialog.entry.deletedAt && <Badge tone="danger">{t.movements.deleted}</Badge>}
             </div>
             <Money value={dialog.entry.amount} size="hero" tone={dialog.entry.kind === 'issued' ? 'ok' : undefined} />

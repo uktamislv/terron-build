@@ -2,7 +2,9 @@
 // Belgilar: lucide-react (faqat kerakli belgilar nomi bilan import qilinadi — tree-shaking).
 export { Badge, StatusBadge, type BadgeTone } from './Badge'
 export { BottomSheet } from './BottomSheet'
+export { SheetChromeContext } from './sheetChrome'
 export { Button, IconButton, type ButtonProps, type ButtonSize, type ButtonVariant } from './Button'
+export { Checkbox } from './Checkbox'
 export { Chip } from './Chip'
 export { chipClass } from './chipClass'
 export { choiceClass, type ChoiceShape, type ChoiceTone } from './choiceClass'

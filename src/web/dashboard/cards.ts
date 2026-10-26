@@ -39,6 +39,7 @@ export type CardKey =
   | 'pendingTransfers'
   | 'pendingRequests'
   | 'overNorm'
+  | 'telegramBlocked'
 
 export type CardTone = 'default' | 'danger' | 'warn'
 
@@ -137,7 +138,8 @@ export function buildCards(s: DashboardSummary, role: Role, r: CardRange): DashC
         companyWide: true,
         label: tc.cashOnHand,
         value: formatSum(s.cash_on_hand_total),
-        sub: null,
+        // Firma xodimlarga qarzdor (manfiy balanslar) — alohida ko'rsatiladi, jamida yo'qolib ketmasin
+        sub: s.cash_owed_to_staff_sum && !isZero(s.cash_owed_to_staff_sum) ? tc.cashOwedSub(formatSum(s.cash_owed_to_staff_sum)) : null,
         tone: isNegative(s.cash_on_hand_total) ? 'danger' : 'default',
         to: link('cash', '/cash'),
       },
@@ -203,6 +205,19 @@ export function buildCards(s: DashboardSummary, role: Role, r: CardRange): DashC
       sub: null,
       tone: s.objects_over_norm_count > 0 ? 'danger' : 'default',
       to: link('estimates', `/estimates${qs({ object: obj })}`),
+    })
+  }
+  // Botni bloklaganlar — admin/direktor; faqat bor bo'lsa (Sozlamalar → Telegram)
+  if (s.telegram_blocked_count > 0 && (role === 'admin' || role === 'super_admin' || role === 'direktor')) {
+    cards.push({
+      key: 'telegramBlocked',
+      current: true,
+      companyWide: true,
+      label: tc.telegramBlocked,
+      value: count(s.telegram_blocked_count),
+      sub: null,
+      tone: 'warn',
+      to: link('settings', '/settings?tab=telegram'),
     })
   }
   return cards

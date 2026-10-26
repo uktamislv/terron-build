@@ -72,6 +72,11 @@ export interface TgBotDeps {
    * index.ts faqat loglaydi (xato tashlamaydi).
    */
   markChatBlocked: (chatId: number, blocked: boolean) => Promise<void>
+  /**
+   * Kiruvchi faollik (xabar, tugma, /start, blokdan chiqarish): `svc_touch_chat(p_chat_id)` — shu chat
+   * profillarining `telegram_blocked_at` i tozalanadi. RPC yo'q bo'lsa — index.ts faqat loglaydi.
+   */
+  touchChat: (chatId: number) => Promise<void>
   logAuthEvent: LogAuthEventFn
   log: LogFn
 }
@@ -145,6 +150,8 @@ export async function handleTgBot(
   const fromId = from.id
   const chatId = chat.id
   const appUrl = miniAppUrl(deps)
+  // Har kiruvchi shaxsiy xabar (jumladan /start, kontakt) — foydalanuvchi botni bloklamagan
+  await touchChat(deps, chatId)
 
   try {
     if (isRecord(message.contact)) {
@@ -296,6 +303,8 @@ async function handleCallbackQuery(cq: Record<string, unknown>, deps: TgBotDeps)
   const from = cq.from
   if (id === null || !isRecord(from) || !isSafeId(from.id) || from.is_bot === true) return
   const fromId = from.id
+  // Tugma bosildi — foydalanuvchi faol (shaxsiy chat id = foydalanuvchi id)
+  await touchChat(deps, fromId)
 
   const answer = async (text: string, showAlert = false): Promise<void> => {
     try {
@@ -363,9 +372,19 @@ export function chatBlockedChange(m: Record<string, unknown>): { chatId: number;
   return null
 }
 
+/** `svc_touch_chat` — xato bo'lsa faqat log (webhook ishlashda davom etadi). */
+async function touchChat(deps: TgBotDeps, chatId: number): Promise<void> {
+  try {
+    await deps.touchChat(chatId)
+  } catch (e) {
+    deps.log('warn', 'tg-bot: svc_touch_chat xatosi', { error: errMessage(e), chat_id: chatId })
+  }
+}
+
 async function handleMyChatMember(m: Record<string, unknown>, deps: TgBotDeps): Promise<void> {
   const change = chatBlockedChange(m)
   if (change === null) return
+  if (!change.blocked) await touchChat(deps, change.chatId)
   try {
     await deps.markChatBlocked(change.chatId, change.blocked)
     deps.log('info', change.blocked ? 'tg-bot: bot bloklandi' : 'tg-bot: bot blokdan chiqarildi', {

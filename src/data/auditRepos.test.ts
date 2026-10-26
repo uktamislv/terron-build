@@ -1,16 +1,17 @@
 // Audit tuzatishlari — repo qatlami (docs/audit-fixes.md): profile_directory, correct_entry, sotuvchilar,
 // tinch soatlar, notification_health, notify_workflow, podotchet izohi, obyekt alertlari, photo-hash.
 import { listSiteAlerts, SITE_ALERT_TYPES } from './alertsRepo'
-import { listMyAdvances, updateAdvanceNote } from './cashRepo'
+import { listCashHistory, listMyAdvances, updateAdvanceNote } from './cashRepo'
 import { getCompanySettings, getNotificationHealth, hhmm, normalizeHealth, updateCompanySettings } from './companiesRepo'
-import { correctEntry } from './correctionsRepo'
+import { cancelOwnEntry, correctEntry } from './correctionsRepo'
 import { RepoError, SERVER_HINTS, toRepoError } from './errors'
 import { requestPhotoHash } from './functions'
+import { loadRefNames } from './historyRepo'
 import { listCounts } from './inventoryRepo'
 import { listMovements } from './movementsRepo'
 import { attachNames, directoryNames, listActiveDirectory, listDirectory } from './profileDirectory'
 import { setMyNotifyWorkflow } from './profilesRepo'
-import { listMyPurchases } from './purchasesRepo'
+import { createPurchase, listMyPurchases } from './purchasesRepo'
 import { receiptLookup } from './receiptRepo'
 import { approveRequest, listRequests } from './requestsRepo'
 import { mergeSuppliers, restoreSupplier, softDeleteSupplier, supplierPatchToRow, updateSupplier } from './suppliersRepo'
@@ -75,7 +76,7 @@ describe('profile_directory (admin bo‘lmaganlar boshqa xodimlar ismini shu yer
     fake.people.push({ id: 'a', full_name: 'Ali', role: 'haydovchi', is_active: true }, { id: 'b', full_name: 'Vali', role: 'prorab', is_active: false })
     expect(await listDirectory()).toHaveLength(2)
     expect(fake.calls).toContainEqual(['from', 'profile_directory'])
-    expect(arg('select')).toBe('id, company_id, full_name, role, is_active')
+    expect(arg('select')).toBe('id, company_id, full_name, role, is_active, is_available')
     expect((await listActiveDirectory(['haydovchi'])).map((p) => p.id)).toEqual(['a'])
   })
 
@@ -138,14 +139,27 @@ describe('profile_directory (admin bo‘lmaganlar boshqa xodimlar ismini shu yer
 })
 
 describe('correct_entry', () => {
-  it('RPC argumentlari; harakatda summa yuborilmaydi; sabab qirqiladi', async () => {
-    await correctEntry({ table: 'movements', id: 'm1', qtyInput: '5', unitId: null, totalAmount: '100', note: '  sabab  ' })
+  it('RPC argumentlari; harakatda summa yuborilmaydi; sabab alohida (p_reason), izoh ixtiyoriy', async () => {
+    await correctEntry({ table: 'movements', id: 'm1', qtyInput: '5', unitId: null, totalAmount: '100', reason: '  sabab  ' })
     expect(fake.calls).toContainEqual([
       'rpc',
       'correct_entry',
-      { p_table: 'movements', p_id: 'm1', p_qty_input: '5', p_unit_id: null, p_total_amount: null, p_note: 'sabab' },
+      {
+        p_table: 'movements',
+        p_id: 'm1',
+        p_qty_input: '5',
+        p_unit_id: null,
+        p_total_amount: null,
+        p_reason: 'sabab',
+        p_note: null,
+        p_material_id: null,
+        p_object_id: null,
+      },
     ])
-    await correctEntry({ table: 'purchases', id: 'p1', qtyInput: null, unitId: 'u', totalAmount: '1250000', note: 'x' })
+    await correctEntry({ table: 'purchases', id: 'p1', qtyInput: null, unitId: 'u', totalAmount: '1250000', reason: 'x', note: ' yangi izoh ' })
+    expect(callsOf('rpc')[1]?.[2]).toMatchObject({ p_reason: 'x', p_note: 'yangi izoh' })
+    await correctEntry({ table: 'movements', id: 'm2', qtyInput: null, unitId: 'u9', reason: 'r', materialId: 'mat2', objectId: 'obj2' })
+    expect(callsOf('rpc')[2]?.[2]).toMatchObject({ p_material_id: 'mat2', p_object_id: 'obj2', p_unit_id: 'u9' })
     expect(callsOf('rpc')[1]?.[2]).toMatchObject({ p_table: 'purchases', p_total_amount: '1250000', p_unit_id: 'u' })
   })
 
@@ -153,11 +167,18 @@ describe('correct_entry', () => {
     '%s — barqaror kalit va o‘zbekcha matn',
     async (hint) => {
       fake.results.push({ data: null, error: { code: '55000', hint, message: 'x' } })
-      const err = await correctEntry({ table: 'movements', id: 'm', qtyInput: '1', unitId: null, note: 'n' }).catch((e: unknown) => e)
+      const err = await correctEntry({ table: 'movements', id: 'm', qtyInput: '1', unitId: null, reason: 'n' }).catch((e: unknown) => e)
       expect((err as RepoError).code).toBe(hint)
       expect(t.errors[hint]).toBeTruthy()
     },
   )
+})
+
+describe('cancel_own_entry', () => {
+  it('RPC argumentlari: jadval, id, sabab (qirqiladi)', async () => {
+    await cancelOwnEntry('purchases', 'p9', '  xato kiritdim  ')
+    expect(fake.calls).toContainEqual(['rpc', 'cancel_own_entry', { p_table: 'purchases', p_id: 'p9', p_reason: 'xato kiritdim' }])
+  })
 })
 
 describe('yangi hint’lar (docs/audit-fixes.md)', () => {
@@ -184,7 +205,7 @@ describe('yangi hint’lar (docs/audit-fixes.md)', () => {
   it.each(HINTS)('%s — SERVER_HINTS da, matn bor, server xabari ko‘rsatilmaydi', (hint) => {
     expect(SERVER_HINTS[hint].showServerMessage).toBe(false)
     expect(t.errors[hint].length).toBeGreaterThan(5)
-    expect(toRepoError({ code: '42501', hint, message: 'server' })).toMatchObject({ code: hint, userMessage: null })
+    expect(toRepoError({ code: '42501', hint, message: 'server' })).toMatchObject({ code: hint, params: null })
   })
   it('Edge kalitlari: forbidden_target, rate_limited — matn bor', () => {
     expect(t.errors.forbidden_target).toBeTruthy()
@@ -332,5 +353,32 @@ describe('Edge Function’lar', () => {
     const response = new Response(JSON.stringify({ error: 'rate_limited', retry_after_sec: 60 }), { status: 429 })
     fake.invoke.mockResolvedValueOnce({ data: null, error: new FunctionsHttpError(response) })
     await expect(receiptLookup('https://ofd.soliq.uz/check?t=1')).rejects.toMatchObject({ code: 'rate_limited' })
+  })
+})
+
+describe('Audit 2 — repo qatlami', () => {
+  it('N: tarix diff ismlari — profile_directory dan (direktor ham ko‘radi)', async () => {
+    fake.people.push({ id: '11111111-2222-4333-8444-555555555555', full_name: 'Ali', role: 'prorab', is_active: true })
+    const names = await loadRefNames({ objects: [], materials: [], profiles: ['11111111-2222-4333-8444-555555555555'], units: [], suppliers: [] })
+    expect(fake.calls).toContainEqual(['from', 'profile_directory'])
+    expect(fake.calls).not.toContainEqual(['from', 'profiles'])
+    expect(names.profiles['11111111-2222-4333-8444-555555555555']).toBe('Ali')
+  })
+
+  it('tanlash ro‘yxatlari — is_available (bo‘lmasa is_active)', async () => {
+    fake.people.push(
+      { id: 'a', full_name: 'Ali', role: 'haydovchi', is_active: true, is_available: false } as never,
+      { id: 'b', full_name: 'Vali', role: 'haydovchi', is_active: true },
+    )
+    expect((await listActiveDirectory(['haydovchi'])).map((p) => p.id)).toEqual(['b'])
+  })
+
+  it('payment_source: xaridga yuboriladi; pul tarixida faqat podotchet xaridlari', async () => {
+    fake.results.push({ data: { id: 'p1' }, error: null })
+    await createPurchase({ id: 'p1', companyId: 'c', objectId: 'o', materialId: 'm', unitId: 'u', qtyInput: '1', totalAmount: '10', paymentSource: 'firma' }).catch(() => undefined)
+    expect(arg('insert')).toMatchObject({ payment_source: 'firma' })
+    fake.calls.length = 0
+    await listCashHistory({ profileId: 'p' }).catch(() => undefined)
+    expect(fake.calls).toContainEqual(['eq', 'payment_source', 'podotchet'])
   })
 })

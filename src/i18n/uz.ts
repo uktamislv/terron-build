@@ -1,4 +1,14 @@
 // Interfeys matnlari (o'zbek, lotin). Rus tili keyin shu tuzilmada ru.ts sifatida qo'shiladi.
+
+/** Tuzatish oynasining qolgan vaqti: butun daqiqalar ("12 daq"), oxirgi daqiqada — "1 daqiqadan kam". */
+const minutesLeft = (min: number): string => (min >= 1 ? `${min} daq` : '1 daqiqadan kam')
+
+/** Qaratqich-tushum: "Xarid" → "xaridini", "Kirim" → "kirimini" (unli bilan tugasa — "-sini"). */
+const possessive = (word: string): string => {
+  const w = word.trim().toLocaleLowerCase('uz')
+  return /[aeiouo‘]$/.test(w) ? `${w}sini` : `${w}ini`
+}
+
 export const uz = {
   app: {
     name: 'TERRON Build',
@@ -169,6 +179,10 @@ export const uz = {
     transfer_insufficient_stock: 'Yuboruvchi obyektda qoldiq yetarli emas.',
     photo_required: 'Bu yozuv uchun rasm majburiy — rasm qo‘shing.',
     receipt_already_used: 'Bu chek allaqachon boshqa xaridda ishlatilgan.',
+    chat_reset_forbidden: 'Bot blokini faqat administrator tozalaydi.',
+    profile_not_found: 'Foydalanuvchi topilmadi.',
+    purchase_buyer_invalid: 'Xaridor sifatida faqat xarid kirita oladigan faol xodimni tanlang.',
+    alert_close_note_locked: 'Yopilgan ogohlantirish sababini o‘zgartirib bo‘lmaydi.',
     alert_action_forbidden: 'Ogohlantirishni faqat admin belgilay oladi.',
     alert_not_found: 'Ogohlantirish topilmadi.',
     photo_sha256_invalid: 'Rasmni tekshirib bo‘lmadi — rasmni qayta tanlang.',
@@ -294,6 +308,8 @@ export const uz = {
     linked: 'Bog‘langan',
     notLinked: 'Bog‘lanmagan',
     botBlocked: 'Bot bloklangan',
+    /** Belgi yonidagi "(i)" tugmasi. */
+    hintOpen: (badge: string) => `“${badge}” — izoh`,
     botBlockedHint: 'Foydalanuvchi botni bloklagan — Telegram xabarlari bormaydi.',
     protectedBadge: 'Himoyalangan',
     protectedHint: 'Admin va direktor profilining rol, telefon va faolligini faqat tizim egasi o‘zgartiradi.',
@@ -381,8 +397,31 @@ export const uz = {
       blockedAt: (date: string) => `bloklangan: ${date}`,
       ok: 'Hammasi joyida — xabarlar yetib bormoqda.',
       problem: 'Xabarlar yuborilishida muammo bor.',
-      fixHint:
-        'Bot tokeni yoki webhook o‘zgargan bo‘lishi mumkin. Sozlash skriptini qayta ishga tushiring: node scripts/setup-telegram.mjs (docs/telegram-bot-setup.md).',
+      // Dasturchi skripti haqidagi yo'riqnoma — faqat docs/telegram-bot-setup.md da
+      fixHint: 'Tizim egasiga (qo‘llab-quvvatlash) xabar bering.',
+      /** Xabar turlari (notification_outbox.kind). Noma'lum tur — umumiy nom. */
+      kinds: {
+        alert: 'Ogohlantirish',
+        alert_reminder: 'Ogohlantirish eslatmasi',
+        alerts_digest: 'Ogohlantirishlar jamlanmasi',
+        daily_report: 'Kunlik hisobot',
+        request_overdue: 'Kechikkan so‘rov',
+        cash_statement: 'Podotchet hisoboti',
+        bug_report: 'Xatolik xabari',
+        request_created: 'Yangi so‘rov',
+        request_decided: 'So‘rov qarori',
+        request_approved: 'Tasdiqlangan so‘rov',
+        transfer_sent: 'Yuborilgan o‘tkazma',
+        purchase_for_object: 'Obyekt uchun xarid',
+        login_changed: 'Kirish ma’lumoti o‘zgardi',
+      } as Record<string, string>,
+      kindOther: 'Boshqa xabar',
+      statuses: { pending: 'Navbatda', sending: 'Yuborilmoqda', sent: 'Yuborildi', failed: 'Yuborilmadi' } as Record<string, string>,
+      statusOther: 'Noma’lum holat',
+      recheck: 'Qayta tekshirish',
+      recheckLabel: (name: string) => `${name}: qayta tekshirish`,
+      recheckDone: (name: string) => `${name}: belgi tozalandi — keyingi xabar yuboriladi`,
+      recheckAlready: (name: string) => `${name}: belgi allaqachon tozalangan`,
       blockedHint: 'Bloklaganlar botni qayta ochib, “Start” bosishi kerak — aks holda ularga xabar bormaydi.',
       refresh: 'Yangilash',
     },
@@ -774,6 +813,8 @@ export const uz = {
       login_ozgardi: 'Login o‘zgardi',
       podotchet_belgisi: 'Podotchet belgisi',
       sotuvchi_stir_farqi: 'Sotuvchi STIR farqi',
+      xarid_boshqa_nomidan: 'Boshqa nomidan xarid',
+      sotuvchi_birlashtirildi: 'Sotuvchilar birlashtirildi',
     },
     severities: {
       belgi: 'Belgi',
@@ -849,9 +890,16 @@ export const uz = {
     deleteConfirm: 'Xarid o‘chirilsinmi? Qo‘ldagi pul qayta hisoblanadi; yozuv tarixda qoladi va tiklanishi mumkin.',
     filterSupplier: 'Sotuvchi',
     add: 'Xarid qo‘shish',
+    paymentSources: { podotchet: 'Podotchet (xaridor puli)', firma: 'Firma puli' },
+    colPaymentSource: 'Pul manbai',
     added: (material: string) => `Xarid saqlandi: ${material}`,
     addForm: {
       title: 'Xarid qo‘shish',
+      /** Material qidiruvida ko'rsatilmagan natijalar. */
+      moreResults: (n: number) => `Yana ${n} ta — qidiruvni aniqlashtiring`,
+      paymentSource: 'Pul manbai',
+      paymentSourceAuto: 'Avtomatik (qoida bo‘yicha)',
+      paymentSourceHint: 'Xaridorga podotchet berilgan bo‘lsa — podotchet, aks holda — firma puli.',
       supplier: 'Sotuvchi (ixtiyoriy)',
       date: 'Xarid sanasi',
       request: 'Tasdiqlangan so‘rov (ixtiyoriy)',
@@ -887,6 +935,8 @@ export const uz = {
     chooseRecipient: 'Tanlang',
     amount: 'Summa, so‘m',
     issuedAt: 'Sana',
+    /** Admin bo'lmaganlarga (buxgalter) — server qoidasi. */
+    issuedAtHint: 'Oxirgi 3 kun ichida (kk.oo.yyyy)',
     note: 'Izoh (ixtiyoriy)',
     errRecipient: 'Kimga berilishini tanlang.',
     errAmount: 'Summani to‘g‘ri kiriting (0 dan katta).',
@@ -896,6 +946,8 @@ export const uz = {
     filterPerson: 'Odam',
     all: 'Hammasi',
     kinds: { issued: 'Berildi', returned: 'Qaytarildi', spent: 'Xarid' },
+    givenBy: (name: string) => `Bergan: ${name}`,
+    enteredBy: (name: string) => `Kiritgan: ${name}`,
     colReturned: 'Qaytarilgan',
     giveBack: 'Qaytarish',
     giveBackTitle: 'Pulni qaytarish',
@@ -1093,7 +1145,7 @@ export const uz = {
       unresolvedMatches: (n: number) => `${n} ta nom moslanmagan.`,
       unitsHint: 'Smetadagi birlik material birliklari orasida topilmadi. Har bir birlik bir marta so‘raladi.',
       unitsNone: 'Barcha birliklar katalogda topildi — savol yo‘q.',
-      unitQuestion: (unit: string, material: string) => `Smetadagi «${unit}» — «${material}» uchun qaysi birlik?`,
+      unitQuestion: (unit: string, material: string) => `Smetadagi “${unit}” — “${material}” uchun qaysi birlik?`,
       useExisting: 'Mavjud birlik',
       addUnit: 'Yangi birlik',
       unitName: 'Birlik nomi',
@@ -1111,7 +1163,7 @@ export const uz = {
       hidden: 'Yashirin',
       hiddenHint: 'Excel’da yashirin qator — standart o‘tkazib yuboriladi.',
       templateInfo: (name: string, who: string, when: string) =>
-        `Shablon «${name}»${who ? ` — saqlagan: ${who}` : ''}${when ? `, ${when}` : ''}`,
+        `Shablon “${name}”${who ? ` — saqlagan: ${who}` : ''}${when ? `, ${when}` : ''}`,
       templateApply: 'Shablonni qo‘llash',
       templateManual: 'Qo‘lda moslash',
       newId: 'Yangi import sifatida saqlash',
@@ -1301,9 +1353,26 @@ export const uz = {
       // Audit tuzatishlari: yangi turlar
       entryChanged: (what: string, summary: string, changes: string, who: string) =>
         `${what} o‘zgartirildi${summary ? `: ${summary}` : ''}${changes ? ` — ${changes}` : ''}${who ? ` (${who})` : ''}`,
+      /** Muallif o'z yozuvini tuzatdi: "Ali o‘z xaridini tuzatdi: Qum — Summa: 50 000 so‘m → 55 000 so‘m". */
       entryCorrected: (what: string, summary: string, changes: string, who: string) =>
-        `${what} tuzatildi (muallif)${summary ? `: ${summary}` : ''}${changes ? ` — ${changes}` : ''}${who ? ` (${who})` : ''}`,
+        `${who || 'Muallif'} o‘z ${possessive(what)} tuzatdi${summary ? `: ${summary}` : ''}${changes ? ` — ${changes}` : ''}`,
       entryAuthor: (name: string) => `muallif: ${name}`,
+      /** Tuzatish / o'zgartirish sababi (details.reason). */
+      reasonPart: (reason: string) => ` — sabab: ${reason}`,
+      /** Muallif 30 daqiqa ichida o'z yozuvini bekor qildi (cancel_own_entry). */
+      entryCancelled: (what: string, summary: string, who: string) =>
+        `${who || 'Muallif'} o‘z ${possessive(what)} bekor qildi${summary ? `: ${summary}` : ''}`,
+      /** Admin boshqa xodim nomidan xarid kiritdi. */
+      purchaseOnBehalf: (actor: string, buyer: string, material: string, amount: string) =>
+        `${actor || 'Admin'} ${buyer || 'xodim'} nomidan xarid kiritdi${material ? `: ${material}` : ''}${amount ? `, ${amount}` : ''}`,
+      purchaseOnBehalfFirma: 'firma puli',
+      /** merge_suppliers: bitta belgi. */
+      supplierMerged: (from: string, into: string, n: number, actor: string) =>
+        `“${from}” “${into}”ga birlashtirildi: ${n} ta xarid ko‘chirildi${actor ? ` — ${actor}` : ''}`,
+      /** Manfiy qoldiq qayta ochildi (details.reopen_count, reopened_at). */
+      negativeReopened: (n: string, date: string) => ` — qayta manfiy bo‘ldi: ${n}-marta${date ? `, ${date}` : ''}`,
+      loginFirst: (target: string, role: string, who: string) =>
+        `${target || 'Foydalanuvchi'}${role ? ` (${role})` : ''} uchun birinchi marta veb login berildi${who ? ` — ${who}` : ''}`,
       change: (label: string, before: string, after: string) => `${label}: ${before} → ${after}`,
       changeOnly: (label: string) => `${label} o‘zgardi`,
       emptyValue: 'bo‘sh',
@@ -1337,10 +1406,10 @@ export const uz = {
       cashFlagKinds: { berildi: 'berildi', qaytarildi: 'qaytarildi' } as Record<string, string>,
       cashFlagReasons: {
         qaytarildi: 'pul qaytarildi',
-        issued_at_outside_window: 'sana 3 kunlik oynadan tashqarida',
+        issued_at_outside_window: 'sana 3 kundan oldingi',
       } as Record<string, string>,
       sellerTin: (seller: string, supplier: string, supplierTin: string) =>
-        `Chekdagi sotuvchi STIR ${seller || '?'}, tanlangan sotuvchi${supplier ? ` «${supplier}»` : ''}: ${supplierTin || 'STIR kiritilmagan'}`,
+        `Chekdagi sotuvchi STIR ${seller || '?'}, tanlangan sotuvchi${supplier ? ` “${supplier}”` : ''}: ${supplierTin || 'STIR kiritilmagan'}`,
       negativeCause: (type: string, qty: string, deleted: boolean) =>
         `${type}${qty ? ` ${qty}` : ''}${deleted ? ' o‘chirildi' : ''}`,
       movementsDuringCount: (n: number, list: string) =>
@@ -1353,16 +1422,14 @@ export const uz = {
   tg: {
     nav: {
       home: 'Bosh',
-      movement: 'Kirim / chiqim',
+      movement: 'Ombor',
       purchase: 'Xarid',
       request: 'So‘rov',
       inventory: 'Sanash',
-      mine: 'Yozuvlarim',
+      mine: 'Yozuvlar',
     },
     /** Pastki menyu uchun qisqa yorliqlar (bir qatorga sig'ishi uchun); yo'q bo'lsa — `nav`. */
-    navShort: {
-      movement: 'Kirim-chiqim',
-    } as Partial<Record<'home' | 'movement' | 'purchase' | 'request' | 'inventory' | 'mine', string>>,
+    navShort: {} as Partial<Record<'home' | 'movement' | 'purchase' | 'request' | 'inventory' | 'mine', string>>,
     hello: 'Salom',
     home: {
       actions: 'Yangi yozuv',
@@ -1373,7 +1440,7 @@ export const uz = {
       todayCount: (n: number) => `Bugun: ${n}`,
     },
     movement: {
-      title: 'Kirim / chiqim',
+      title: 'Ombor',
       typeLabel: 'Harakat turi',
       object: 'Obyekt',
       chooseObject: 'Obyektni tanlang',
@@ -1464,8 +1531,20 @@ export const uz = {
       },
     },
     mine: {
-      title: 'Mening yozuvlarim',
+      title: 'Yozuvlar',
       empty: 'Hali yozuv kiritmagansiz.',
+      emptyHint:
+        'Kirim, chiqim, xarid, so‘rov, o‘tkazma, sanash, pul va xatolik xabarlaringiz shu yerda ko‘rinadi. O‘z yozuvingizni 30 daqiqa ichida tuzatasiz.',
+      emptyFiltered: 'Bu filtr bo‘yicha yozuv yo‘q.',
+      emptyFilteredHint: 'Boshqa tur yoki sanani tanlang yoki “Ko‘proq yuklash”ni bosing.',
+      emptyViewerTitle: 'Siz yozuv kiritmaysiz',
+      emptyViewerHint: 'Hisobot va ogohlantirishlar “Bosh” ekranida. Xatolik haqida xabar yuborsangiz, shu yerda ko‘rinadi.',
+      filterLabel: 'Yozuv turi',
+      filters: { all: 'Hammasi', movement: 'Kirim-chiqim', purchase: 'Xarid', request: 'So‘rov', cash: 'Pul', other: 'Boshqa' },
+      dateFilter: 'Sana',
+      dateFrom: 'Qaysi kundan',
+      dateTo: 'Qaysi kungacha',
+      loadMore: 'Ko‘proq yuklash',
       partialError: 'Ba’zi yozuvlarni (xarid, so‘rov, o‘tkazma, sanash, pul yoki xabarlar) yuklab bo‘lmadi.',
       detail: 'Yozuv',
       time: 'Vaqt',
@@ -1506,7 +1585,7 @@ export const uz = {
       cancelled: 'O‘tkazma bekor qilindi',
     },
     request: {
-      title: 'So‘rov va o‘tkazma',
+      title: 'So‘rov',
       tabsLabel: 'Bo‘lim',
       tabRequest: 'So‘rov',
       tabTransfer: 'O‘tkazma',
@@ -1560,7 +1639,7 @@ export const uz = {
       back: 'Kirim / chiqimga qaytish',
     },
     inventory: {
-      title: 'Inventarizatsiya',
+      title: 'Sanash',
       noObjects: 'Faol obyekt yo‘q.',
       newCount: 'Yangi sanash',
       continueDraft: (date: string, n: number) => `Davom ettirish — ${date}, ${n} ta sanalgan`,
@@ -1582,6 +1661,7 @@ export const uz = {
       resultTitle: 'Inventarizatsiya yakunlandi',
       resultShortage: 'Natija admin va direktorga yuborildi.',
       resultOk: 'Farq topilmadi. Rahmat!',
+      resultSent: 'Natija admin va direktorga yuborildi. Rahmat!',
       again: 'Yangi sanash',
     },
     /** "Qoldiq" (prorab, omborchi, admin) — bosh ekrandan. */
@@ -1590,6 +1670,8 @@ export const uz = {
       hint: 'Obyektdagi materiallar va necha kunga yetishi',
       empty: 'Bu obyektda qoldiq yo‘q.',
       lowCount: (n: number) => `Tugayotgan yoki tugagan: ${n} ta material`,
+      /** Odatiy birlikdagi qoldiq ostida — asosiy birlikda: "(600 kg)". */
+      inBase: (qtyUnit: string) => `(${qtyUnit})`,
     },
     /** Admin: so'rovlarni tasdiqlash (bosh ekrandan). */
     approvals: {
@@ -1601,21 +1683,34 @@ export const uz = {
       note: 'Izoh',
       noteHint: 'Tasdiqlashda ixtiyoriy, rad etishda majburiy',
       author: 'So‘ragan',
+      /** Qaror varag'i: smeta va qoldiq konteksti (veb "So'rovlar" sahifasidagi kabi). */
+      context: 'Smeta va qoldiq',
+      normAllowed: 'Smeta bo‘yicha jami',
+      consumed: 'Sarflangan',
+      remaining: (qty: string) => `Smetada qolgan: ${qty}`,
+      overrun: (qty: string) => `So‘rov smetadan ${qty} ortiq — tasdiqlashdan oldin tekshiring.`,
+      stock: 'Obyektdagi qoldiq',
+      contextError: 'Smeta va qoldiqni yuklab bo‘lmadi — qarorni baribir qabul qilishingiz mumkin.',
       approved: (material: string) => `So‘rov tasdiqlandi: ${material}`,
       rejected: (material: string) => `So‘rov rad etildi: ${material}`,
     },
     /** Bosh ekran: pastki menyuga sig'magan va qo'shimcha bo'limlar. */
     sections: {
       title: 'Bo‘limlar',
+      /** "So'rovlarni tasdiqlash" belgisidagi son uchun ekran o'quvchi matni. */
+      pending: 'ta kutmoqda',
     },
     /** Prorab/omborchi: obyekt ogohlantirishlari (faqat ko'rish). */
     siteAlerts: {
       title: 'Obyekt ogohlantirishlari',
       hint: 'Sizning obyektlaringizdagi ochiq ogohlantirishlar. Admin va direktor ko‘rib chiqadi.',
+      loadError: 'Obyekt ogohlantirishlarini yuklab bo‘lmadi.',
     },
     /** "Qo'limda" → pul tarixi (haydovchi, ta'minotchi, prorab). */
     cashHistory: {
       open: 'Qo‘limdagi pul tarixini ochish',
+      /** Balans kartochkasida ekran o'quvchi uchun (balans o'zi o'qiladi). */
+      openSr: 'tarixni ochish',
       title: 'Pul tarixi',
       intro: 'Sizga berilgan, siz qaytargan va xaridlarga sarflangan pul.',
       empty: 'Hali pul harakati yo‘q.',
@@ -1657,7 +1752,8 @@ export const uz = {
       receiptRemove: 'Chekni olib tashlash',
       receiptChooseLine: 'Chekda bir nechta qator — qaysi material?',
       receiptOtherLines: 'Chekdagi boshqa qatorlarni alohida xarid sifatida, QR’siz kiriting.',
-      receiptLine: (qty: string, sum: string) => `${qty} ta — ${sum}`,
+      /** Chek qatori: birlik chekda bo'lsa — "5 kg — 60 000 so'm", aks holda "5 × — 60 000 so'm" ("ta" taxmin qilinmaydi). */
+      receiptLine: (qty: string, unit: string | null, sum: string) => (unit ? `${qty}\u00a0${unit} — ${sum}` : `${qty} × — ${sum}`),
       receiptNoMatch: (name: string) => `“${name}” katalogda topilmadi — materialni tanlang.`,
       receiptUsed: 'Chekni olib tashlab, qayta saqlashingiz mumkin.',
       approvedRequests: 'Tasdiqlangan so‘rovlar',
@@ -1668,6 +1764,8 @@ export const uz = {
       daysLeft: (days: string) => `${days} kunga yetadi`,
       daysLeftZero: 'Tugagan',
       stockNow: (qty: string, unit: string) => `Qoldiq: ${qty} ${unit}`,
+      /** Odatiy kiritish birligida: "Qoldiq: 12 qop (600 kg)". */
+      stockNowIn: (inputQtyUnit: string, baseQtyUnit: string) => `Qoldiq: ${inputQtyUnit} (${baseQtyUnit})`,
       otherStock: (qty: string, unit: string) => `Boshqa obyektlarda: ${qty} ${unit}`,
       sendRequest: 'So‘rov yuborish',
       askTransfer: 'O‘tkazma so‘rash',
@@ -1682,15 +1780,20 @@ export const uz = {
       outsideTitle: 'Ilovani Telegram orqali oching',
       outsideText: 'Bu sahifa Telegram ichida ishlaydi. Botga o‘ting va “Ilovani ochish” tugmasini bosing.',
       openBot: 'Telegram’da ochish',
+      inactiveTitle: 'Hisob faol emas',
       inactive: 'Hisobingiz faol emas, adminga murojaat qiling.',
+      invalidTitle: 'Kirib bo‘lmadi',
       invalid: 'Kirish ma’lumoti eskirgan yoki noto‘g‘ri. Ilovani yopib, qayta oching.',
       reopenTitle: 'Ilovani qayta oching',
       reopenText: 'Kirish ma’lumoti eskirgan. Ilovani yoping va bot orqali qayta oching.',
       closeApp: 'Ilovani yopish',
       webOnlyTitle: 'Veb paneldan foydalaning',
       webOnlyText: 'Sizning rolingiz uchun Telegram ilovasi emas, veb panel mo‘ljallangan. Kompyuter yoki brauzerda veb panelni oching.',
+      webOnlyOpen: 'Veb panelni ochish',
+      webOnlyCopy: 'Havolani nusxalash',
+      webOnlyCopied: 'Havola nusxalandi',
       error: 'Server bilan aloqa bo‘lmadi.',
-      contactTitle: 'Telefon raqamingizni ulashish',
+      contactTitle: 'Raqamingizni ulashing',
       contactText:
         'Birinchi marta kiryapsiz. Admin sizni telefon raqamingiz bilan qo‘shgan — raqamni ulashsangiz, hisobingiz shu Telegram bilan bog‘lanadi.',
       shareContact: 'Telefon raqamni ulashish',
@@ -1716,6 +1819,8 @@ export const uz = {
     to: 'Tugash',
     datePlaceholder: 'kk.oo.yyyy',
     apply: 'Ko‘rsatish',
+    /** Joriy foydalanuvchi botni bloklagan (dashboard_summary.telegram_me_blocked). */
+    meBlocked: 'Siz Telegram botini bloklagansiz — ogohlantirish va ish xabarlari sizga kelmaydi. Botni oching va “Start” ni bosing.',
     rangeErrors: {
       invalid: 'Sanani kk.oo.yyyy ko‘rinishida kiriting.',
       reversed: 'Boshlanish sanasi tugashdan keyin bo‘lmasin.',
@@ -1732,6 +1837,8 @@ export const uz = {
       cashIssued: 'Berilgan pul',
       cashReturnedSub: (sum: string) => `Qaytarildi: ${sum}`,
       cashOnHand: 'Qo‘ldagi pul (jami)',
+      cashOwedSub: (sum: string) => `Xodimlarga qarz: ${sum}`,
+      telegramBlocked: 'Botni bloklaganlar',
       alertsOpen: 'Ochiq ogohlantirishlar',
       unreceived: 'Qabul qilinmagan xaridlar',
       pendingTransfers: 'Kutilayotgan o‘tkazmalar',
@@ -1751,6 +1858,12 @@ export const uz = {
       dailyChiqim: 'Chiqim (soni)',
       dailySum: 'Xarid summasi',
       norm: 'Smeta va haqiqiy',
+      /** Diagramma — pul (turli birliklar bitta o'qda aralashmaydi). */
+      moneyHint: 'Obyektlar bo‘yicha: joriy smeta jami va tanlangan davrdagi xaridlar, so‘m',
+      estimateSum: 'Smeta jami',
+      spentSum: 'Davrdagi xaridlar',
+      noEstimate: 'smeta yo‘q',
+      qtyTitle: 'Materiallar bo‘yicha (miqdor)',
       normHint: 'Eng ko‘p ishlatilgan 10 ta material (asosiy birlikda)',
       normAllObjects: 'Barcha obyektlar yig‘indisi; biror obyektda oshgan material — qizil',
       normAllowed: 'Norma (isrof bilan)',
@@ -2143,19 +2256,22 @@ export const uz = {
     saved: 'Sotuvchi saqlandi',
     merge: 'Birlashtirish',
     mergeTitle: 'Sotuvchilarni birlashtirish',
-    mergeIntro: (name: string) => `«${name}» ning barcha xaridlari tanlangan sotuvchiga o‘tadi, «${name}» o‘chiriladi.`,
+    colActions: 'Amallar',
+    mergeIntro: (name: string) => `“${name}”ning barcha xaridlari tanlangan sotuvchiga o‘tadi, “${name}” o‘chiriladi.`,
     mergeInto: 'Qaysi sotuvchiga birlashtiriladi',
-    mergeChoose: 'Tanlang',
+    mergeSearch: 'Sotuvchini qidirish',
+    mergeNone: 'Mos sotuvchi topilmadi.',
+    purchaseCount: (n: number) => `${n} ta xarid`,
     mergeNext: 'Davom etish',
-    mergeConfirm: 'Ha, birlashtirish',
-    mergeWarning: (from: string, into: string) =>
-      `«${from}» → «${into}». Xaridlar ko‘chiriladi; «${into}» da bo‘sh telefon, STIR va izoh «${from}» dan to‘ldiriladi. Bu amal tarixda qoladi.`,
-    merged: (from: string, into: string, n: number) => `«${from}» «${into}» ga birlashtirildi (${n} ta xarid ko‘chirildi)`,
+    mergeConfirm: (n: number) => `Birlashtirish: ${n} ta xarid ko‘chiriladi`,
+    mergeWarning: (from: string, into: string, n: number) =>
+      `“${from}” → “${into}”. ${n} ta xarid ko‘chiriladi; “${into}”dagi bo‘sh telefon, STIR va izoh “${from}”dan to‘ldiriladi. Bu amal tarixda qoladi.`,
+    merged: (from: string, into: string, n: number) => `“${from}” “${into}”ga birlashtirildi (${n} ta xarid ko‘chirildi)`,
     delete: 'O‘chirish',
-    deleteConfirm: (name: string) => `«${name}» o‘chirilsinmi? Avvalgi xaridlarda nomi qoladi; keyin tiklash mumkin.`,
-    deleted: (name: string) => `«${name}» o‘chirildi`,
+    deleteConfirm: (name: string) => `“${name}” o‘chirilsinmi? Avvalgi xaridlarda nomi qoladi; keyin tiklash mumkin.`,
+    deleted: (name: string) => `“${name}” o‘chirildi`,
     restore: 'Tiklash',
-    restored: (name: string) => `«${name}» tiklandi`,
+    restored: (name: string) => `“${name}” tiklandi`,
   },
   /** O'z yozuvini tuzatish (RPC correct_entry) — Telegram ilovasi va veb (admin). */
   correction: {
@@ -2165,15 +2281,28 @@ export const uz = {
     introPurchase: 'Miqdor, birlik yoki summani to‘g‘rilang. Sabab majburiy — direktor va admin ko‘radi.',
     qty: 'Miqdor',
     unit: 'Birlik',
-    total: 'Jami summa, so‘m',
-    note: 'Tuzatish sababi',
-    notePlaceholder: 'masalan, 3 emas 5 qop edi',
-    noteHint: 'Majburiy, ko‘pi bilan 500 belgi',
+    material: 'Material',
+    materialHint: 'Boshqa material tanlansa, birlik ham shu materialdan tanlanadi.',
+    object: 'Obyekt',
+    // Xarid ekranidagi yorliq bilan bir xil
+    total: 'Jami summa (chekdagi)',
+    reason: 'Tuzatish sababi',
+    reasonPlaceholder: 'masalan, 3 emas 5 qop edi',
+    reasonHint: 'Majburiy, ko‘pi bilan 500 belgi. Direktor va admin ko‘radi.',
+    note: 'Yozuv izohi (ixtiyoriy)',
+    noteHint: 'O‘zgartirmasangiz, eski izoh qoladi.',
     save: 'Tuzatishni saqlash',
     saved: 'Yozuv tuzatildi',
-    remaining: (time: string) => `Tuzatish uchun qolgan vaqt: ${time}`,
-    remainingShort: (time: string) => `${time} qoldi`,
-    actionWithTime: (time: string) => `Tuzatish (${time} qoldi)`,
+    remaining: (min: number) => `Tuzatish uchun qolgan vaqt: ${minutesLeft(min)}`,
+    remainingShort: (min: number) => `${minutesLeft(min)} qoldi`,
+    actionWithTime: (min: number) => `Tuzatish (${minutesLeft(min)} qoldi)`,
+    /** O'z yozuvini bekor qilish (cancel_own_entry) — xuddi shu 30 daqiqalik oynada. */
+    cancelAction: 'Bekor qilish (o‘chirish)',
+    cancelTitle: 'Yozuvni bekor qilish',
+    cancelText: 'Yozuv o‘chiriladi va qoldiqqa ta’sir qilmaydi. Tarixda ko‘rinib turadi, admin tiklay oladi.',
+    cancelReason: 'Bekor qilish sababi',
+    cancelConfirm: 'Yozuvni bekor qilish',
+    cancelled: 'Yozuv bekor qilindi',
     adminHint: 'Admin istalgan vaqtda tuzata oladi; direktorga ogohlantirish boradi.',
     linkedHint: 'Bog‘langan yozuvni tuzatib bo‘lmaydi (xarid, o‘tkazma yoki inventarizatsiya).',
     errQtyRequired: 'Miqdorni kiriting.',
@@ -2181,7 +2310,20 @@ export const uz = {
     errUnit: 'Birlikni tanlang.',
     errTotalRequired: 'Summani kiriting.',
     errTotal: 'Summa noto‘g‘ri. Masalan: 1 250 000',
-    errNote: 'Tuzatish sababini yozing.',
+    errReason: 'Tuzatish sababini yozing.',
+    errCancelReason: 'Bekor qilish sababini yozing.',
+  },
+  /** Parametrli xato matnlari (server `details` yoki xabardan ajratilgan qiymatlar bilan; src/data/errors.ts HINT_PARAMS). */
+  errorsWith: {
+    catalog_material_has_stock: (object: string) =>
+      `Materialni o‘chirib bo‘lmaydi: “${object}” obyektida qoldig‘i bor. Uning o‘rniga nofaol qiling.`,
+    estimate_item_invalid: (row: string) => `Smetaning ${row}-qatorida xato bor — tekshirib, qayta urinib ko‘ring.`,
+    estimate_materials_invalid: (row: string) => `Yangi materiallar ro‘yxatining ${row}-qatorida xato bor — tekshirib, qayta urinib ko‘ring.`,
+    estimate_aliases_invalid: (row: string) => `Smeta shifrlarini katalogga eslab qolib bo‘lmadi: ${row}-qatorda xato bor.`,
+    transfer_insufficient_stock: (qty: string, unit: string) =>
+      `Yuboruvchi obyektda qoldiq yetarli emas: mavjud ${qty}${unit ? `\u00a0${unit}` : ''}.`,
+    receipt_already_used: (name: string, at: string) => `Bu chek allaqachon ishlatilgan: ${name}, ${at}.`,
+    ops_occurred_at_range: (earliest: string) => `Sana ruxsat etilgan oraliqdan tashqarida: ${earliest} dan oldingi vaqtga yozib bo‘lmaydi.`,
   },
   appError: {
     chunkTitle: 'Ilova yangilandi. Sahifani qayta yuklang',

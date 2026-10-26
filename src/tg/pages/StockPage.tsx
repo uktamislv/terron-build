@@ -2,7 +2,7 @@
 // qidiruv va prognoz (necha kunga yetadi, tugayotganlar ajratilgan). Faqat ko'rish.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Hourglass, Package } from 'lucide-react'
+import { Building2, Hourglass, Package } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { choiceClass, cx, EmptyState, EntryRow, Notice, Qty, RetryNotice, SearchBox, SkeletonRows } from '@/components/ui'
 import { getStockForecast, type StockForecastRow } from '@/data/forecastRepo'
@@ -11,13 +11,16 @@ import { listObjects } from '@/data/objectsRepo'
 import { listStock } from '@/data/stockRepo'
 import type { Material, ObjectRow, StockBalance } from '@/data/types'
 import { cmp } from '@/domain/decimal'
+import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
-import { formatQty } from '@/lib/format'
+import { formatQty, formatQtyUnit } from '@/lib/format'
 import { useLoad } from '@/lib/useLoad'
 import { orderObjects } from '../entry/objects'
 import { useCompanySettings } from '../entry/useCompanySettings'
-import { loadLastObject } from '../movement/prefs'
+import { loadLastObject, saveEntryType } from '../movement/prefs'
+import { makeMovementPrefillState } from '../movement/prefill'
+import { loadLastEntry } from '../entry/lastEntry'
 import { buildStockList } from '../stock/stockList'
 import { haptic } from '../telegram'
 import { useBackButton } from '../useTelegramButtons'
@@ -29,6 +32,7 @@ export function StockPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const companyId = profile?.company_id
+  const profileId = profile?.id
   const [objects, setObjects] = useState<ObjectRow[] | null>(null)
   const [materials, setMaterials] = useState<Material[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -72,18 +76,38 @@ export function StockPage() {
   )
 
   const items = useMemo(
-    () => (data.data && materials ? buildStockList(data.data.stock, data.data.forecast, materials, query, settings.forecastDaysWarn) : null),
-    [data.data, materials, query, settings.forecastDaysWarn],
+    () =>
+      data.data && materials
+        ? buildStockList(data.data.stock, data.data.forecast, materials, query, settings.forecastDaysWarn, (materialId) =>
+            profileId ? (loadLastEntry(profileId, materialId)?.unitId ?? null) : null,
+          )
+        : null,
+    [data.data, materials, query, settings.forecastDaysWarn, profileId],
   )
   const lowCount = items?.filter((i) => i.low).length ?? 0
 
   if (!profile) return null
+  // Qator bosilsa — shu material bilan chiqim formasi (faqat yozuv kirita oladiganlarga; direktor — faqat ko'rish)
+  const canWrite = can(profile.role, 'create_movement')
+  const openChiqim = (materialId: string) => {
+    if (!objectId) return
+    haptic.tap()
+    saveEntryType('chiqim')
+    navigate('/tg/movement', { state: makeMovementPrefillState({ type: 'chiqim', objectId, materialId }) })
+  }
+  const single = objects && objects.length === 1 ? objects[0] : null
 
   return (
     <div className="flex flex-col gap-4">
       {loadError && <RetryNotice message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />}
       {!loadError && !objects && <SkeletonRows rows={3} />}
       {objects && objects.length === 0 && <Notice tone="warn">{t.tg.movement.noObjects}</Notice>}
+      {single && (
+        <p className="flex min-h-11 items-center gap-2 text-base font-semibold text-ink" data-testid="stock-object">
+          <Building2 aria-hidden className="size-5 shrink-0 text-muted" strokeWidth={1.75} />
+          {single.name}
+        </p>
+      )}
       {objects && objects.length > 1 && (
         <div role="group" aria-label={t.tg.movement.object} className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
           {objects.map((o) => (
@@ -123,9 +147,15 @@ export function StockPage() {
                     kind={i.negative ? 'danger' : i.low ? 'warn' : 'neutral'}
                     icon={false}
                     title={i.name}
+                    onClick={canWrite ? () => openChiqim(i.materialId) : undefined}
                     meta={
                       i.negative ? (
                         <span className="font-medium text-danger">{t.ombor.negative}</span>
+                      ) : i.empty ? (
+                        <span className="inline-flex items-center gap-1 font-medium text-warn">
+                          <Hourglass aria-hidden className="size-3.5" strokeWidth={2} />
+                          {ta.daysLeftZero}
+                        </span>
                       ) : i.daysLeft !== null ? (
                         <span className={cx('inline-flex items-center gap-1', i.low ? 'font-medium text-warn' : 'text-muted')}>
                           <Hourglass aria-hidden className="size-3.5" strokeWidth={2} />
@@ -133,7 +163,9 @@ export function StockPage() {
                         </span>
                       ) : undefined
                     }
-                    trailing={<Qty value={i.qtyBase} unit={i.baseUnit} />}
+                    // Odatiy kiritish birligida ("12 qop"), ostida asosiy birlikda ("(600 kg)")
+                    trailing={i.inputView ? <Qty value={i.inputView.qty} unit={i.inputView.unit} /> : <Qty value={i.qtyBase} unit={i.baseUnit} />}
+                    trailingMeta={i.inputView ? <span className="tabular">{ts.inBase(formatQtyUnit(i.qtyBase, i.baseUnit))}</span> : undefined}
                   />
                 )
               })}

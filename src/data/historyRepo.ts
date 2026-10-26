@@ -189,7 +189,9 @@ export function emptyRefNames(): RefNames {
 const REF_SOURCES: Record<RefKind, { table: string; columns: string; label: (r: Record<string, unknown>) => string }> = {
   objects: { table: 'objects', columns: 'id, name', label: (r) => String(r.name ?? '') },
   materials: { table: 'materials', columns: 'id, name', label: (r) => String(r.name ?? '') },
-  profiles: { table: 'profiles', columns: 'id, full_name', label: (r) => String(r.full_name ?? '') },
+  // `profile_directory` (view): direktor va boshqa admin bo'lmaganlar ham firma xodimlari ismini ko'radi
+  // (`profiles` RLS faqat o'zini ko'rsatadi — tarix diff'ida "—" chiqardi)
+  profiles: { table: 'profile_directory', columns: 'id, full_name', label: (r) => String(r.full_name ?? '') },
   units: {
     table: 'material_units',
     columns: 'id, unit, variant',

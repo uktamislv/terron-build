@@ -2,7 +2,7 @@
 
 ## Sizning vazifangiz
 
-Siz obyektga kelgan va berilgan materialni Mini App’da yozasiz. To‘g‘ri yozuv — aniq qoldiq. Faqat sizga biriktirilgan obyektlar ko‘rinadi.
+Siz obyektga kelgan va berilgan materialni Telegram ilovasida yozasiz. To‘g‘ri yozuv — aniq qoldiq. Faqat sizga biriktirilgan obyektlar ko‘rinadi.
 
 ## Har kuni
 
@@ -10,28 +10,28 @@ Siz obyektga kelgan va berilgan materialni Mini App’da yozasiz. To‘g‘ri yo
 
 1. “Bosh” da “Kirim” ni bosing.
 2. Obyektni tanlang (bitta bo‘lsa, o‘zi tanlanadi).
-3. Material tugmasini bosing, birlikni tanlang, sanab miqdorni yozing.
+3. Material tugmasini bosing, sanab miqdorni yozing, ostidagi birlikni tanlang.
 4. Xarid bo‘yicha kelgan bo‘lsa, “Bog‘langan xarid” dan uni “Bog‘lash”.
 5. “Saqlash” ni bosing.
 
 ### Material berildi (chiqim)
 
-1. “Bosh” da “Chiqim” ni bosing.
-2. Material, birlik va miqdorni tanlang. “Qoldiq: … → …” ni tekshiring.
+1. “Bosh” da “Chiqim” ni bosing yoki “Bo‘limlar” → “Qoldiq” dan materialni bosing.
+2. Miqdor va birlikni kiriting. “Qoldiq: … → …” ni tekshiring.
 3. “Saqlash” ni bosing.
 
 ### O‘tkazma keldi
 
-1. “Kirim / chiqim” ekranida “Kelayotgan o‘tkazmalar” ni oching.
+1. “Ombor” ekranida “Kelayotgan o‘tkazmalar” ni oching (xabardagi havola ham shu yerga olib keladi).
 2. Kelgan miqdorni sanang, “Qabul qilish”.
 
 ## Muhim qoidalar
 
-- Mini App joylashuvni so‘raydi — ruxsat bering.
-- Rasm odatda ixtiyoriy. “Majburiy” belgili materialda rasmsiz saqlanmaydi.
+- Sana standart — “Bugun”. Kechagi ishni kiritsangiz, “Bugun ▾” ni bosib “Kecha” yoki “Boshqa sana” (oxirgi 3 kun) ni tanlang.
+- Xato miqdor, birlik, material yoki obyektni 30 daqiqa ichida o‘zingiz to‘g‘rilaysiz: “Yozuvlar” → yozuv → “Tuzatish” (sabab majburiy). Ikki marta kiritilgan bo‘lsa — “Bekor qilish (o‘chirish)”. Xaridga bog‘langan kirim — adminga ayting.
 - Haydovchi aytgan emas, o‘zingiz sanagan miqdorni yozing.
-- “Xuddi shunday yozuv bor” chiqsa, “Yozuvlarim” ni tekshiring.
-- Xato yozuvni o‘zingiz o‘chira olmaysiz — adminga ayting.
+- “Bosh” dagi “Obyekt ogohlantirishlari” — obyektingizdagi farqlar; admin ko‘rib chiqadi.
+- Telegram ilovasi joylashuvni so‘raydi — ruxsat bering.
 
 ## Ogohlantirishlar nimani anglatadi
 
@@ -44,4 +44,4 @@ Siz obyektga kelgan va berilgan materialni Mini App’da yozasiz. To‘g‘ri yo
 
 ## Savol bo‘lsa
 
-Savol bo‘lsa — prorab yoki adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+“Yozuvlar” da kirim-chiqimlaringiz va xabarlaringiz; turi va sanasi bo‘yicha filtrlang. “Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. Savol bo‘lsa — prorab yoki adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.

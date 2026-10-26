@@ -24,25 +24,55 @@ function Help({ id, error, hint }: { id: string; error?: string | null; hint?: R
   )
 }
 
+/**
+ * Maydon ichida o'ngda turadigan qo'shimcha (birlik, "so'm") — bosilmaydi. Ekran o'quvchiga
+ * `aria-describedby` orqali o'qiladi (yorliq — maydon nomi — o'zgarmaydi).
+ */
+function Suffix({ id, children }: { id: string; children: ReactNode }) {
+  return (
+    <span id={id} className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-base text-muted">
+      {children}
+    </span>
+  )
+}
+
 export function TextField({
   label,
   error,
   hint,
+  suffix,
   className = '',
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string | null; hint?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & {
+  label: string
+  error?: string | null
+  hint?: string
+  /** Maydon ichida o'ngda: birlik yoki "so'm" (ekran o'quvchiga izoh sifatida o'qiladi). */
+  suffix?: string
+}) {
   const autoId = useId()
   const id = props.id ?? autoId
+  const describedBy = [suffix ? `${id}-suffix` : null, error || hint ? `${id}-desc` : null].filter(Boolean).join(' ') || undefined
+  const input = (
+    <input
+      id={id}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={describedBy}
+      className={cx(inputClass({ error: Boolean(error) }), suffix && 'pr-16')}
+      {...props}
+    />
+  )
   return (
     <div className={cx('flex flex-col gap-1.5', className)}>
       <Label htmlFor={id}>{label}</Label>
-      <input
-        id={id}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error || hint ? `${id}-desc` : undefined}
-        className={inputClass({ error: Boolean(error) })}
-        {...props}
-      />
+      {suffix ? (
+        <div className="relative">
+          {input}
+          <Suffix id={`${id}-suffix`}>{suffix}</Suffix>
+        </div>
+      ) : (
+        input
+      )}
       <Help id={`${id}-desc`} error={error} hint={hint} />
     </div>
   )
@@ -81,6 +111,7 @@ export function SelectField({
   children,
   className,
   hint,
+  error,
   ...rest
 }: Omit<SelectHTMLAttributes<HTMLSelectElement>, 'onChange' | 'value'> & {
   label: string
@@ -88,6 +119,8 @@ export function SelectField({
   onChange: (v: string) => void
   children: ReactNode
   hint?: string
+  /** Maydon xatosi: qizil chegara, ostida `role="alert"` matn (`aria-describedby`). */
+  error?: string | null
 }) {
   const id = useId()
   return (
@@ -98,15 +131,16 @@ export function SelectField({
           id={id}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          aria-describedby={hint ? `${id}-desc` : undefined}
-          className={cx(inputClass(), 'appearance-none pr-10')}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error || hint ? `${id}-desc` : undefined}
+          className={cx(inputClass({ error: Boolean(error) }), 'appearance-none pr-10')}
           {...rest}
         >
           {children}
         </select>
         <ChevronDown aria-hidden className="pointer-events-none absolute top-1/2 right-3 size-5 -translate-y-1/2 text-muted" strokeWidth={1.75} />
       </div>
-      <Help id={`${id}-desc`} hint={hint} />
+      <Help id={`${id}-desc`} error={error} hint={hint} />
     </div>
   )
 }

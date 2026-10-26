@@ -58,18 +58,20 @@ describe('bosh ekran "Bo‘limlar"', () => {
   it('admin: Qoldiq, Tasdiqlash va pastki menyuga sig‘magan Sanash', () => {
     expect(homeSectionLinks('admin').map((l) => l.to)).toEqual(['/tg/stock', '/tg/approvals', '/tg/inventory'])
   })
-  it('prorab, omborchi — Qoldiq; tekshiruvchi, haydovchi, direktor — yo‘q', () => {
+  it('prorab, omborchi, direktor (faqat ko‘rish) — Qoldiq; tekshiruvchi, haydovchi — yo‘q', () => {
     expect(homeSectionLinks('prorab').map((l) => l.key)).toEqual(['stock'])
     expect(homeSectionLinks('omborchi').map((l) => l.key)).toEqual(['stock'])
     expect(homeSectionLinks('tekshiruvchi')).toEqual([])
-    expect(homeSectionLinks('direktor')).toEqual([])
+    expect(homeSectionLinks('direktor').map((l) => l.key)).toEqual(['stock'])
     expect(homeSectionLinks('admin')[0]?.label).toBe(t.tg.stock.title)
   })
 })
 
 describe('"Yozuvlarim" manbalari', () => {
   it('rol bo‘yicha: tekshiruvchi — sanashlar; haydovchi — xarid va unga berilgan pul; buxgalter — bergan puli', () => {
-    expect(mineSources('tekshiruvchi')).toEqual({ purchases: false, requests: false, counts: true, cashRecipient: false, cashCreator: false })
+    // Tekshiruvchi harakatlarni o'qiy olmaydi (RLS) — so'ralmaydi
+    expect(mineSources('tekshiruvchi')).toEqual({ movements: false, purchases: false, requests: false, counts: true, cashRecipient: false, cashCreator: false })
+    expect(mineSources('omborchi').movements).toBe(true)
     expect(mineSources('haydovchi')).toMatchObject({ purchases: true, cashRecipient: true, cashCreator: false, counts: false })
     expect(mineSources('buxgalter')).toMatchObject({ purchases: false, cashCreator: true, cashRecipient: false })
     expect(mineSources('prorab')).toMatchObject({ requests: true, purchases: true })

@@ -1,8 +1,10 @@
 // "Bugun / Kecha / Boshqa sana" — yozuv sanasi (kirim/chiqim, xarid). Standart — "Bugun" (server
 // `now()`), shuning uchun qo'shimcha bosish talab qilinmaydi. "Boshqa sana" — DateField, admin
 // bo'lmaganlarga oxirgi 3 kun (bazadagi qoida).
-import { useId } from 'react'
-import { choiceClass, DateField } from '@/components/ui'
+import { useId, useState } from 'react'
+import { CalendarDays, ChevronDown } from 'lucide-react'
+import { BottomSheet, Button, choiceClass, cx, DateField } from '@/components/ui'
+import { isoDateToDisplay } from '@/lib/format'
 import { entryDateBounds, type EntryDateChoice } from '@/domain/entryDate'
 import type { DateChipsValue } from './dateChoice'
 import { t } from '@/i18n'
@@ -69,5 +71,75 @@ export function DateChips({
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * Ixcham sana chipi ("Bugun ▾") — obyekt satrida turadi, klaviatura ochilganda ham yopilib qolmaydi.
+ * Bosilsa — varaq: "Bugun / Kecha / Boshqa sana" (+ sana maydoni). "Bugun" — standart, bosish shart emas.
+ */
+export function DateChip({
+  value,
+  onChange,
+  isAdmin,
+  error,
+  nowIso,
+}: {
+  value: DateChipsValue
+  onChange: (next: DateChipsValue) => void
+  isAdmin: boolean
+  error?: string | null
+  nowIso?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const label = value.choice === 'other' ? (value.other ? isoDateToDisplay(value.other) : td.other) : td[value.choice]
+  return (
+    <>
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-label={`${td.label}: ${label}`}
+        aria-invalid={error ? true : undefined}
+        data-testid="date-chip"
+        onClick={() => {
+          haptic.select()
+          setOpen(true)
+        }}
+        className={cx(
+          choiceClass({ selected: value.choice !== 'today', shape: 'pill', size: 'sm' }),
+          'gap-1 px-3',
+          error && 'border-danger text-danger',
+        )}
+      >
+        <CalendarDays aria-hidden className="size-4" strokeWidth={1.75} />
+        <span className="tabular">{label}</span>
+        <ChevronDown aria-hidden className="size-4" strokeWidth={1.75} />
+      </button>
+      {open && (
+        <BottomSheet
+          title={td.label}
+          onClose={() => setOpen(false)}
+          footer={
+            <Button className="flex-1" size="lg" onClick={() => setOpen(false)}>
+              {t.ui.done}
+            </Button>
+          }
+        >
+          <div className="px-2 pt-1">
+            <DateChips
+              value={value}
+              isAdmin={isAdmin}
+              error={error}
+              nowIso={nowIso}
+              onChange={(next) => {
+                onChange(next)
+                // Bugun / Kecha — bir bosishda tanlanadi va varaq yopiladi
+                if (next.choice !== 'other') setOpen(false)
+              }}
+            />
+          </div>
+        </BottomSheet>
+      )}
+    </>
   )
 }

@@ -68,7 +68,7 @@ export function MaterialsPage() {
   const canManage = can(me.role, 'manage_catalog')
   const current = dialog && dialog.kind !== 'create' ? materials?.find((m) => m.id === dialog.id) : undefined
   const tab: 'materials' | 'suppliers' = canManage && params.get('tab') === 'suppliers' ? 'suppliers' : 'materials'
-  const tabIcon = { className: 'size-[18px]', strokeWidth: 1.75, 'aria-hidden': true } as const
+  const tabIcon = { className: 'size-5', strokeWidth: 1.75, 'aria-hidden': true } as const
 
   if (tab === 'suppliers') {
     return (

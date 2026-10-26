@@ -9,9 +9,10 @@ Siz xodimlarga xarid uchun pul berasiz va qaytgan pulni yozasiz. Smetani yuklays
 ### Pul berish (podotchet)
 
 1. “Podotchet” → “Pul berish”.
-2. “Kimga” ni tanlang, summa va sanani kiriting, “Saqlash”.
+2. “Kimga” ni tanlang, summa va sanani (oxirgi 3 kun) kiriting, “Saqlash”.
 3. Odam ortiqcha pulni qaytarsa — “Qaytarish”, “Kimdan” ni tanlang.
-4. “Qo‘limdagi pul” jadvalida har kimning berilgan, sarflangan va qo‘lidagi puli ko‘rinadi.
+4. Izoh xato bo‘lsa — yozuvni ochib “Izohni tahrirlash”.
+5. “Qo‘ldagi pul” jadvalida har kimning berilgan, sarflangan va qo‘lidagi puli ko‘rinadi.
 
 ### Smeta yuklash
 
@@ -26,7 +27,7 @@ Siz xodimlarga xarid uchun pul berasiz va qaytgan pulni yozasiz. Smetani yuklays
 
 ## Muhim qoidalar
 
-- Berilgan pul summasini o‘zgartirib bo‘lmaydi. Xato bo‘lsa — o‘chirib, qayta bering.
+- Berilgan pul summasi va sanasini o‘zgartirib bo‘lmaydi. Xato bo‘lsa — o‘chirib, qayta bering.
 - Pulni faqat xarid kiritadigan xodimga berish mumkin.
 - Yangi materialni katalogga faqat admin qo‘shadi.
 
@@ -41,4 +42,4 @@ Siz xodimlarga xarid uchun pul berasiz va qaytgan pulni yozasiz. Smetani yuklays
 
 ## Savol bo‘lsa
 
-Savol bo‘lsa, firmangiz adminiga murojaat qiling. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — yon menyuda, “Parol” yonida yoqing yoki o‘chiring. Savol bo‘lsa, firmangiz adminiga murojaat qiling. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.

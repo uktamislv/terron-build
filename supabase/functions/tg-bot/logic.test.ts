@@ -38,7 +38,9 @@ function fake(opts: {
   editThrows?: boolean
   answerThrows?: boolean
   blockThrows?: boolean
+  touchThrows?: boolean
 } = {}) {
+  const touches: number[] = []
   const blockCalls: { chatId: number; blocked: boolean }[] = []
   const seenCalls: { tg: number; alertId: string }[] = []
   const answers: { id: string; text: string; showAlert: boolean }[] = []
@@ -73,6 +75,10 @@ function fake(opts: {
       if (opts.seen === 'throw') throw new Error('db down')
       return opts.seen ?? { ok: true, name: 'Ali Valiyev' }
     },
+    touchChat: async (chatId) => {
+      touches.push(chatId)
+      if (opts.touchThrows) throw new Error('rpc down')
+    },
     markChatBlocked: async (chatId, blocked) => {
       blockCalls.push({ chatId, blocked })
       if (opts.blockThrows) throw new Error('rpc down')
@@ -91,7 +97,7 @@ function fake(opts: {
     },
     log: (level, message) => logs.push({ level, message }),
   }
-  return { deps, sent, links, phonesQueried, logs, audit, seenCalls, answers, edits, blockCalls }
+  return { deps, sent, links, phonesQueried, logs, audit, seenCalls, answers, edits, blockCalls, touches }
 }
 
 function msg(message: Record<string, unknown>) {
@@ -499,5 +505,51 @@ describe('tg-bot: my_chat_member (botni bloklash)', () => {
 
   it('chatBlockedChange', () => {
     expect(chatBlockedChange(upd('member', 'left').my_chat_member)).toEqual({ chatId: CHAT, blocked: true })
+  })
+})
+
+describe('tg-bot: svc_touch_chat (2-tur) — har kiruvchi faollik', () => {
+  it('/start, oddiy matn, kontakt — chat id bilan', async () => {
+    for (const u of [msg({ text: '/start' }), msg({ text: 'salom' }), contact('+998901234567')]) {
+      const f = fake()
+      await handleTgBot(SECRET, u, f.deps)
+      expect(f.touches).toEqual([CHAT])
+    }
+  })
+  it('callback (Ko‘rildi) — foydalanuvchi id bilan', async () => {
+    const f = fake()
+    await handleTgBot(
+      SECRET,
+      { update_id: 9, callback_query: { id: 'c', from: { id: FROM, is_bot: false }, data: 'boshqa' } },
+      f.deps,
+    )
+    expect(f.touches).toEqual([FROM])
+  })
+  it('my_chat_member: member — touch; kicked — touch yo‘q', async () => {
+    const upd = (s: string) => ({
+      update_id: 3,
+      my_chat_member: {
+        chat: { id: CHAT, type: 'private' },
+        old_chat_member: { status: s === 'member' ? 'kicked' : 'member' },
+        new_chat_member: { status: s },
+      },
+    })
+    const a = fake()
+    await handleTgBot(SECRET, upd('member'), a.deps)
+    expect(a.touches).toEqual([CHAT])
+    const b = fake()
+    await handleTgBot(SECRET, upd('kicked'), b.deps)
+    expect(b.touches).toEqual([])
+  })
+  it('guruh chat / bot / sir noto‘g‘ri — touch yo‘q', async () => {
+    const f = fake()
+    await handleTgBot(SECRET, msg({ chat: { id: -1, type: 'group' } }), f.deps)
+    await handleTgBot('wrong', msg({ text: 'x' }), f.deps)
+    expect(f.touches).toEqual([])
+  })
+  it('touch xatosi — webhook davom etadi (javob yuboriladi)', async () => {
+    const f = fake({ touchThrows: true })
+    expect((await handleTgBot(SECRET, msg({ text: '/start' }), f.deps)).status).toBe(200)
+    expect(f.sent[0]?.text).toBe(BOT_MESSAGES.welcome)
   })
 })

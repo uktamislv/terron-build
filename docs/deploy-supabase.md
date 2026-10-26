@@ -145,7 +145,7 @@ select private.wake_dispatch();
 select status_code, content, created from net._http_response order by id desc limit 1;
 ```
 
-4-qadam natijasi: **`202 {"accepted":true}`** — funksiya darhol javob beradi, yuborish fonda davom etadi (pg_net 5 s da uziladi, shuning uchun kutmaydi). `401` — Vault siri va funksiya mos emas (funksiyani qayta deploy qiling, 5 daqiqa kesh); `404` — `dispatch_url` noto'g'ri yoki `tg-dispatch` deploy qilinmagan.
+4-qadam natijasi: **`202 {"accepted":true}`** — funksiya darhol javob beradi, yuborish fonda davom etadi (pg_net timeout'i 60 s, lekin javobni kutib qolmaydi). `401` — Vault siri va funksiya mos emas (funksiyani qayta deploy qiling, 5 daqiqa kesh); `404` — `dispatch_url` noto'g'ri yoki `tg-dispatch` deploy qilinmagan.
 
 Natijani navbatdan ko'rish: `select kind, status, attempts, last_error, sent_count, updated_at from public.notification_outbox order by created_at desc limit 20;`
 
@@ -154,6 +154,37 @@ Natijani navbatdan ko'rish: `select kind, status, attempts, last_error, sent_cou
 1. **`.invalid` domen qabul qilinadimi.** Veb paneldan sinov profiliga emailsiz login bering (Foydalanuvchilar → Login berish). Xato bo'lsa — Dashboard → Edge Functions → `admin-users` → Logs; "invalid email" kabi xato chiqsa, menga yozing (domen almashtiriladi).
 2. **Telegram sessiyasi.** Mini App ochilib kirsa — `generateLink` → `verifyOtp({ type: 'magiclink' })` ishlayapti. `tg-auth` logida `verifyOtp:` xatosi bo'lsa — menga yozing.
 3. **Audit.** SQL Editor: `select action, record_id, new_data, created_at from audit_log where table_name = 'auth' order by id desc limit 10;` — `SET_LOGIN`, `TG_LINK`, `TG_AUTH_USER_CREATED` yozuvlari ko'rinadi, ularda parol yo'q.
+
+### Rasm xeshi (photo-hash) — sweep rejimi
+
+Rasm qo'yilgan har harakat / xarid uchun baza `private.photo_hash_queue` ga ish qo'yadi va `photo-hash` funksiyasini pg_net bilan uyg'otadi (`POST {"mode":"sweep"}`, sarlavha `x-photo-secret`). Zaxira — cron `terron-photo-hash-sweep` har 5 daqiqada muddati kelgan ish bo'lsa yana uyg'otadi. Funksiya darhol `202` qaytaradi va ishlarni fonda (~40 s byudjet) bajaradi: rasmni o'qiydi, SHA-256 ni hisoblaydi va `svc_complete_photo_hash_job` bilan yozadi (takroriy rasm qoidasi shu yerda ishlaydi).
+
+1. **URL.** Migratsiya production URL'ini yozadi. Boshqa loyihada:
+   ```sql
+   update private.app_settings
+      set value = 'https://<REF>.supabase.co/functions/v1/photo-hash'
+    where key = 'photo_hash_url';
+   ```
+   Lokal / sinov bazasida o'chirish: `value = ''`.
+2. **Sir.** Vault'dagi `photo_hash_secret` (migratsiya yaratadi). Funksiya uni `svc_photo_hash_secret()` RPC orqali o'qiydi (5 daqiqa kesh); bu RPC hali bo'lmasa — Edge Function secret'idan:
+   ```sql
+   select decrypted_secret from vault.decrypted_secrets where name = 'photo_hash_secret';
+   ```
+   ```bash
+   npx supabase secrets set PHOTO_HASH_SECRET=<yuqoridagi qiymat> --project-ref <REF>
+   ```
+   (Qiymatni chatga yoki git'ga yozmang.)
+3. **Tekshirish:**
+   ```sql
+   select jobname, schedule, active from cron.job where jobname = 'terron-photo-hash-sweep';  -- */5 * * * *
+   select status, count(*) from private.photo_hash_queue group by 1;                            -- done / stale / pending / failed
+   select table_name, record_id, attempts, last_error from private.photo_hash_queue
+    where status = 'failed' order by updated_at desc limit 10;
+   select status_code, content from net._http_response order by id desc limit 3;             -- 202 {"accepted":true}
+   ```
+   `401` — sir mos emas (RPC yo'q bo'lsa `PHOTO_HASH_SECRET` ni tekshiring); `404` — `photo_hash_url` noto'g'ri yoki funksiya deploy qilinmagan. `failed` + `photo_not_found` / `photo_forbidden` — fayl Storage'da yo'q yoki o'qib bo'lmaydi (qayta urinilmaydi).
+
+Foydalanuvchi rejimi (`POST {table, id}` + JWT) ham ishlaydi — UI rasm yuklagach darhol chaqirib `duplicate` belgisini oladi (profil bo'yicha 10 daqiqada 30 ta).
 
 ## 7. Telegram webhook
 

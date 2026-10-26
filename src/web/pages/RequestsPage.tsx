@@ -341,8 +341,9 @@ export function RequestsPage() {
           ]}
           renderMobile={(r) => (
             <EntryRow
-              kind={r.status === 'rad' ? 'danger' : r.status === 'xarid_qilindi' ? 'ok' : r.status === 'tasdiqlandi' ? 'chiqim' : 'warn'}
-              icon={<ClipboardList className="size-[18px]" strokeWidth={1.75} />}
+              // So'rov qatori chizig'i — neytral; holat belgida
+              kind="neutral"
+              icon={<ClipboardList className="size-5" strokeWidth={1.75} />}
               title={r.material_name ?? '—'}
               badge={statusBadge(r)}
               meta={

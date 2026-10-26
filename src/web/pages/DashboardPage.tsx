@@ -5,7 +5,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ClipboardCheck, LayoutDashboard } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
-import { EmptyState, PageHeader, Spinner } from '@/components/ui'
+import { EmptyState, Notice, PageHeader, Spinner } from '@/components/ui'
 import { listRecentAlerts } from '@/data/alertsRepo'
 import { listBalances } from '@/data/cashRepo'
 import { listObjects } from '@/data/objectsRepo'
@@ -13,6 +13,7 @@ import { listDirectory } from '@/data/profileDirectory'
 import {
   getDashboardDaily,
   getDashboardSummary,
+  getEstimateVsSpend,
   getNormOverview,
   getSpendBreakdown,
   type DailyRow,
@@ -155,9 +156,15 @@ function Dashboard({
       actions={<ExportButton run={runExport} />}
       periodBar={<PeriodBar key={`${query.from}|${query.to}`} query={query} todayIso={todayIso} objects={objects} onChange={onQuery} />}
       invalid={query.invalid ? tr.rangeErrors[query.invalid] : null}
-      cards={<SummaryCards state={cards} objectFiltered={Boolean(query.objectId)} />}
+      cards={
+        <>
+          {/* Foydalanuvchining o'zi botni bloklagan — Telegram xabarlari unga bormaydi */}
+          {summary.data?.telegram_me_blocked && <Notice tone="warn">{tr.meBlocked}</Notice>}
+          <SummaryCards state={cards} objectFiltered={Boolean(query.objectId)} />
+        </>
+      }
       daily={showDaily && <DailyCard state={daily} from={query.from} to={query.to} />}
-      norm={sections.has('norm') && <NormSection objectId={query.objectId} />}
+      norm={sections.has('norm') && <NormSection objectId={query.objectId} range={range} rangeKey={rangeKey} />}
       spend={sections.has('purchases') && <SpendSection range={range} rangeKey={rangeKey} />}
       cash={sections.has('cash') && <CashSection />}
       alerts={can(role, 'view_alerts') && <RecentAlerts objectId={query.objectId} />}
@@ -165,9 +172,19 @@ function Dashboard({
   )
 }
 
-function NormSection({ objectId }: { objectId: string }) {
+function NormSection({
+  objectId,
+  range,
+  rangeKey,
+}: {
+  objectId: string
+  range: { from: string; to: string; objectId: string | null }
+  rangeKey: string
+}) {
   const norms = useLoad(() => getNormOverview(objectId || null), `norm|${objectId}`)
-  return <NormCard state={norms} objectId={objectId} />
+  // Pul diagrammasi (smeta jami va davrdagi xaridlar); repo topilmasa ham (eski mock) — xato holati
+  const money = useLoad(() => Promise.resolve().then(() => getEstimateVsSpend(range)), `money|${rangeKey}`)
+  return <NormCard state={norms} money={money} objectId={objectId} />
 }
 
 function SpendSection({ range, rangeKey }: { range: { from: string; to: string; objectId: string | null }; rangeKey: string }) {

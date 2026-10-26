@@ -22,10 +22,11 @@ import {
 } from '../_shared/supabaseAdmin.ts'
 
 const deps: AdminUsersDeps = {
-  alertLoginSet: async (targetProfileId, actorProfileId) => {
+  alertLoginSet: async (targetProfileId, actorProfileId, firstLogin) => {
     const { error } = await getAdminClient().rpc('svc_alert_login_set', {
       p_target_profile: targetProfileId,
       p_actor: actorProfileId,
+      p_first_login: firstLogin,
     })
     if (error) {
       const hint = error.hint === 'login_target_not_found' ? ' (login_target_not_found)' : ''

@@ -11,6 +11,7 @@ import * as correctionsRepo from '@/data/correctionsRepo'
 import * as forecastRepo from '@/data/forecastRepo'
 import * as inventoryRepo from '@/data/inventoryRepo'
 import * as materialsRepo from '@/data/materialsRepo'
+import * as normsRepo from '@/data/normsRepo'
 import * as movementsRepo from '@/data/movementsRepo'
 import * as objectsRepo from '@/data/objectsRepo'
 import * as profilesRepo from '@/data/profilesRepo'
@@ -58,8 +59,11 @@ vi.mock('@/data/requestsRepo', () => ({
   listApprovedRequests: vi.fn(async () => []),
   approveRequest: vi.fn(async () => undefined),
   rejectRequest: vi.fn(async () => undefined),
+  countPendingRequests: vi.fn(async () => 0),
+  listApprovedRequestsAll: vi.fn(async () => []),
   DECISION_NOTE_MAX: 500,
 }))
+vi.mock('@/data/normsRepo', () => ({ listNormUsage: vi.fn(async () => []), getNormUsage: vi.fn(async () => null) }))
 vi.mock('@/data/transfersRepo', () => ({
   listMyTransfers: vi.fn(async () => []),
   listIncomingTransfers: vi.fn(async () => []),
@@ -77,7 +81,11 @@ vi.mock('@/data/bugReportsRepo', async (orig) => ({
   ...(await orig<typeof import('@/data/bugReportsRepo')>()),
   listMyBugReports: vi.fn(async () => []),
 }))
-vi.mock('@/data/correctionsRepo', async (orig) => ({ ...(await orig<typeof import('@/data/correctionsRepo')>()), correctEntry: vi.fn(async () => undefined) }))
+vi.mock('@/data/correctionsRepo', async (orig) => ({
+  ...(await orig<typeof import('@/data/correctionsRepo')>()),
+  correctEntry: vi.fn(async () => undefined),
+  cancelOwnEntry: vi.fn(async () => undefined),
+}))
 vi.mock('@/data/profilesRepo', async (orig) => ({ ...(await orig<typeof import('@/data/profilesRepo')>()), setMyNotifyWorkflow: vi.fn(async () => undefined) }))
 vi.mock('@/data/stockRepo', () => ({ getStock: vi.fn(async () => '0'), listStock: vi.fn(async () => []) }))
 vi.mock('@/data/forecastRepo', () => ({ getStockForecast: vi.fn(async () => []) }))
@@ -183,12 +191,13 @@ describe('"Yozuvlarim" — tuzatish (correct_entry)', () => {
     fireEvent.click(row)
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(t.correction.action) }))
     const sheet = within(await screen.findByRole('dialog', { name: t.correction.title }))
-    expect(sheet.getByTestId('correction-remaining')).toHaveTextContent(/2[45]:\d{2}/)
+    // Butun daqiqalar: "24 daq" / "25 daq"
+    expect(sheet.getByTestId('correction-remaining')).toHaveTextContent(/2[45] daq/)
     fireEvent.change(sheet.getByLabelText(t.correction.qty), { target: { value: '5' } })
     fireEvent.click(sheet.getByRole('button', { name: t.correction.save }))
-    expect(await sheet.findByText(t.correction.errNote)).toBeInTheDocument()
+    expect(await sheet.findByText(t.correction.errReason)).toBeInTheDocument()
     expect(correctionsRepo.correctEntry).not.toHaveBeenCalled()
-    fireEvent.change(sheet.getByLabelText(t.correction.note), { target: { value: '5 qop edi' } })
+    fireEvent.change(sheet.getByLabelText(t.correction.reason), { target: { value: '5 qop edi' } })
     fireEvent.click(sheet.getByRole('button', { name: t.correction.save }))
     await waitFor(() =>
       expect(correctionsRepo.correctEntry).toHaveBeenCalledWith({
@@ -197,7 +206,11 @@ describe('"Yozuvlarim" — tuzatish (correct_entry)', () => {
         qtyInput: '5',
         unitId: null,
         totalAmount: null,
-        note: '5 qop edi',
+        reason: '5 qop edi',
+        // Izoh o'zgartirilmadi — eski izoh qoladi
+        note: null,
+        materialId: null,
+        objectId: null,
       }),
     )
     expect(await screen.findByText(t.correction.saved)).toBeInTheDocument()
@@ -442,8 +455,16 @@ describe('sana chiplari va "Qo‘limda" tarixi', () => {
     const grid = await screen.findByRole('region', { name: t.tg.movement.chooseMaterial })
     fireEvent.click(within(grid).getByRole('button', { name: /Sement/ }))
     fireEvent.change(screen.getByLabelText(t.tg.movement.qty), { target: { value: '2' } })
-    expect(screen.getByRole('button', { name: t.tg.date.today })).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(screen.getByRole('button', { name: t.tg.date.yesterday }))
+    // Sana — obyekt satridagi ixcham chip ("Bugun ▾"); bosilsa varaq
+    const chip = screen.getByTestId('date-chip')
+    expect(chip).toHaveTextContent(t.tg.date.today)
+    fireEvent.click(chip)
+    const sheet = within(await screen.findByRole('dialog', { name: t.tg.date.label }))
+    expect(sheet.getByRole('button', { name: t.tg.date.today })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(sheet.getByRole('button', { name: t.tg.date.yesterday }))
+    // "Kecha" — bir bosishda tanlanadi, varaq yopiladi
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: t.tg.date.label })).not.toBeInTheDocument())
+    expect(screen.getByTestId('date-chip')).toHaveTextContent(t.tg.date.yesterday)
     fireEvent.click(screen.getByRole('button', { name: t.tg.movement.save }))
     await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalled())
     const arg = vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0]
@@ -457,10 +478,14 @@ describe('sana chiplari va "Qo‘limda" tarixi', () => {
     const grid = await screen.findByRole('region', { name: t.tg.movement.chooseMaterial })
     fireEvent.click(within(grid).getByRole('button', { name: /Sement/ }))
     fireEvent.change(screen.getByLabelText(t.tg.movement.qty), { target: { value: '2' } })
-    fireEvent.click(screen.getByRole('button', { name: t.tg.date.other }))
-    expect(screen.getByLabelText(t.tg.date.pick)).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('date-chip'))
+    const sheet = within(await screen.findByRole('dialog', { name: t.tg.date.label }))
+    fireEvent.click(sheet.getByRole('button', { name: t.tg.date.other }))
+    expect(sheet.getByLabelText(t.tg.date.pick)).toBeInTheDocument()
+    fireEvent.click(sheet.getByRole('button', { name: t.ui.done }))
     fireEvent.click(screen.getByRole('button', { name: t.tg.movement.save }))
     expect(await screen.findByText(t.tg.date.errRequired)).toBeInTheDocument()
+    expect(screen.getByTestId('date-chip')).toHaveAttribute('aria-invalid', 'true')
     expect(movementsRepo.createMovement).not.toHaveBeenCalled()
   })
 
@@ -470,10 +495,214 @@ describe('sana chiplari va "Qo‘limda" tarixi', () => {
       { kind: 'spent', id: 's1', profileId: 'p', profileName: 'Ali', amount: '250000', at: minutesAgo(30), note: null, materialName: 'Sement', objectName: 'Obyekt A', deletedAt: null },
     ])
     open('/tg/purchase', 'haydovchi')
-    fireEvent.click(await screen.findByRole('button', { name: t.tg.cashHistory.open }))
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(t.tg.cashHistory.openSr) }))
     const history = await screen.findByTestId('cash-history')
     expect(within(history).getByText('Sement')).toBeInTheDocument()
-    expect(within(history).getByText(t.tg.cashHistory.by('Buxgalter'))).toBeInTheDocument()
+    expect(within(history).getByText(t.cash.givenBy('Buxgalter'))).toBeInTheDocument()
     expect(cashRepo.listCashHistory).toHaveBeenCalledWith({ profileId: makeProfile('haydovchi').id })
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Audit 2 (UI/UX): bo'limlar, Yozuvlar, tuzatish/bekor qilish, tasdiqlash konteksti, havolalar, qoldiq.
+// ---------------------------------------------------------------------------------------------
+const RQ = '3f2b8c1e-1d2a-4b5c-9d8e-0f1a2b3c4d5e'
+
+function request(over: Partial<MaterialRequest> = {}): MaterialRequest {
+  return {
+    id: RQ,
+    company_id: 'c',
+    object_id: 'o-a',
+    material_id: 'm-s',
+    unit_id: 'u-qop',
+    qty_input: '10',
+    unit_input: 'qop',
+    unit_variant: null,
+    qty_base: '500',
+    status: 'kutilmoqda',
+    needed_by: null,
+    decided_by: null,
+    decided_at: null,
+    decision_note: null,
+    purchase_id: null,
+    note: null,
+    created_by: makeProfile('prorab').id,
+    created_at: minutesAgo(30),
+    deleted_at: null,
+    object_name: 'Obyekt A',
+    material_name: 'Sement',
+    base_unit: 'kg',
+    created_by_name: 'Prorab',
+    decided_by_name: null,
+    ...over,
+  } as MaterialRequest
+}
+
+describe('Audit 2 — bosh ekran "Bo‘limlar" (2, J)', () => {
+  it('admin: ixcham plitkalar, "So‘rovlarni tasdiqlash" da kutayotganlar soni', async () => {
+    vi.mocked(requestsRepo.countPendingRequests).mockResolvedValueOnce(3)
+    open('/tg', 'admin')
+    const tile = await screen.findByTestId('section-approvals')
+    await waitFor(() => expect(tile).toHaveTextContent('3'))
+    expect(tile).toHaveTextContent(t.tg.sections.pending)
+  })
+
+  it('prorab: bo‘limlar Kirim/Chiqim plitkalari ostida, "Bugun" ro‘yxatidan oldin', async () => {
+    open('/tg')
+    const sections = await screen.findByRole('navigation', { name: t.tg.sections.title })
+    const today = screen.getByRole('region', { name: t.tg.home.today })
+    expect(sections.compareDocumentPosition(today) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('direktor: "Qoldiq" bo‘limi (faqat ko‘rish)', async () => {
+    open('/tg', 'direktor')
+    expect(await screen.findByTestId('section-stock')).toBeInTheDocument()
+  })
+})
+
+describe('Audit 2 — "Yozuvlar" (6, 12, F, M)', () => {
+  it('ish xabarlari tepada, izohi bilan; tur chiplari filtrlaydi', async () => {
+    vi.mocked(movementsRepo.listMyMovements).mockResolvedValue([movement()])
+    vi.mocked(purchasesRepo.listMyPurchases).mockResolvedValue([purchase()])
+    open('/tg/mine')
+    await screen.findAllByText('Sement')
+    const toggle = screen.getByRole('region', { name: t.settings.notify.title })
+    expect(toggle).toHaveTextContent(t.settings.notify.text)
+    const list = screen.getByRole('list', { name: tm.title })
+    expect(toggle.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const chips = within(screen.getByRole('group', { name: tm.filterLabel }))
+    fireEvent.click(chips.getByRole('button', { name: tm.filters.purchase }))
+    expect(within(screen.getByRole('list', { name: tm.title })).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByRole('form', { name: t.ui.filters })).toBeInTheDocument()
+  })
+
+  it('50 dan ko‘p — "Ko‘proq yuklash" chegarani oshiradi', async () => {
+    vi.mocked(movementsRepo.listMyMovements).mockResolvedValue(Array.from({ length: 50 }, (_, i) => movement({ id: `m${i}` })))
+    open('/tg/mine')
+    fireEvent.click(await screen.findByRole('button', { name: tm.loadMore }))
+    await waitFor(() => expect(movementsRepo.listMyMovements).toHaveBeenLastCalledWith(makeProfile('prorab').id, 100))
+  })
+
+  it('direktor: ish xabarlari yo‘q, bo‘sh holat — tushuntirish bilan', async () => {
+    open('/tg/mine', 'direktor')
+    expect(await screen.findByText(tm.emptyViewerTitle)).toBeInTheDocument()
+    expect(screen.getByText(tm.emptyViewerHint)).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: t.settings.notify.title })).not.toBeInTheDocument()
+  })
+
+  it('havola: /tg?request=<id> — prorabda so‘rov tafsiloti ochiladi (K)', async () => {
+    vi.mocked(requestsRepo.listMyRequests).mockResolvedValueOnce([request()])
+    open(`/tg?request=${RQ}`)
+    expect(await screen.findByRole('article', { name: tm.detail })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: tm.request })).toBeInTheDocument()
+  })
+})
+
+describe('Audit 2 — tuzatish (8) va bekor qilish (U)', () => {
+  it('Telegram tuzatish varag‘i: katta raqam maydoni, birlik ostida, "= … kg", summa yorlig‘i xarid ekranidagidek', async () => {
+    vi.mocked(purchasesRepo.listMyPurchases).mockResolvedValue([
+      purchase({ created_at: minutesAgo(3), receipt: { received_qty_base: '0', remaining_qty_base: '150', receipt_count: 0, last_received_at: null } }),
+    ])
+    open('/tg/mine')
+    fireEvent.click(await screen.findByText('Sement'))
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(t.correction.action) }))
+    const sheet = within(await screen.findByRole('dialog', { name: t.correction.title }))
+    await sheet.findByRole('group', { name: t.tg.movement.unit })
+    expect(t.correction.total).toBe(t.tg.purchase.sum)
+    expect(sheet.getByLabelText(t.correction.total)).toHaveValue('150 000')
+    expect(sheet.getByTestId('base-qty')).toHaveTextContent('150')
+    expect(sheet.getByLabelText(t.correction.note)).toHaveValue('')
+  })
+
+  it('"Bekor qilish (o‘chirish)" — sabab majburiy, cancel_own_entry', async () => {
+    vi.mocked(movementsRepo.listMyMovements).mockResolvedValue([movement()])
+    open('/tg/mine')
+    fireEvent.click(await screen.findByText('Sement'))
+    fireEvent.click(await screen.findByRole('button', { name: t.correction.cancelAction }))
+    const sheet = within(await screen.findByRole('dialog', { name: t.correction.cancelTitle }))
+    fireEvent.click(sheet.getByRole('button', { name: t.correction.cancelConfirm }))
+    expect(await sheet.findByText(t.correction.errCancelReason)).toBeInTheDocument()
+    expect(correctionsRepo.cancelOwnEntry).not.toHaveBeenCalled()
+    fireEvent.change(sheet.getByLabelText(t.correction.cancelReason), { target: { value: 'ikki marta kiritdim' } })
+    fireEvent.click(sheet.getByRole('button', { name: t.correction.cancelConfirm }))
+    await waitFor(() => expect(correctionsRepo.cancelOwnEntry).toHaveBeenCalledWith('movements', 'mv1', 'ikki marta kiritdim'))
+    expect(await screen.findByText(t.correction.cancelled)).toBeInTheDocument()
+  })
+})
+
+describe('Audit 2 — so‘rovni tasdiqlash konteksti (22, L, K)', () => {
+  it('havola bilan varaq ochiladi; smetada qolgan va oshish — sariq; qoldiq', async () => {
+    vi.mocked(requestsRepo.listRequests).mockResolvedValue({ rows: [request()], total: 1 })
+    vi.mocked(normsRepo.listNormUsage).mockResolvedValue([
+      {
+        company_id: 'c',
+        object_id: 'o-a',
+        material_id: 'm-s',
+        estimate_id: 'e1',
+        norm_qty_base: '1000',
+        allowed_qty_base: '1000',
+        consumed_qty_base: '700',
+        delivered_qty_base: '800',
+        requested_open_qty_base: '500',
+        remaining_qty_base: '300',
+        usage_pct: '70',
+      },
+    ])
+    vi.mocked(stockRepo.getStock).mockResolvedValue('100')
+    open(`/tg?request=${RQ}`, 'admin')
+    const sheet = within(await screen.findByRole('dialog', { name: t.tg.approvals.decideTitle }))
+    expect(await sheet.findByTestId('approval-overrun')).toBeInTheDocument()
+    expect(sheet.getByTestId('approval-remaining')).toHaveClass('text-warn')
+    expect(sheet.getByText(t.tg.approvals.stock)).toBeInTheDocument()
+    // Ro'yxatda takroriy holat belgisi yo'q (hammasi kutilmoqda)
+    const row = screen.getByTestId('approval-row')
+    expect(within(row).queryByText(t.requests.statuses.kutilmoqda)).not.toBeInTheDocument()
+    expect(row).toHaveAttribute('data-kind', 'neutral')
+  })
+})
+
+describe('Audit 2 — obyekt ogohlantirishlari xatosi (9)', () => {
+  it('yuklanmasa — bir qatorli "Qayta urinish"', async () => {
+    vi.mocked(alertsRepo.listSiteAlerts).mockRejectedValueOnce(new Error('x'))
+    open('/tg')
+    const box = await screen.findByTestId('site-alerts-error')
+    expect(within(box).getByText(t.tg.siteAlerts.loadError)).toBeInTheDocument()
+    expect(within(box).getByRole('button', { name: t.common.retry })).toBeInTheDocument()
+  })
+})
+
+describe('Audit 2 — "Qoldiq" (5)', () => {
+  it('bitta obyekt — nomi ko‘rinadi; 0 qoldiq + prognoz — "Tugagan"; qator bosilsa — chiqim', async () => {
+    const qum = makeMaterial('m-q', 'Qum', 'm3')
+    vi.mocked(materialsRepo.listMaterials).mockResolvedValue([sement, qum])
+    vi.mocked(stockRepo.listStock).mockResolvedValue([{ company_id: 'c', object_id: 'o-a', material_id: 'm-s', qty_base: '600', last_movement_at: null }])
+    vi.mocked(forecastRepo.getStockForecast).mockResolvedValue([
+      { objectId: 'o-a', materialId: 'm-q', stockQtyBase: '0', avgDailyOut: '2', daysLeft: '0', otherStockQtyBase: '0', estimateRemainingQtyBase: null },
+    ])
+    open('/tg/stock')
+    expect(await screen.findByTestId('stock-object')).toHaveTextContent('Obyekt A')
+    const rows = await screen.findAllByTestId('stock-item')
+    expect(rows[0]).toHaveTextContent('Qum')
+    expect(rows[0]).toHaveTextContent(t.tg.auto.daysLeftZero)
+    fireEvent.click(within(rows[1] as HTMLElement).getByRole('button'))
+    expect(await screen.findByLabelText(t.tg.movement.qty)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t.movements.types.chiqim })).toHaveAttribute('aria-pressed', 'true')
+  })
+})
+
+describe('Audit 2 — ta’minotchi: barcha obyektlardagi tasdiqlangan so‘rovlar (I, K)', () => {
+  it('obyekt bo‘yicha guruhlangan; tanlansa — obyekt ham tanlanadi', async () => {
+    const objB = makeObject('o-b', 'Obyekt B')
+    vi.mocked(objectsRepo.listObjects).mockResolvedValue([objA, objB])
+    vi.mocked(requestsRepo.listApprovedRequestsAll).mockResolvedValue([
+      request({ status: 'tasdiqlandi' }),
+      request({ id: 'rq-b', status: 'tasdiqlandi', object_id: 'o-b', object_name: 'Obyekt B' }),
+    ])
+    open('/tg/purchase', 'taminotchi')
+    const groups = await screen.findAllByTestId('approved-group')
+    expect(groups.map((g) => g.getAttribute('aria-label'))).toEqual(['Obyekt A', 'Obyekt B'])
+    fireEvent.click(within(groups[1] as HTMLElement).getByTestId('approved-request'))
+    expect(await screen.findByTestId('request-tag')).toBeInTheDocument()
+    expect(screen.getByText('Obyekt B')).toBeInTheDocument()
   })
 })

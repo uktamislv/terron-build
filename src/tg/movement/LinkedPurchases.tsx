@@ -1,5 +1,5 @@
 import { Check, Link2, ShoppingCart } from 'lucide-react'
-import { cx } from '@/components/ui'
+import { choiceClass, cx } from '@/components/ui'
 import type { OpenPurchase } from '@/data/types'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
@@ -46,10 +46,7 @@ export function LinkedPurchases({
             key={p.id}
             data-testid="open-purchase"
             data-linked={selected ? 'true' : undefined}
-            className={cx(
-              'relative flex min-h-14 items-center gap-3 overflow-hidden rounded-xl border py-2.5 pr-2 pl-4',
-              selected ? 'border-brand bg-ice' : 'border-line bg-paper',
-            )}
+            className={cx(choiceClass({ selected, shape: 'row', emphasis: false }), 'relative min-h-14 overflow-hidden py-2.5 pr-2 pl-4')}
           >
             <span aria-hidden className={cx('absolute inset-y-2 left-0 w-1 rounded-r-full', selected ? 'bg-brand' : 'bg-navy')} />
             <ShoppingCart aria-hidden className="size-5 shrink-0 text-navy" strokeWidth={1.75} />

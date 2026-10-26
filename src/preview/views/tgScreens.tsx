@@ -80,6 +80,10 @@ const summary: DashboardSummary = {
   pending_transfers_count: 2,
   pending_requests_count: 3,
   objects_over_norm_count: 1,
+  cash_outstanding_sum: '0',
+  cash_owed_to_staff_sum: '0',
+  telegram_blocked_count: 0,
+  telegram_me_blocked: false,
 }
 
 function norm(objectId: string, objectName: string, materialId: string, materialName: string, allowed: string, consumed: string) {

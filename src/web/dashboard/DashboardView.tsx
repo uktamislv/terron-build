@@ -3,6 +3,7 @@ import { lazy, Suspense, useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowDownLeft,
+  BellOff,
   ArrowLeftRight,
   ArrowUpRight,
   BarChart3,
@@ -18,21 +19,21 @@ import {
 } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Badge, EmptyState, EntryRow, Notice, PageHeader, RetryNotice, SegmentedControl, SkeletonRows, SkeletonTiles, StatTile, cx } from '@/components/ui'
-import type { DailyRow, NormOverviewRow, SpendGroup, SpendRow } from '@/data/reportsRepo'
+import type { DailyRow, EstimateSpendRow, NormOverviewRow, SpendGroup, SpendRow } from '@/data/reportsRepo'
 import { SPEND_GROUPS } from '@/data/reportsRepo'
 import type { Alert } from '@/data/types'
 import { t } from '@/i18n'
-import { formatDateTime, formatQty, formatSum } from '@/lib/format'
+import { formatDateTime, formatQty, formatQtyUnit, formatSum } from '@/lib/format'
 import type { Loaded } from '@/lib/useLoad'
 import { alertDetailText } from '../alerts/alertDetails'
 import { SEVERITY_TONE } from '../alerts/alertTones'
 import type { CardKey, DashCard } from './cards'
-import { dailyChartRows, normChartRows, spendChartRows, type CashPoint } from './chartData'
+import { dailyChartRows, estimateSpendRows, normChartRows, spendChartRows, type CashPoint } from './chartData'
 
 // Recharts faqat shu chunk'da
 const charts = () => import('./Charts')
 const DailyChart = lazy(() => charts().then((m) => ({ default: m.DailyChart })))
-const NormChart = lazy(() => charts().then((m) => ({ default: m.NormChart })))
+const EstimateSpendChart = lazy(() => charts().then((m) => ({ default: m.EstimateSpendChart })))
 const SpendChart = lazy(() => charts().then((m) => ({ default: m.SpendChart })))
 const CashChart = lazy(() => charts().then((m) => ({ default: m.CashChart })))
 
@@ -92,6 +93,7 @@ const CARD_ICON: Record<CardKey, ReactNode> = {
   pendingTransfers: <ArrowLeftRight {...ic} />,
   pendingRequests: <ClipboardList {...ic} />,
   overNorm: <Gauge {...ic} />,
+  telegramBlocked: <BellOff {...ic} />,
 }
 
 /** Raqamli kartochkalar: davr ko'rsatkichlari, so'ng "hozir" (joriy holat) kartochkalari. */
@@ -225,27 +227,67 @@ function DailySection({ rows, from, to }: { rows: DailyRow[]; from: string; to: 
   )
 }
 
-export function NormCard({ state, objectId }: { state: Loaded<NormOverviewRow[]>; objectId: string }) {
-  const data = useMemo(() => normChartRows(state.data ?? []), [state.data])
+/**
+ * "Smeta va haqiqiy": diagramma — obyekt bo'yicha pul (smeta jami va davrdagi xaridlar, bitta o'q, so'm);
+ * ostida ikkinchi darajali jadval — materiallar bo'yicha miqdor (norma va sarf, asosiy birlikda).
+ */
+export function NormCard({
+  state,
+  money,
+  objectId,
+}: {
+  state: Loaded<NormOverviewRow[]>
+  money: Loaded<EstimateSpendRow[]>
+  objectId: string
+}) {
+  const data = useMemo(() => estimateSpendRows(money.data ?? []), [money.data])
+  const qty = useMemo(() => normChartRows(state.data ?? []), [state.data])
   return (
     <ChartCard title={tc.norm}>
-      <p className="-mt-2 text-xs text-muted">
-        {tc.normHint}
-        {!objectId && `. ${tc.normAllObjects}`}
-      </p>
-      <LoadStatus state={state} />
-      {state.data && data.length === 0 && <NoData />}
+      <p className="-mt-2 text-xs text-muted">{tc.moneyHint}</p>
+      <LoadStatus state={money} />
+      {money.data && data.length === 0 && <NoData />}
       {data.length > 0 && (
         <>
           <ChartSuspense>
-            <NormChart data={data} />
+            <EstimateSpendChart data={data} />
           </ChartSuspense>
           <SrTable
             caption={tc.norm}
-            head={[t.excel.cols.material, tc.normAllowed, tc.normConsumed]}
-            rows={data.map((p) => [p.name, `${formatQty(p.allowedText)} ${p.unit}`.trim(), `${formatQty(p.consumedText)} ${p.unit}`.trim()])}
+            head={[t.excel.cols.object, tc.estimateSum, tc.spentSum]}
+            rows={data.map((p) => [p.name, p.estimateText === null ? tc.noEstimate : formatSum(p.estimateText), formatSum(p.spentText)])}
           />
         </>
+      )}
+      <LoadStatus state={state} />
+      {qty.length > 0 && (
+        <div className="flex flex-col gap-1.5" data-testid="norm-qty-table">
+          <h3 className="text-sm font-semibold text-ink">{tc.qtyTitle}</h3>
+          <p className="text-xs text-muted">
+            {tc.normHint}
+            {!objectId && `. ${tc.normAllObjects}`}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left text-muted">
+                  <th className="py-1.5 pr-3 font-medium">{t.excel.cols.material}</th>
+                  <th className="py-1.5 pr-3 text-right font-medium">{tc.normAllowed}</th>
+                  <th className="py-1.5 text-right font-medium">{tc.normConsumed}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {qty.map((p) => (
+                  <tr key={p.materialId} className="border-b border-line/60 last:border-0">
+                    <td className={cx('py-1.5 pr-3', p.over ? 'font-semibold text-danger' : 'text-ink')}>{p.name}</td>
+                    <td className="tabular py-1.5 pr-3 text-right">{formatQtyUnit(p.allowedText, p.unit)}</td>
+                    <td className={cx('tabular py-1.5 text-right', p.over && 'font-semibold text-danger')}>{formatQtyUnit(p.consumedText, p.unit)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </ChartCard>
   )
@@ -322,7 +364,7 @@ export function RecentAlertsCard({ state }: { state: Loaded<Alert[]> }) {
               as="li"
               testId="recent-alert"
               kind={SEVERITY_KIND[a.severity]}
-              icon={<TriangleAlert className="size-[18px]" strokeWidth={1.75} />}
+              icon={<TriangleAlert className="size-5" strokeWidth={1.75} />}
               title={t.alertTexts.types[a.type]}
               badge={<Badge tone={SEVERITY_TONE[a.severity]}>{t.alertTexts.severities[a.severity]}</Badge>}
               meta={

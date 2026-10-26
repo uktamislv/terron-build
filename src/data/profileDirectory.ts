@@ -7,7 +7,7 @@ import { toRepoError } from './errors'
 import { inChunks } from './fetchAll'
 import { getSupabase } from './supabaseClient'
 
-export const DIRECTORY_COLUMNS = 'id, company_id, full_name, role, is_active'
+export const DIRECTORY_COLUMNS = 'id, company_id, full_name, role, is_active, is_available'
 
 /** `profile_directory` qatori. O'chirilgan profillar ham bor (tarixdagi ismlar uchun). */
 export interface DirectoryProfile {
@@ -16,6 +16,16 @@ export interface DirectoryProfile {
   full_name: string
   role: Role
   is_active: boolean
+  /**
+   * Tanlash mumkinmi (faol, o'chirilmagan, firma faol) — tanlash ro'yxatlari (xaridor, pul oluvchi) shunga
+   * tayanadi. Eski javobda yo'q bo'lsa — is_active.
+   */
+  is_available?: boolean
+}
+
+/** Tanlash ro'yxatiga qo'yish mumkinmi (is_available, bo'lmasa is_active). */
+export function isAvailable(p: Pick<DirectoryProfile, 'is_active' | 'is_available'>): boolean {
+  return p.is_available ?? p.is_active
 }
 
 /** Firma xodimlari (o'chirilganlari ham — view filtrlamaydi), ism bo'yicha. */
@@ -25,10 +35,10 @@ export async function listDirectory(): Promise<DirectoryProfile[]> {
   return (data ?? []) as DirectoryProfile[]
 }
 
-/** Faol xodimlar (tanlash ro'yxatlari uchun), ixtiyoriy rol filtri bilan. */
+/** Tanlash mumkin bo'lgan xodimlar (is_available), ixtiyoriy rol filtri bilan. */
 export async function listActiveDirectory(roles?: readonly Role[]): Promise<DirectoryProfile[]> {
   const all = await listDirectory()
-  return all.filter((p) => p.is_active && (!roles || roles.includes(p.role)))
+  return all.filter((p) => isAvailable(p) && (!roles || roles.includes(p.role)))
 }
 
 /** Berilgan id'lar bo'yicha ismlar (id → ism). Bo'sh/null id'lar tashlanadi. */

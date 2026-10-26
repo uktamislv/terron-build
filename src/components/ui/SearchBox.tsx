@@ -13,6 +13,7 @@ export function SearchBox({
   placeholder,
   size = 'lg',
   className,
+  autoFocus,
 }: {
   label: string
   value: string
@@ -20,6 +21,8 @@ export function SearchBox({
   placeholder?: string
   size?: 'md' | 'lg'
   className?: string
+  /** Foydalanuvchi amalidan keyin ochilganda (masalan "O'zgartirish") — darhol yozish. */
+  autoFocus?: boolean
 }) {
   return (
     <div className={cx('relative', className)}>
@@ -31,6 +34,7 @@ export function SearchBox({
       <input
         type="search"
         aria-label={label}
+        autoFocus={autoFocus}
         placeholder={placeholder ?? label}
         value={value}
         onChange={(e) => onChange(e.target.value)}

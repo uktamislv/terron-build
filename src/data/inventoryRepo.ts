@@ -165,8 +165,11 @@ export async function saveCountItem(input: CountItemInput): Promise<InventoryCou
 }
 
 export interface SubmitResult {
-  /** Kamomad bormi — raqamlar tekshiruvchiga qaytarilmaydi. */
-  hasShortage: boolean
+  /**
+   * Kamomad bormi — raqamlar tekshiruvchiga qaytarilmaydi. null — natija yashirin (admin bo'lmaganlarga
+   * server faqat {ok:true} qaytaradi; ko'r-ko'rona sanash).
+   */
+  hasShortage: boolean | null
   notCountedCount: number
 }
 
@@ -175,7 +178,8 @@ export async function submitCount(countId: string): Promise<SubmitResult> {
   const { data, error } = await getSupabase().rpc('submit_inventory_count', { p_count_id: countId })
   if (error) throw toRepoError(error)
   const raw = (Array.isArray(data) ? data[0] : data) as { has_shortage?: unknown; not_counted_count?: unknown } | null
-  return { hasShortage: raw?.has_shortage === true, notCountedCount: Number(raw?.not_counted_count ?? 0) || 0 }
+  const hidden = !raw || typeof raw.has_shortage !== 'boolean'
+  return { hasShortage: hidden ? null : raw.has_shortage === true, notCountedCount: Number(raw?.not_counted_count ?? 0) || 0 }
 }
 
 /** Sanash uchun materiallar (RPC `inventory_candidate_materials`): qoldig'i bor yoki smetadagi — faqat id'lar. */

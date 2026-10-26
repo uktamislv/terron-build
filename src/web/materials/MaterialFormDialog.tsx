@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent } from 'react'
-import { Button, choiceClass, Modal, Notice, TextField } from '@/components/ui'
+import { Button, Checkbox, choiceClass, Modal, Notice, TextField } from '@/components/ui'
 import { createMaterial, updateMaterial } from '@/data/materialsRepo'
 import type { Material } from '@/data/types'
 import { t } from '@/i18n'
@@ -139,12 +139,7 @@ export function MaterialFormDialog({
           error={errors.waste ? t.materials.errWaste : null}
         />
         <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line bg-paper px-3 py-2.5">
-          <input
-            type="checkbox"
-            checked={photoRequired}
-            onChange={(e) => setPhotoRequired(e.target.checked)}
-            className="mt-0.5 size-5 shrink-0 accent-brand"
-          />
+          <Checkbox checked={photoRequired} onChange={(e) => setPhotoRequired(e.target.checked)} className="mt-0.5" />
           <span className="flex flex-col">
             <span className="text-sm font-medium text-ink">{t.materials.photoRequired}</span>
             <span className="text-xs text-muted">{t.materials.photoRequiredHint}</span>

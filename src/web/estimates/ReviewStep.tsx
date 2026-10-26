@@ -71,7 +71,7 @@ export function ReviewStep({
           <ul className="flex flex-col gap-1 text-sm text-muted">
             {plan.aliases.map((a) => (
               <li key={`${a.materialKey}|${a.alias}`}>
-                «{a.alias}» → <b>{a.materialName}</b>
+                “{a.alias}” → <b>{a.materialName}</b>
               </li>
             ))}
           </ul>

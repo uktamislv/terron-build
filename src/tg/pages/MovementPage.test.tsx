@@ -555,3 +555,69 @@ describe('/tg/movement — bog‘langan xarid (kirim)', () => {
     expect(vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0]).not.toHaveProperty('purchaseId')
   })
 })
+
+describe('11: bosishlar soni — kirim/chiqim odatiy holatda ≤ 4 bosish', () => {
+  function telegramApp() {
+    const main: Record<string, unknown> = {}
+    Object.assign(main, {
+      setText: vi.fn(() => main),
+      onClick: vi.fn((cb: () => void) => {
+        tg.mainClick = cb
+        return main
+      }),
+      offClick: vi.fn(() => main),
+      enable: vi.fn(() => main),
+      disable: vi.fn(() => main),
+      showProgress: vi.fn(() => main),
+      hideProgress: vi.fn(() => main),
+      show: vi.fn(() => main),
+      hide: vi.fn(() => main),
+      setParams: vi.fn(() => main),
+    })
+    return { MainButton: main, BackButton: { show: vi.fn(), hide: vi.fn(), onClick: vi.fn(), offClick: vi.fn() } }
+  }
+
+  it('Bosh → "Kirim" → material → miqdor (klaviatura) → birlik → MainButton: 4 bosish', async () => {
+    tg.app = telegramApp()
+    vi.mocked(movementsRepo.listMyMovements).mockResolvedValue([])
+    let taps = 0
+    const tap = (el: HTMLElement) => {
+      taps += 1
+      fireEvent.click(el)
+    }
+    render(<RouterProvider router={createMemoryRouter(routes, { initialEntries: ['/tg'] })} />)
+    tap(await screen.findByRole('link', { name: new RegExp(t.movements.types.kirim) }))
+    const grid = await screen.findByRole('region', { name: tm.chooseMaterial })
+    tap(within(grid).getByRole('button', { name: /Sement/ }))
+    // Miqdor — klaviatura (bosish emas); maydon ochilganda fokusda
+    const qty = screen.getByLabelText(tm.qty)
+    expect(qty).toHaveFocus()
+    fireEvent.change(qty, { target: { value: '3' } })
+    // Birlik chiplari — miqdor maydoni ostida darhol (klaviatura ularni yopmaydi)
+    const units = screen.getByRole('group', { name: tm.unit })
+    expect(units.previousElementSibling?.contains(qty)).toBe(true)
+    tap(within(units).getByRole('button', { name: 'qop' }))
+    // Sana — obyekt satridagi ixcham chip (standart "Bugun", bosish shart emas)
+    expect(screen.getByTestId('date-chip')).toHaveTextContent(t.tg.date.today)
+    await waitFor(() => expect(tg.mainClick).not.toBeNull())
+    taps += 1
+    act(() => tg.mainClick?.())
+    await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0]).toMatchObject({ type: 'kirim', unitId: 'u-qop', qtyInput: '3' })
+    expect(taps).toBeLessThanOrEqual(4)
+  })
+
+  it('5: "Qoldiq" qatoridan — chiqim, material oldindan tanlangan', async () => {
+    vi.mocked(movementsRepo.listMyMovements).mockResolvedValue([])
+    render(
+      <RouterProvider
+        router={createMemoryRouter(routes, {
+          initialEntries: [{ pathname: '/tg/movement', state: { movementPrefill: { type: 'chiqim', objectId: 'o-a', materialId: 'm-sem' } } }],
+        })}
+      />,
+    )
+    expect(await screen.findByLabelText(tm.qty)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t.movements.types.chiqim })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('region', { name: 'Sement' })).toBeInTheDocument()
+  })
+})

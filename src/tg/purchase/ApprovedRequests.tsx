@@ -12,14 +12,10 @@ function label(r: MaterialRequest): string {
   return `${formatQty(r.qty_input)} ${unitLabel({ unit: r.unit_input, variant: r.unit_variant })}`
 }
 
-export function ApprovedRequestChips({ requests, onPick }: { requests: MaterialRequest[]; onPick: (r: MaterialRequest) => void }) {
-  if (requests.length === 0) return null
+function Chips({ requests, onPick }: { requests: MaterialRequest[]; onPick: (r: MaterialRequest) => void }) {
   return (
-    <section aria-label={ta.approvedRequests} className="flex flex-col gap-2">
-      <SectionTitle>{ta.approvedRequests}</SectionTitle>
-      <p className="text-sm text-muted">{ta.approvedRequestsHint}</p>
-      <div className="flex flex-wrap gap-2">
-        {requests.map((r) => (
+    <div className="flex flex-wrap gap-2">
+      {requests.map((r) => (
           <button
             key={r.id}
             type="button"
@@ -31,8 +27,50 @@ export function ApprovedRequestChips({ requests, onPick }: { requests: MaterialR
             <span>{r.material_name}</span>
             <span className="tabular font-normal text-muted">{label(r)}</span>
           </button>
-        ))}
-      </div>
+      ))}
+    </div>
+  )
+}
+
+/** Obyekt bo'yicha guruhlash (kiritilgan tartib saqlanadi). */
+function byObject(requests: MaterialRequest[]): { objectId: string; name: string; rows: MaterialRequest[] }[] {
+  const groups = new Map<string, { objectId: string; name: string; rows: MaterialRequest[] }>()
+  for (const r of requests) {
+    const g = groups.get(r.object_id) ?? { objectId: r.object_id, name: r.object_name ?? '', rows: [] }
+    g.rows.push(r)
+    groups.set(r.object_id, g)
+  }
+  return [...groups.values()]
+}
+
+/**
+ * Tasdiqlangan so'rovlar chiplari. `groupByObject` — ta'minotchi: barcha obyektlar, obyekt nomi ostida
+ * guruhlangan; bosilsa obyekt ham tanlanadi.
+ */
+export function ApprovedRequestChips({
+  requests,
+  onPick,
+  groupByObject = false,
+}: {
+  requests: MaterialRequest[]
+  onPick: (r: MaterialRequest) => void
+  groupByObject?: boolean
+}) {
+  if (requests.length === 0) return null
+  return (
+    <section aria-label={ta.approvedRequests} className="flex flex-col gap-2">
+      <SectionTitle>{ta.approvedRequests}</SectionTitle>
+      <p className="text-sm text-muted">{ta.approvedRequestsHint}</p>
+      {groupByObject ? (
+        byObject(requests).map((g) => (
+          <div key={g.objectId} role="group" aria-label={g.name} data-testid="approved-group" className="flex flex-col gap-1.5">
+            <p className="text-sm font-semibold text-ink">{g.name}</p>
+            <Chips requests={g.rows} onPick={onPick} />
+          </div>
+        ))
+      ) : (
+        <Chips requests={requests} onPick={onPick} />
+      )}
     </section>
   )
 }

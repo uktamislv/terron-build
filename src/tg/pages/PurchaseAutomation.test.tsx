@@ -1,6 +1,6 @@
 // Batch 12 — xarid ekrani: chek QR (G), tasdiqlangan so'rovlar (H), takroriy xarid (C),
 // rasm majburiy (E), joylashuv (D).
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import * as authRepo from '@/data/authRepo'
 import * as cashRepo from '@/data/cashRepo'
@@ -214,7 +214,10 @@ function fill(qty: string, sum: string) {
 
 async function pressMain() {
   await waitFor(() => expect(tg.main).not.toBeNull())
-  tg.main?.()
+  // Telegram MainButton bosilishi React holatini yangilaydi — act ichida (ogohlantirishsiz)
+  await act(async () => {
+    tg.main?.()
+  })
 }
 
 describe('Batch 12 (G) — chek QR', () => {
@@ -225,7 +228,7 @@ describe('Batch 12 (G) — chek QR', () => {
       sellerTin: '123456789',
       datetime: '2026-10-25T14:30:00+05:00',
       total: '250000',
-      items: [{ name: 'Sement', qty: '5', price: '50000', sum: '250000' }],
+      items: [{ name: 'Sement', qty: '5', price: '50000', sum: '250000', unit: null }],
       fiscalSign: '248429044289',
       terminalId: 'UZ170703100189',
       receiptNo: '643',
@@ -267,7 +270,7 @@ describe('Batch 12 (G) — chek QR', () => {
       sellerTin: '987654321',
       datetime: null,
       total: '100000',
-      items: [{ name: 'Qum', qty: '2', price: '50000', sum: '100000' }],
+      items: [{ name: 'Qum', qty: '2', price: '50000', sum: '100000', unit: null }],
       fiscalSign: '1',
       terminalId: 'UZ1',
       receiptNo: '1',
@@ -288,8 +291,8 @@ describe('Batch 12 (G) — chek QR', () => {
       datetime: null,
       total: '400000',
       items: [
-        { name: 'Sement', qty: '4', price: '50000', sum: '200000' },
-        { name: 'Qum', qty: '2', price: '100000', sum: '200000' },
+        { name: 'Sement', qty: '4', price: '50000', sum: '200000', unit: null },
+        { name: 'Qum', qty: '2', price: '100000', sum: '200000', unit: null },
       ],
       fiscalSign: '1',
       terminalId: 'UZ1',
@@ -349,7 +352,7 @@ describe('Batch 12 (G) — chek QR', () => {
     tg.app = telegramApp()
     vi.mocked(receiptRepo.receiptLookup).mockRejectedValue(new RepoError('receipt_unreadable'))
     vi.mocked(purchasesRepo.createPurchase).mockRejectedValue(
-      new RepoError('receipt_already_used', 'x', 'Bu chek 24.10.2026 da Ali tomonidan ishlatilgan'),
+      new RepoError('receipt_already_used', 'x', ['Ali', '24.10.2026 14:00']),
     )
     open()
     fireEvent.click(await screen.findByRole('button', { name: ta.scanReceipt }))
@@ -357,7 +360,7 @@ describe('Batch 12 (G) — chek QR', () => {
     await pickMaterial('Sement')
     fill('2', '100000')
     await pressMain()
-    expect(await screen.findByText(/Ali tomonidan ishlatilgan/)).toBeInTheDocument()
+    expect(await screen.findByText(t.errorsWith.receipt_already_used('Ali', '24.10.2026 14:00'))).toBeInTheDocument()
     expect(screen.getByText(ta.receiptUsed)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: ta.receiptRemove }))
     expect(screen.queryByTestId('receipt-card')).not.toBeInTheDocument()
@@ -371,7 +374,7 @@ describe('Batch 12 (G) — chek QR', () => {
 })
 
 describe('Batch 12 (G) — qisman bo‘sh 200 javob', () => {
-  it('maydonlar null bo‘lsa ham tasdiqlangan (server bilan bir xil) — rasm majburiyati yo‘q', async () => {
+  it('chek jami noma’lum (null) — tasdiqlanmagan (server bilan bir xil: receiptVerified), rasm majburiyati qoladi', async () => {
     tg.app = telegramApp()
     vi.mocked(materialsRepo.listMaterials).mockResolvedValue([{ ...sement, photo_required: true }, qum])
     vi.mocked(receiptRepo.receiptLookup).mockResolvedValue({
@@ -386,13 +389,38 @@ describe('Batch 12 (G) — qisman bo‘sh 200 javob', () => {
     })
     open()
     fireEvent.click(await screen.findByRole('button', { name: ta.scanReceipt }))
-    expect(await screen.findByTestId('receipt-card')).toHaveAttribute('data-verified', 'true')
+    expect(await screen.findByTestId('receipt-card')).not.toHaveAttribute('data-verified')
     await pickMaterial('Sement')
     fill('2', '100000')
+    // Material "rasm majburiy" — QR ozod qilmaydi (chek jami noma'lum)
+    expect(await screen.findByTestId('photo-required')).toBeInTheDocument()
+    await pressMain()
+    expect(purchasesRepo.createPurchase).not.toHaveBeenCalled()
+  })
+
+  it('chek jami summaga mos va sana ±3 kun ichida — tasdiqlangan, rasm majburiyati yo‘q', async () => {
+    tg.app = telegramApp()
+    vi.mocked(materialsRepo.listMaterials).mockResolvedValue([{ ...sement, photo_required: true }, qum])
+    vi.mocked(receiptRepo.receiptLookup).mockResolvedValue({
+      sellerName: null,
+      sellerTin: null,
+      datetime: new Date().toISOString(),
+      total: '100000',
+      items: [],
+      fiscalSign: null,
+      terminalId: null,
+      receiptNo: null,
+    })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: ta.scanReceipt }))
+    await screen.findByTestId('receipt-card')
+    await pickMaterial('Sement')
+    fill('2', '100000')
+    expect(await screen.findByTestId('receipt-card')).toHaveAttribute('data-verified', 'true')
     expect(screen.queryByTestId('photo-required')).not.toBeInTheDocument()
     await pressMain()
     await waitFor(() => expect(purchasesRepo.createPurchase).toHaveBeenCalled())
-    expect(vi.mocked(purchasesRepo.createPurchase).mock.calls[0]?.[0].receipt).toMatchObject({ verified: true, total: null })
+    expect(vi.mocked(purchasesRepo.createPurchase).mock.calls[0]?.[0].receipt).toMatchObject({ verified: true, total: '100000' })
   })
 })
 
@@ -477,7 +505,7 @@ describe('Batch 12 (C, E) — takroriy xarid va rasm majburiy', () => {
       sellerTin: null,
       datetime: null,
       total: '250000',
-      items: [{ name: 'Sement', qty: '5', price: '50000', sum: '250000' }],
+      items: [{ name: 'Sement', qty: '5', price: '50000', sum: '250000', unit: null }],
       fiscalSign: '1',
       terminalId: 'UZ1',
       receiptNo: '1',

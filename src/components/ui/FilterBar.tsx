@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { Calendar, Check, ChevronDown, X } from 'lucide-react'
 import { formatDate } from '@/lib/format'
 import { t } from '@/i18n'
@@ -153,28 +153,7 @@ function DesktopBar({ filters, clear, extra }: { filters: FilterDef[]; clear: Re
               </div>
             )
           case 'dateRange':
-            return (
-              <div key={f.key} role="group" aria-label={f.label} className={cx(chipClass(active), 'gap-1 pr-1.5', focusWithin)}>
-                <Calendar aria-hidden className="size-4" strokeWidth={1.75} />
-                <DateInput
-                  aria-label={f.fromLabel}
-                  value={f.from}
-                  max={f.to || undefined}
-                  onChange={f.onFrom}
-                  className="tabular min-h-11 w-26 bg-transparent px-1 text-sm outline-none placeholder:text-muted"
-                />
-                <span aria-hidden className="text-muted">
-                  –
-                </span>
-                <DateInput
-                  aria-label={f.toLabel}
-                  value={f.to}
-                  min={f.from || undefined}
-                  onChange={f.onTo}
-                  className="tabular min-h-11 w-26 bg-transparent px-1 text-sm outline-none placeholder:text-muted"
-                />
-              </div>
-            )
+            return <DateRangeChip key={f.key} f={f} active={active} />
           case 'toggle':
             return (
               <label key={f.key} className={cx(chipClass(f.checked), 'cursor-pointer', focusWithin)}>
@@ -199,6 +178,54 @@ function DesktopBar({ filters, clear, extra }: { filters: FilterDef[]; clear: Re
   )
 }
 
+
+/**
+ * Kompyuterdagi sana oralig'i chipi. Noto'g'ri yoki chegaradan tashqari sana jim e'tiborsiz qoldirilmaydi:
+ * chip qizil chegarali bo'ladi, input `aria-invalid`, ostida xato matni (`role="alert"`).
+ */
+function DateRangeChip({ f, active }: { f: DateRangeFilter; active: boolean }) {
+  const [fromErr, setFromErr] = useState<string | null>(null)
+  const [toErr, setToErr] = useState<string | null>(null)
+  const errId = useId()
+  const error = fromErr ?? toErr
+  const inputCls = (bad: boolean) =>
+    cx('tabular min-h-11 w-26 bg-transparent px-1 text-sm outline-none placeholder:text-muted', bad && 'text-danger')
+  return (
+    <div className="flex flex-col gap-1">
+      <div role="group" aria-label={f.label} className={cx(chipClass(active), 'gap-1 pr-1.5', focusWithin, error && 'border-danger')}>
+        <Calendar aria-hidden className="size-4" strokeWidth={1.75} />
+        <DateInput
+          aria-label={f.fromLabel}
+          aria-invalid={fromErr ? true : undefined}
+          aria-describedby={fromErr ? errId : undefined}
+          value={f.from}
+          max={f.to || undefined}
+          onChange={f.onFrom}
+          onInvalidChange={setFromErr}
+          className={inputCls(Boolean(fromErr))}
+        />
+        <span aria-hidden className="text-muted">
+          –
+        </span>
+        <DateInput
+          aria-label={f.toLabel}
+          aria-invalid={toErr ? true : undefined}
+          aria-describedby={toErr ? errId : undefined}
+          value={f.to}
+          min={f.from || undefined}
+          onChange={f.onTo}
+          onInvalidChange={setToErr}
+          className={inputCls(Boolean(toErr))}
+        />
+      </div>
+      {error && (
+        <p id={errId} role="alert" className="px-2 text-xs text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
 
 function MobileBar({ filters, clear, extra }: { filters: FilterDef[]; clear: ReactNode; extra: ReactNode }) {
   const [openKey, setOpenKey] = useState<string | null>(null)

@@ -3,7 +3,7 @@
 // Qoidalar umumiy: narx og'ishi (check_purchase_price), rasm majburiyligi, takroriy yozuv ogohlantirishi.
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { Button, choiceClass, DateField, Modal, Notice, SelectField, SkeletonRows, TextAreaField, TextField } from '@/components/ui'
+import { Button, choiceClass, DateField, Modal, Notice, RetryNotice, SelectField, SkeletonRows, TextAreaField, TextField } from '@/components/ui'
 import { DEFAULT_COMPANY_SETTINGS, getCompanySettings, type CompanySettings } from '@/data/companiesRepo'
 import { requestPhotoHash } from '@/data/functions'
 import { listMaterials } from '@/data/materialsRepo'
@@ -12,7 +12,8 @@ import { listActiveDirectory } from '@/data/profileDirectory'
 import { checkPurchasePrice, createPurchase, listMyPurchases, type PriceCheck } from '@/data/purchasesRepo'
 import { listApprovedRequests } from '@/data/requestsRepo'
 import { createSupplier, listSuppliers, supplierKey } from '@/data/suppliersRepo'
-import type { Material, MaterialRequest, ObjectRow, PersonRef, Purchase, Supplier } from '@/data/types'
+import type { Material, MaterialRequest, ObjectRow, PaymentSource, PersonRef, Purchase, Supplier } from '@/data/types'
+import { PAYMENT_SOURCES } from '@/data/types'
 import { formatSumInput, parseSumInput } from '@/domain/cash'
 import { cmp } from '@/domain/decimal'
 import { entryDateBounds, tashkentDateOf } from '@/domain/entryDate'
@@ -26,6 +27,7 @@ import { uuid } from '@/lib/uuid'
 import { PhotoField } from '@/tg/entry/PhotoPicker'
 import { usePhotoDraft } from '@/tg/entry/usePhotoDraft'
 import { emptyPurchaseForm, validateAddPurchase, type AddPurchaseError, type AddPurchaseField, type AddPurchaseForm } from './addPurchaseForm'
+import { loadLastPurchaseObject, saveLastPurchaseObject } from './lastObject'
 import { MaterialPicker } from './MaterialPicker'
 
 const ta = t.purchases.addForm
@@ -52,6 +54,9 @@ function fieldError(field: AddPurchaseField, code: AddPurchaseError | undefined)
 export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; onSaved: (p: Purchase) => void }) {
   const { profile: me } = useAuth()
   const isAdmin = me?.role === 'admin' || me?.role === 'super_admin'
+  // Pul manbai — admin / super_admin / buxgalter tanlaydi (server shu rollarga ruxsat beradi)
+  const canPickSource = isAdmin || me?.role === 'buxgalter'
+  const [paymentSource, setPaymentSource] = useState<PaymentSource | ''>('')
   const [refs, setRefs] = useState<Refs | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -89,8 +94,10 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
           buyers,
           recent,
         })
-        // Bitta obyekt — avtomatik tanlanadi
-        if (active.length === 1) setForm((f) => ({ ...f, objectId: f.objectId || (active[0]?.id ?? '') }))
+        // Bitta obyekt — avtomatik; bir nechta — oxirgi tanlangani (hali faol bo'lsa)
+        const last = loadLastPurchaseObject()
+        const preset = active.length === 1 ? active[0]?.id : active.find((o) => o.id === last)?.id
+        if (preset) setForm((f) => ({ ...f, objectId: f.objectId || preset }))
         setLoadError(null)
       })
       .catch((err: unknown) => alive && setLoadError(errorText(err)))
@@ -248,9 +255,11 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
         buyerId: isAdmin && form.buyerId ? form.buyerId : me.id,
         purchasedAt: result.value.purchasedAt,
         requestId: form.requestId || null,
+        ...(canPickSource && paymentSource ? { paymentSource } : {}),
       })
       // Chek rasmi xeshi — serverda, fonda (xato foydalanuvchiga ta'sir qilmaydi)
       if (receiptPhotoPath) void requestPhotoHash('purchases', saved.id)
+      saveLastPurchaseObject(form.objectId)
       onSaved(saved)
     } catch (err) {
       if (!photo.handleSaveError(err)) setSaveError(errorText(err))
@@ -285,16 +294,16 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
         )
       }
     >
-      {loadError && <Notice>{loadError}</Notice>}
-      {loadError && (
-        <Button variant="secondary" className="mt-3" onClick={() => setReloadKey((k) => k + 1)}>
-          {t.common.retry}
-        </Button>
-      )}
+      {loadError && <RetryNotice message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />}
       {!refs && !loadError && <SkeletonRows rows={5} />}
       {refs && (
         <form id="add-purchase-form" noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
-          <SelectField label={tm.object} value={form.objectId} onChange={(v) => set({ objectId: v, requestId: '' })}>
+          <SelectField
+            label={tm.object}
+            value={form.objectId}
+            error={fieldError('object', errors.object)}
+            onChange={(v) => set({ objectId: v, requestId: '' })}
+          >
             <option value="">{tm.chooseObject}</option>
             {refs.objects.map((o) => (
               <option key={o.id} value={o.id}>
@@ -302,11 +311,6 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
               </option>
             ))}
           </SelectField>
-          {errors.object && (
-            <p role="alert" className="-mt-3 text-xs text-danger">
-              {fieldError('object', errors.object)}
-            </p>
-          )}
 
           {objectRequests.length > 0 && (
             <SelectField label={ta.request} hint={ta.requestHint} value={form.requestId} onChange={pickRequest}>
@@ -322,7 +326,7 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
           <MaterialPicker materials={refs.materials} value={form.materialId || null} onChange={pickMaterial} error={fieldError('material', errors.material)} />
 
           {material && (
-            <fieldset className="flex flex-col gap-2">
+            <fieldset className="flex flex-col gap-2" aria-describedby={errors.unit ? 'add-purchase-unit-error' : undefined}>
               <legend className="mb-1 text-sm font-medium text-ink">{tm.unit}</legend>
               <div className="flex flex-wrap gap-2">
                 {material.units.map((u) => (
@@ -338,7 +342,7 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
                 ))}
               </div>
               {errors.unit && (
-                <p role="alert" className="text-xs text-danger">
+                <p id="add-purchase-unit-error" role="alert" className="text-xs text-danger">
                   {fieldError('unit', errors.unit)}
                 </p>
               )}
@@ -360,6 +364,7 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
               inputMode="numeric"
               autoComplete="off"
               value={form.total}
+              suffix={t.ui.sum}
               error={fieldError('total', errors.total)}
               hint={pricePerBase !== null && material ? t.tg.purchase.perBase(material.base_unit, formatSum(pricePerBase)) : undefined}
               onChange={(e) => set({ total: formatSumInput(e.target.value) })}
@@ -372,6 +377,7 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
             <SelectField
               label={ta.supplier}
               value={form.supplierMode === 'existing' ? form.supplierId : form.supplierMode === 'new' ? '__new' : ''}
+              error={form.supplierMode !== 'new' ? fieldError('supplier', errors.supplier) : null}
               onChange={(v) =>
                 v === '__new'
                   ? set({ supplierMode: 'new', supplierId: '' })
@@ -398,11 +404,6 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
                 onChange={(e) => set({ supplierName: e.target.value })}
               />
             )}
-            {form.supplierMode === 'existing' && errors.supplier && (
-              <p role="alert" className="text-xs text-danger">
-                {fieldError('supplier', errors.supplier)}
-              </p>
-            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -428,6 +429,22 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
               </SelectField>
             )}
           </div>
+
+          {canPickSource && (
+            <SelectField
+              label={ta.paymentSource}
+              hint={ta.paymentSourceHint}
+              value={paymentSource}
+              onChange={(v) => setPaymentSource(v === 'podotchet' || v === 'firma' ? v : '')}
+            >
+              <option value="">{ta.paymentSourceAuto}</option>
+              {PAYMENT_SOURCES.map((s) => (
+                <option key={s} value={s}>
+                  {t.purchases.paymentSources[s]}
+                </option>
+              ))}
+            </SelectField>
+          )}
 
           <PhotoField
             label={t.tg.purchase.photo}

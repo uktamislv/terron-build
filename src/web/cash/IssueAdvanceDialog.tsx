@@ -9,7 +9,7 @@ import { errorText } from '@/i18n/errorText'
 import { formatSum } from '@/lib/format'
 import { uuid } from '@/lib/uuid'
 import { SelectField } from '@/components/ui'
-import { issuedAtIso, todayTashkent } from './cashDates'
+import { issuedAtBounds, issuedAtIso, todayTashkent } from './cashDates'
 
 const tc = t.cash
 
@@ -19,6 +19,7 @@ export function IssueAdvanceDialog({
   recipients,
   initial,
   kind = 'berildi',
+  isAdmin = false,
   onClose,
   onIssued,
   onStale,
@@ -29,6 +30,8 @@ export function IssueAdvanceDialog({
   initial?: { recipientId: string; amount: string; note?: string | null }
   /** Batch 12 (I): `qaytarildi` — odam ortiqcha pulni qaytardi ("Qaytarish"). */
   kind?: CashAdvanceKind
+  /** Admin — sana cheklovisiz (o'tgan kunlar); boshqalar — oxirgi 3 kun. */
+  isAdmin?: boolean
   onClose: () => void
   onIssued: (advance: CashAdvance) => void
   /** Avvalgi urinish boshqa qiymatlar bilan saqlangan — ro'yxatni yangilash uchun. */
@@ -36,7 +39,9 @@ export function IssueAdvanceDialog({
 }) {
   // Idempotentlik kaliti: qayta urinishda shu id; "Yangi yozuv sifatida berish" — yangi id
   const [id, setId] = useState(() => uuid())
-  const [today] = useState(todayTashkent)
+  const [today] = useState(() => todayTashkent())
+  // Admin — istalgan o'tgan sana; buxgalter — oxirgi 3 kun (server ops_occurred_at_range)
+  const bounds = issuedAtBounds(new Date().toISOString(), isAdmin)
   const [recipientId, setRecipientId] = useState(
     initial?.recipientId ?? (recipients.length === 1 ? (recipients[0]?.id ?? '') : ''),
   )
@@ -55,7 +60,7 @@ export function IssueAdvanceDialog({
     if (busy) return
     setMismatch(null)
     const value = parseSumInput(amount)
-    const issuedAt = issuedAtIso(date, today)
+    const issuedAt = issuedAtIso(date, new Date().toISOString(), isAdmin)
     const next = {
       recipient: !recipientId || undefined,
       amount: value === null || cmp(value, '0') <= 0 || undefined,
@@ -104,7 +109,15 @@ export function IssueAdvanceDialog({
           error={errors.amount ? tc.errAmount : null}
           onChange={(e) => setAmount(formatSumInput(e.target.value))}
         />
-        <DateField label={tc.issuedAt} value={date} max={today} error={errors.date ? tc.errDate : null} onChange={setDate} />
+        <DateField
+          label={tc.issuedAt}
+          value={date}
+          min={bounds.min}
+          max={bounds.max}
+          hint={isAdmin ? undefined : tc.issuedAtHint}
+          error={errors.date ? tc.errDate : null}
+          onChange={setDate}
+        />
         <TextAreaField id={noteId} label={tc.note} value={note} onChange={(e) => setNote(e.target.value)} />
         <p className="text-xs text-muted">{tc.amountLockedHint}</p>
         {error && <Notice>{error}</Notice>}

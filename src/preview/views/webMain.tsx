@@ -39,6 +39,10 @@ const summary: DashboardSummary = {
   pending_transfers_count: 1,
   pending_requests_count: 4,
   objects_over_norm_count: 1,
+  cash_outstanding_sum: '0',
+  cash_owed_to_staff_sum: '0',
+  telegram_blocked_count: 0,
+  telegram_me_blocked: false,
 }
 
 function dailyRows(from: string): DailyRow[] {
@@ -142,7 +146,16 @@ function DashboardPreview() {
       invalid={null}
       cards={<SummaryCards state={cards} objectFiltered={Boolean(query.objectId)} />}
       daily={<DailyCard state={loaded(dailyRows(query.from))} from={query.from} to={query.to} />}
-      norm={<NormCard state={loaded(norms)} objectId={query.objectId} />}
+      norm={
+        <NormCard
+          state={loaded(norms)}
+          money={loaded([
+            { object_id: 'o1', object_name: 'Chilonzor 5', estimate_sum: '1250000000', spent_sum: '830000000' },
+            { object_id: 'o2', object_name: 'Yunusobod 12', estimate_sum: '640000000', spent_sum: '702000000' },
+          ])}
+          objectId={query.objectId}
+        />
+      }
       spend={<SpendCard state={loaded(spend)} group={group} onGroup={setGroup} />}
       cash={<CashCard state={loaded(cash)} />}
       alerts={<RecentAlertsCard state={loaded(alerts)} />}

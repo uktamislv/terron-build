@@ -39,6 +39,7 @@ vi.mock('./telegram', () => ({
   initTelegram: vi.fn(),
   stripLaunchParamsFromUrl: vi.fn(),
   closeApp: vi.fn(),
+  openExternalLink: vi.fn(),
   haptic: { tap: vi.fn(), success: vi.fn(), error: vi.fn(), select: vi.fn() },
 }))
 
@@ -81,8 +82,34 @@ describe('TgAuthGate — eskirgan / takroriy initData, faqat veb rol', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(t.tg.gate.reopenText)
     fireEvent.click(screen.getByRole('button', { name: t.tg.gate.closeApp }))
     expect(tg.closeApp).toHaveBeenCalled()
-    expect(repo.clearLocalSession).toHaveBeenCalled()
+    // Eskirgan initData — qurilmadagi sessiya o'chirilmaydi
+    expect(repo.clearLocalSession).not.toHaveBeenCalled()
     expect(screen.queryByText('ILOVA')).not.toBeInTheDocument()
+  })
+
+  it('reopen, lekin qurilmada yaroqli sessiya bor — o‘sha sessiya bilan ilova ochiladi', async () => {
+    auth.session = { userId: 'u1', email: null, mustChangePassword: false }
+    repo.telegramSignIn.mockResolvedValue('reopen')
+    renderGate()
+    expect(await screen.findByText('ILOVA')).toBeInTheDocument()
+    expect(repo.clearLocalSession).not.toHaveBeenCalled()
+    expect(screen.queryByText(t.tg.gate.reopenTitle)).not.toBeInTheDocument()
+  })
+
+  it('inactive / invalid — sarlavha (h1) va "Ilovani yopish"', async () => {
+    repo.telegramSignIn.mockResolvedValue('inactive')
+    renderGate()
+    expect(await screen.findByRole('heading', { level: 1, name: t.tg.gate.inactiveTitle })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t.tg.gate.closeApp }))
+    expect(tg.closeApp).toHaveBeenCalled()
+  })
+
+  it('invalid — sarlavha va yopish tugmasi; begona sessiya o‘chiriladi', async () => {
+    repo.telegramSignIn.mockResolvedValue('invalid')
+    renderGate()
+    expect(await screen.findByRole('heading', { level: 1, name: t.tg.gate.invalidTitle })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t.tg.gate.closeApp })).toBeInTheDocument()
+    expect(repo.clearLocalSession).toHaveBeenCalled()
   })
 
   it('web_only (role_web_only) — veb panel haqida xabar', async () => {
@@ -90,6 +117,11 @@ describe('TgAuthGate — eskirgan / takroriy initData, faqat veb rol', () => {
     renderGate()
     expect(await screen.findByText(t.tg.gate.webOnlyTitle)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: t.tg.gate.closeApp })).toBeInTheDocument()
+    // Veb panel havolasi, ochish va nusxalash
+    expect(screen.getByTestId('web-panel-url')).toHaveTextContent(`${window.location.origin}/`)
+    fireEvent.click(screen.getByRole('button', { name: t.tg.gate.webOnlyOpen }))
+    expect(tg.openExternalLink).toHaveBeenCalledWith(`${window.location.origin}/`)
+    expect(screen.getByRole('button', { name: t.tg.gate.webOnlyCopy })).toBeInTheDocument()
   })
 })
 

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ClipboardList } from 'lucide-react'
-import { Badge, EntryRow, type EntryKind, Qty, RetryNotice, SkeletonRows } from '@/components/ui'
+import { Badge, EntryRow, Qty, RetryNotice, SkeletonRows } from '@/components/ui'
 import { REQUEST_TONE } from '@/components/statusTones'
 import { listMyRequests } from '@/data/requestsRepo'
-import type { MaterialRequest, RequestStatus } from '@/data/types'
+import type { MaterialRequest } from '@/data/types'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
@@ -13,12 +13,6 @@ import { SectionTitle } from '../ui'
 const tr = t.tg.request
 const LIMIT = 20
 
-const STRIPE: Record<RequestStatus, EntryKind> = {
-  kutilmoqda: 'warn',
-  tasdiqlandi: 'chiqim',
-  rad: 'danger',
-  xarid_qilindi: 'ok',
-}
 
 /** "Mening so'rovlarim" — oxirgi so'rovlar holati bilan. `reloadKey` o'zgarsa qayta yuklanadi. */
 export function MyRequests({ profileId, reloadKey }: { profileId: string; reloadKey: number }) {
@@ -58,8 +52,9 @@ export function MyRequestsView({ rows, error, onRetry }: { rows: MaterialRequest
               key={r.id}
               as="li"
               testId="my-request"
-              kind={STRIPE[r.status]}
-              icon={<ClipboardList className="size-[18px]" strokeWidth={1.75} />}
+              // So'rov qatori chizig'i — neytral; holat belgida (info / ok / neutral)
+              kind="neutral"
+              icon={<ClipboardList className="size-5" strokeWidth={1.75} />}
               title={r.material_name ?? ''}
               badge={<Badge tone={REQUEST_TONE[r.status]}>{t.requests.statuses[r.status]}</Badge>}
               meta={

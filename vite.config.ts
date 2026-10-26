@@ -31,6 +31,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    // Og'ir sahifa testlari (Mini App formalari) sekin mashinada 5 s dan oshishi mumkin
+    testTimeout: 15000,
     // _shared testlari faylning boshida `// @vitest-environment node` bilan ishlaydi
     include: ['src/**/*.test.{ts,tsx}', 'supabase/functions/_shared/**/*.test.ts', 'supabase/functions/*/logic.test.ts'],
   },

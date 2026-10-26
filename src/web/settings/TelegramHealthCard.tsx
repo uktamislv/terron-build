@@ -1,13 +1,15 @@
 // Sozlamalar → "Telegram holati" (admin): notification_health() — oxirgi yuborilgan xabar,
 // tiqilib qolganlar, 7 kunlik xatolar, oxirgi xatolar va botni bloklaganlar.
-import { BellOff, CircleAlert, CircleCheck, RefreshCw, Send, TriangleAlert } from 'lucide-react'
-import { Badge, Button, Card, cx, Notice, RetryNotice, SkeletonRows, StatTile } from '@/components/ui'
-import { getNotificationHealth } from '@/data/companiesRepo'
+import { useState } from 'react'
+import { BellOff, CircleAlert, CircleCheck, RefreshCw, RotateCcw, Send, TriangleAlert } from 'lucide-react'
+import { Badge, Button, Card, cx, Notice, RetryNotice, SkeletonRows, StatTile, useToast } from '@/components/ui'
+import { getNotificationHealth, resetChatBlocked } from '@/data/companiesRepo'
 import { isRole } from '@/domain/roles'
 import { t } from '@/i18n'
+import { errorText } from '@/i18n/errorText'
 import { formatDateTime } from '@/lib/format'
 import { useLoad } from '@/lib/useLoad'
-import { healthLevel, needsSetupHint } from './telegramHealth'
+import { healthLevel, kindLabel, needsSetupHint, statusLabel } from './telegramHealth'
 
 const th = t.settings.health
 
@@ -15,6 +17,21 @@ export function TelegramHealthCard() {
   const health = useLoad(getNotificationHealth, 'notification-health')
   const h = health.data
   const level = h ? healthLevel(h) : null
+  const toast = useToast()
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const recheck = async (profileId: string, name: string) => {
+    setBusyId(profileId)
+    try {
+      const cleared = await resetChatBlocked(profileId)
+      toast.show(cleared ? th.recheckDone(name) : th.recheckAlready(name), 'ok')
+      health.reload()
+    } catch (err) {
+      toast.show(errorText(err), 'danger')
+    } finally {
+      setBusyId(null)
+    }
+  }
   return (
     <Card
       title={th.title}
@@ -67,8 +84,8 @@ export function TelegramHealthCard() {
                 {h.lastErrors.map((e) => (
                   <li key={e.id} className="flex flex-col gap-0.5 px-3 py-2 text-sm">
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-ink">{e.kind}</span>
-                      <Badge tone={e.status === 'failed' ? 'danger' : 'warn'}>{e.status}</Badge>
+                      <span className="font-semibold text-ink">{kindLabel(e.kind)}</span>
+                      <Badge tone={e.status === 'failed' ? 'danger' : 'warn'}>{statusLabel(e.status)}</Badge>
                       <span className="text-xs text-muted">{th.attempts(e.attempts)}</span>
                       {e.updatedAt && <span className="tabular text-xs text-muted">{formatDateTime(e.updatedAt)}</span>}
                     </span>
@@ -91,6 +108,17 @@ export function TelegramHealthCard() {
                       <span className="font-medium">{p.fullName}</span>
                       {isRole(p.role) && <Badge tone="neutral">{t.roles[p.role]}</Badge>}
                       {p.blockedAt && <span className="tabular text-xs text-muted">{th.blockedAt(formatDateTime(p.blockedAt))}</span>}
+                      <Button
+                        variant="ghost"
+                        className="ml-auto"
+                        aria-label={th.recheckLabel(p.fullName)}
+                        loading={busyId === p.profileId}
+                        disabled={busyId !== null}
+                        icon={<RotateCcw aria-hidden className="size-4" strokeWidth={1.75} />}
+                        onClick={() => void recheck(p.profileId, p.fullName)}
+                      >
+                        {th.recheck}
+                      </Button>
                     </li>
                   ))}
                 </ul>

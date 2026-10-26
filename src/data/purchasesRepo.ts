@@ -5,14 +5,14 @@ import { geoColumns, GEO_SELECT } from './geo'
 import { attachNames } from './profileDirectory'
 import { cleanTin } from './suppliersRepo'
 import { getSupabase } from './supabaseClient'
-import type { AlertType, GeoFix, Purchase, PurchaseReceipt } from './types'
+import type { AlertType, GeoFix, PaymentSource, Purchase, PurchaseReceipt } from './types'
 
 // numeric ustunlar `::text` — aniqlik yo'qolmasin. Embed'lar FK nomi bilan (kompozit FK'lar).
 const PURCHASE_COLUMNS =
   'id, company_id, buyer_id, object_id, material_id, supplier_id, unit_id, qty_input::text, unit_input, unit_variant, ' +
   'qty_base::text, total_amount::text, unit_price::text, price_per_base::text, receipt_photo_path, purchased_at, note, ' +
   'created_by, created_at, deleted_at, receipt_photo_sha256, receipt_fiscal_sign, receipt_terminal_id, receipt_no, ' +
-  'receipt_verified, receipt_total::text, seller_tin, request_id, ' +
+  'receipt_verified, receipt_total::text, seller_tin, request_id, payment_source, ' +
   GEO_SELECT
 const PURCHASE_SELECT =
   `${PURCHASE_COLUMNS}, ` +
@@ -51,6 +51,11 @@ export interface NewPurchase {
   receipt?: PurchaseReceiptQr | null
   /** Batch 12 (D): Mini App joylashuvi. */
   geo?: GeoFix | null
+  /**
+   * Pul manbai — faqat admin / super_admin / buxgalter tanlaydi; berilmasa (null) — server qoidasi
+   * (xaridorga podotchet berilgan bo'lsa 'podotchet', aks holda 'firma').
+   */
+  paymentSource?: PaymentSource | null
 }
 
 /** Chek QR'dan olingan maydonlar. `verified` — soliq sahifasidan o'qildi (receipt-lookup). */
@@ -131,6 +136,7 @@ export async function createPurchase(input: NewPurchase): Promise<Purchase> {
   if (input.buyerId) row.buyer_id = input.buyerId
   if (input.purchasedAt) row.purchased_at = input.purchasedAt
   if (input.requestId) row.request_id = input.requestId
+  if (input.paymentSource) row.payment_source = input.paymentSource
   Object.assign(row, geoColumns(input.geo))
   // Chek rasmi xeshi klientdan yuborilmaydi — saqlangandan keyin `photo-hash` (functions.ts)
   if (input.receipt) {

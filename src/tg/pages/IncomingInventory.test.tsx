@@ -265,9 +265,10 @@ describe('/tg/inventory', () => {
     fireEvent.change(screen.getByLabelText(tinv.qty), { target: { value: '150' } })
     fireEvent.click(screen.getByRole('button', { name: tinv.save }))
     await screen.findByText(tinv.countedMark)
-    vi.mocked(inventoryRepo.submitCount).mockResolvedValue({ hasShortage: false, notCountedCount: 0 })
+    // Tekshiruvchi: server faqat {ok:true} — natija yashirin, neytral "yuborildi"
+    vi.mocked(inventoryRepo.submitCount).mockResolvedValue({ hasShortage: null, notCountedCount: 0 })
     fireEvent.click(screen.getByRole('button', { name: tinv.finish }))
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: tinv.confirm }))
-    expect(await screen.findByTestId('inventory-result')).toHaveTextContent(tinv.resultOk)
+    expect(await screen.findByTestId('inventory-result')).toHaveTextContent(tinv.resultSent)
   })
 })

@@ -1,5 +1,6 @@
+import type { ReactNode } from 'react'
 import { Building2, Check } from 'lucide-react'
-import { cx } from '@/components/ui'
+import { choiceClass, cx } from '@/components/ui'
 import type { ObjectRow } from '@/data/types'
 import { t } from '@/i18n'
 import { SectionTitle } from '../ui'
@@ -30,10 +31,7 @@ export function ObjectChooser({
             type="button"
             aria-pressed={selected}
             onClick={() => onPick(o.id)}
-            className={cx(
-              'flex min-h-14 items-center justify-between gap-3 rounded-xl border px-4 text-left text-base font-semibold transition-colors',
-              selected ? 'border-brand bg-ice text-navy' : 'border-line bg-paper text-ink active:bg-ice',
-            )}
+            className={cx(choiceClass({ selected, shape: 'row', size: 'md' }), 'min-h-14 justify-between px-4 font-semibold')}
           >
             {o.name}
             {selected && <Check aria-hidden className="size-5 shrink-0 text-brand" strokeWidth={2} />}
@@ -45,7 +43,16 @@ export function ObjectChooser({
 }
 
 /** Tanlangan obyekt satri; bir nechta obyekt bo'lsa — "O'zgartirish". */
-export function ObjectBar({ object, onChange }: { object: ObjectRow; onChange: (() => void) | null }) {
+export function ObjectBar({
+  object,
+  onChange,
+  extra,
+}: {
+  object: ObjectRow
+  onChange: (() => void) | null
+  /** Satr oxiridagi ixcham boshqaruv (masalan, sana chipi "Bugun ▾"). */
+  extra?: ReactNode
+}) {
   return (
     <div className="flex min-h-12 items-center gap-2 rounded-xl border border-line bg-paper py-1 pr-1 pl-3 text-ink">
       <Building2 aria-hidden className="size-5 shrink-0 text-muted" strokeWidth={1.75} />
@@ -58,6 +65,7 @@ export function ObjectBar({ object, onChange }: { object: ObjectRow; onChange: (
           {tm.change}
         </button>
       )}
+      {extra}
     </div>
   )
 }

@@ -2,30 +2,30 @@
 
 ## Sizning vazifangiz
 
-Siz berilgan pulga material sotib olasiz va har bir xaridni Mini App’da kiritasiz. Qo‘lingizdagi pul doim ko‘rinib turadi.
+Siz berilgan pulga material sotib olasiz va har bir xaridni Telegram ilovasida kiritasiz. Qo‘lingizdagi pul doim ko‘rinib turadi.
 
 ## Har kuni
 
 ### Xarid kiritish
 
-1. Mini App’da “Xarid” ni oching. “Qo‘limda” — qo‘lingizdagi pul.
-2. So‘rov bo‘yicha olsangiz, “Tasdiqlangan so‘rovlar” dan uni bosing.
-3. Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing: summa va sotuvchi o‘zi to‘ladi.
-4. Material, miqdor, “Jami summa (chekdagi)” va obyektni tanlang.
-5. “Saqlash” ni bosing. “Qo‘limda” yangi summani ko‘rsatadi.
+1. Telegram ilovasida “Xarid” ni oching. “Qo‘limda” — qo‘lingizdagi pul; bosing — “Pul tarixi”.
+2. Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing: summa va sotuvchi o‘zi to‘ldiriladi.
+3. Material, miqdor, “Jami summa (chekdagi)” va obyektni tanlang. Kechagi xarid — “Kecha”.
+4. “Saqlash” ni bosing. “Qo‘limda” yangi summani ko‘rsatadi.
 
 ### Tekshirish
 
-1. “Yozuvlarim” da kiritgan xaridlaringizni ko‘ring.
-2. Har dushanba Telegram’da pul hisobotingiz keladi: berildi, sarflandi, qoldiq.
+1. “Yozuvlar” da xaridlaringiz, berilgan va qaytarilgan pul.
+2. Xato xaridni 30 daqiqa ichida tuzatasiz: “Yozuvlar” → xarid → “Tuzatish” (sabab majburiy).
+3. Har dushanba Telegram’da pul hisobotingiz keladi: berildi, sarflandi, qoldiq.
 
 ## Muhim qoidalar
 
 - Har xaridni do‘kondan chiqishingiz bilan kiriting.
 - Summa — chekdagi jami summa. Chekni saqlang.
-- Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda chek rasmisiz saqlanmaydi. QR skanerlangan chekda rasm shart emas.
+- Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda chek rasmisiz saqlanmaydi. Soliq.uz tasdiqlagan QR chekda rasm shart emas.
 - Ortib qolgan pulni buxgalterga qaytaring.
-- Mini App joylashuvni so‘raydi — ruxsat bering.
+- Telegram ilovasi joylashuvni so‘raydi — ruxsat bering.
 
 ## Ogohlantirishlar nimani anglatadi
 
@@ -37,4 +37,4 @@ Siz berilgan pulga material sotib olasiz va har bir xaridni Mini App’da kirita
 
 ## Savol bo‘lsa
 
-Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.

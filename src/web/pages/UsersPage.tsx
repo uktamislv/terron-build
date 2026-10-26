@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { BellOff, Building2, Globe, KeyRound, Pencil, Power, Send, ShieldCheck, UserPlus, Users } from 'lucide-react'
-import { Badge, Button, EmptyState, Notice, PageHeader, RetryNotice, SkeletonRows } from '@/components/ui'
+import { BellOff, Building2, Globe, Info, KeyRound, Pencil, Power, Send, ShieldCheck, UserPlus, Users } from 'lucide-react'
+import { Badge, Button, EmptyState, Notice, PageHeader, Popover, RetryNotice, SkeletonRows, type BadgeTone } from '@/components/ui'
 import { listObjectMembers } from '@/data/objectMembersRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { listProfiles, setProfileActive } from '@/data/profilesRepo'
@@ -127,26 +127,28 @@ export function UsersPage() {
                   >
                     {initials(p.full_name)}
                   </span>
-                  <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <p className="font-semibold text-ink">
                       <span>{p.full_name}</span>
                       {isMe && <span className="ml-1 text-sm font-normal text-muted">({t.users.you})</span>}
                     </p>
                     <p className="tabular text-sm text-muted">{formatPhoneDisplay(p.phone)}</p>
-                  </div>
-                  <div className="flex flex-wrap justify-end gap-1.5">
-                    <Badge tone="info">{t.roles[p.role]}</Badge>
-                    <Badge tone={p.is_active ? 'ok' : 'danger'}>{p.is_active ? t.status.active : t.status.inactive}</Badge>
-                    {locked && (
-                      <Badge tone="neutral" icon={<ShieldCheck aria-hidden strokeWidth={2} />}>
-                        <span title={t.users.protectedHint}>{t.users.protectedBadge}</span>
-                      </Badge>
-                    )}
-                    {p.telegram_blocked_at && (
-                      <Badge tone="warn" icon={<BellOff aria-hidden strokeWidth={2} />}>
-                        <span title={t.users.botBlockedHint}>{t.users.botBlocked}</span>
-                      </Badge>
-                    )}
+                    {/* Belgilar — ism ostida, butun kenglikda (tor ekranda ham o'raladi) */}
+                    <div className="mt-1 flex w-full flex-wrap items-center gap-1.5">
+                      <Badge tone="info">{t.roles[p.role]}</Badge>
+                      <Badge tone={p.is_active ? 'ok' : 'danger'}>{p.is_active ? t.status.active : t.status.inactive}</Badge>
+                      {locked && (
+                        <HintBadge
+                          tone="neutral"
+                          icon={<ShieldCheck aria-hidden strokeWidth={2} />}
+                          label={t.users.protectedBadge}
+                          hint={t.users.protectedHint}
+                        />
+                      )}
+                      {p.telegram_blocked_at && (
+                        <HintBadge tone="warn" icon={<BellOff aria-hidden strokeWidth={2} />} label={t.users.botBlocked} hint={t.users.botBlockedHint} />
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -232,5 +234,36 @@ export function UsersPage() {
       )}
       {dialog?.kind === 'login' && <SetLoginDialog profile={dialog.profile} onClose={closeDialog} onSaved={reload} />}
     </div>
+  )
+}
+
+/**
+ * Izohli belgi: izoh ekran o'quvchiga doim o'qiladi (sr-only), ko'radiganlarga — kichik "(i)" tugmasi
+ * va Popover (sichqoncha `title` iga tayanilmaydi — telefonda va klaviaturada ham ishlaydi).
+ */
+function HintBadge({ tone, icon, label, hint }: { tone: BadgeTone; icon: ReactNode; label: string; hint: string }) {
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      <Badge tone={tone} icon={icon}>
+        <span>{label}</span>
+        <span className="sr-only">: {hint}</span>
+      </Badge>
+      <Popover
+        label={label}
+        trigger={({ toggle, ...aria }) => (
+          <button
+            type="button"
+            {...aria}
+            onClick={toggle}
+            aria-label={t.users.hintOpen(label)}
+            className="inline-flex size-11 items-center justify-center rounded-lg text-muted hover:bg-ice hover:text-brand"
+          >
+            <Info aria-hidden className="size-4" strokeWidth={2} />
+          </button>
+        )}
+      >
+        {() => <p className="max-w-64 p-3 text-sm text-ink">{hint}</p>}
+      </Popover>
+    </span>
   )
 }

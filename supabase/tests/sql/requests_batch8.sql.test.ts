@@ -333,7 +333,8 @@ describe('qoida 4: normadan oshish', () => {
       const all = await sys(tx, () => alertsOf(tx, 'normadan_oshish'))
       return { visible, all: all.length }
     })
-    expect(r).toEqual({ visible: ['manfiy_qoldiq', 'normadan_oshish'], all: 1 })
+    // audit2 L7: chiqimdan keyin qoida 6 ham qayta baholanadi (prorab smetadan_ortiq_sorov ni ko'radi)
+    expect(r).toEqual({ visible: ['manfiy_qoldiq', 'normadan_oshish', 'smetadan_ortiq_sorov'], all: 1 })
   })
 })
 
@@ -1069,16 +1070,27 @@ describe('review: Y1 / O5 — tekshiruvchi kutilgan qoldiqni ko`rmaydi', () => {
   })
 
   it('inventory_candidate_materials: qoldig`i ≠ 0 yoki joriy smetada — miqdorsiz; prorab — 42501; begona obyekt — P0002', async () => {
+    const adminCols: Row[] = []
+    const adminObj3: Row[] = []
     const r = await as('tekshiruvchi', async (tx) => {
       // obj1: m1 — qoldiq 100 va smetada; m2 — chiqim 3 (qoldiq −3 ≠ 0)
       await sys(tx, () => chiqim(tx, A.ids.obj1!, '3', A.ids.m2!, m2Id))
       const cols = await rows<Row>(tx, `select * from public.inventory_candidate_materials($1)`, [A.ids.obj1])
       const obj3 = await rows<Row>(tx, `select * from public.inventory_candidate_materials($1)`, [A.ids.obj3])
-      return { cols, obj3 }
+      // audit2 S6: tekshiruvchiga — faol katalog (qoldiq bo'yicha filtr yo'q)
+      const catalog = await sys(tx, () => rows<Row>(tx, `select id as material_id from public.materials
+        where company_id = $1 and deleted_at is null and is_active order by id`, [A.id]))
+      await asAuth(tx, A.users.admin.authUid, async () => {
+        adminCols.push(...(await rows<Row>(tx, `select * from public.inventory_candidate_materials($1)`, [A.ids.obj1])))
+        adminObj3.push(...(await rows<Row>(tx, `select * from public.inventory_candidate_materials($1)`, [A.ids.obj3])))
+      })
+      return { cols, obj3, catalog }
     })
     const exp = [A.ids.m1!, A.ids.m2!].sort().map((material_id) => ({ material_id }))
-    expect(r.cols).toEqual(exp)
-    expect(r.obj3).toEqual([])
+    expect(r.cols).toEqual(r.catalog)
+    expect(r.obj3).toEqual(r.catalog)
+    expect(adminCols).toEqual(exp)
+    expect(adminObj3).toEqual([])
     expect(await as('prorab', (tx) => res(tx, `select * from public.inventory_candidate_materials($1)`, [A.ids.obj1]))).toBe(
       '42501:inventory_forbidden',
     )
@@ -1112,7 +1124,7 @@ describe('review: Y1 / O5 — tekshiruvchi kutilgan qoldiqni ko`rmaydi', () => {
       const [al] = await sys(tx, () => alertsOf(tx, 'inventarizatsiya_kamomadi', `inventory_count_id = $1`, [c]))
       return { sub, tek, det, al: al! }
     })
-    expect(r.sub).toEqual({ has_shortage: true, not_counted_count: 1, movements_during_count: 0 })
+    expect(r.sub).toEqual({ ok: true }) // audit2 S6: tekshiruvchiga natija ko'rsatilmaydi
     expect(r.tek).toBe('42501:inventory_details_forbidden')
     expect(r.det).toEqual([
       { material_id: A.ids.m1, qty_counted: '66.666650', qty_expected: '100.000000', diff: '-33.333350', shortage_value: '40000.02' },

@@ -2,30 +2,37 @@
 
 ## Sizning vazifangiz
 
-Siz firma ichida tizimni boshqarasiz: foydalanuvchilar, obyektlar, materiallar va sozlamalar. So‘rovlarni tasdiqlaysiz, ogohlantirishlarni ko‘rib yopasiz, xato yozuvlarni o‘chirasiz va tiklaysiz.
+Siz firma ichida tizimni boshqarasiz: foydalanuvchilar, obyektlar, materiallar, sotuvchilar va sozlamalar. So‘rovlarni tasdiqlaysiz, ogohlantirishlarni yopasiz, xato yozuvlarni tuzatasiz, o‘chirasiz va tiklaysiz.
 
 ## Har kuni
 
 ### Boshlash (bir marta)
 
 1. “Obyektlar” → “Obyekt qo‘shish”. Kerak bo‘lsa, joylashuvni kiriting.
-2. “Foydalanuvchilar” → “Foydalanuvchi qo‘shish”: ism, telefon raqami, rol va obyektlar. Odam Mini App’ni ochib, raqamini ulashadi.
-3. Veb kerak bo‘lsa — “Veb login berish”. Parol faqat bir marta ko‘rsatiladi.
-4. “Materiallar” da birliklar va muqobil nomlarni tekshiring. “Sozlamalar” da chegaralarni belgilang.
+2. “Foydalanuvchilar” → “Foydalanuvchi qo‘shish”: ism, telefon, rol va obyektlar. Odam Telegram ilovasini ochib, raqamini ulashadi. Veb kerak bo‘lsa — “Veb login berish”.
+3. “Materiallar” da birliklar va muqobil nomlarni, “Sotuvchilar” da takror yozilgan sotuvchilarni tekshiring (“Birlashtirish”).
+4. “Sozlamalar”: chegaralar va “Tinch soatlar” — bu vaqtda Telegram xabarlari kutib turadi.
 
 ### Har kuni
 
-1. “Ogohlantirishlar” ni oching: har birini tekshiring, “Ko‘rildi” yoki “Yopish” (sabab bilan).
+1. “Ogohlantirishlar”: har birini tekshiring, “Ko‘rildi” yoki “Yopish” — yopishda sabab majburiy.
 2. “So‘rovlar”: “Tasdiqlash” yoki “Rad etish” (sababini yozing).
-3. “Ombor harakatlari” → “Inventarizatsiya”: farq bo‘lsa, tekshirib “Qoldiqni tuzatish”.
-4. Xato yozuvni “O‘chirish”; kerak bo‘lsa “Tarix” → “O‘chirilganlar” dan “Tiklash”.
+3. “Ombor” → “Inventarizatsiya”: farq bo‘lsa, tekshirib “Qoldiqni tuzatish”.
+4. Xato yozuvni “Tuzatish” yoki “O‘chirish”; kerak bo‘lsa “Tarix” → “O‘chirilganlar” dan “Tiklash”.
+5. “Sozlamalar” → “Telegram”: xabarlar yetib borayaptimi; botni bloklagan odam botni qayta ochsa — “Qayta tekshirish”.
+
+### Telegram ilovasida
+
+1. “Bosh” → “Bo‘limlar”: “So‘rovlarni tasdiqlash” (kutayotganlar soni bilan), “Qoldiq” va “Sanash”.
+2. Ish xabaridagi havola shu so‘rovni darhol ochadi.
 
 ## Muhim qoidalar
 
 - Hech narsa butunlay o‘chmaydi — o‘chirilgan yozuv tarixda qoladi va tiklanadi.
 - Ketgan xodimni “Nofaol qilish” bilan to‘xtating, o‘chirmang.
-- Telefon raqami o‘zgarsa, veb login va Telegram bog‘lanishi uziladi.
-- Materialni qoldig‘i bor bo‘lsa o‘chirib bo‘lmaydi — “Nofaol qilish”.
+- Admin va direktor profilining telefoni, roli va faolligini faqat tizim egasi o‘zgartiradi.
+- Sizning tuzatishingiz va o‘chirishingiz haqida direktorga ogohlantirish boradi.
+- Materialning qoldig‘i bor bo‘lsa o‘chirib bo‘lmaydi — “Nofaol qilish”.
 
 ## Ogohlantirishlar nimani anglatadi
 
@@ -38,4 +45,4 @@ Siz firma ichida tizimni boshqarasiz: foydalanuvchilar, obyektlar, materiallar v
 
 ## Savol bo‘lsa
 
-Ogohlantirish Telegram’da ham keladi: “Ko‘rildi” tugmasini u yerda ham bosish mumkin. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+Ogohlantirish Telegram’da ham keladi: “Ko‘rildi” tugmasini u yerda ham bosish mumkin. “Ish xabarlari” (so‘rov, o‘tkazma, xarid) — yon menyuda, “Parol” yonida yoqing yoki o‘chiring. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.

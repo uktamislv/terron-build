@@ -28,7 +28,7 @@ import { listDirectory } from '@/data/profileDirectory'
 import { listAllPurchases, listPurchases, PURCHASES_PAGE_SIZE, restorePurchase, softDeletePurchase, type PurchaseFilters } from '@/data/purchasesRepo'
 import { listSuppliers } from '@/data/suppliersRepo'
 import type { Material, ObjectRow, PersonRef, Purchase, Supplier } from '@/data/types'
-import { adminCorrection } from '@/domain/corrections'
+import { adminCorrection, remainingMinutes, selfCorrection, type CorrectableEntry } from '@/domain/corrections'
 import { can } from '@/domain/roles'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
@@ -438,8 +438,22 @@ export function PurchasesPage() {
   const canSeeAlerts = role ? can(role, 'view_alerts') : false
   // Veb "Xarid qo'shish" — ta'minotchi va admin (CLAUDE.md: ta'minotchi veb panelda ishlaydi)
   const canCreate = role === 'taminotchi' || role === 'admin' || role === 'super_admin'
-  // Admin tuzatishi (correct_entry) — istalgan vaqtda, bog'lanmagan xaridda
-  const canCorrect = role === 'admin' || role === 'super_admin'
+  // Tuzatish (correct_entry): admin — istalgan vaqtda; muallif (masalan ta'minotchi) — 30 daqiqa ichida
+  // (Telegram ilovasidagi qoida bilan bir xil — selfCorrection). Faqat bog'lanmagan xarid.
+  const isAdmin = role === 'admin' || role === 'super_admin'
+  const correctionFor = (p: Purchase): { admin: boolean; remaining: number | null } | null => {
+    const entry: CorrectableEntry = {
+      table: 'purchases',
+      createdBy: p.created_by,
+      createdAt: p.created_at,
+      deletedAt: p.deleted_at,
+      linkedReceipts: p.receipt ? p.receipt.receipt_count : null,
+    }
+    if (isAdmin) return adminCorrection(entry) ? { admin: true, remaining: null } : null
+    if (!me) return null
+    const self = selfCorrection(entry, me.id, new Date().toISOString())
+    return self.allowed ? { admin: false, remaining: remainingMinutes(self.remainingMs) } : null
+  }
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
   const closeDialog = useCallback(() => setDialog(null), [])
@@ -560,13 +574,17 @@ export function PurchasesPage() {
       {dialog?.kind === 'correct' && (
         <Modal title={t.correction.title} onClose={closeDialog}>
           <div className="flex flex-col gap-3">
-            <p className="text-xs text-muted">{t.correction.adminHint}</p>
+            {isAdmin && <p className="text-xs text-muted">{t.correction.adminHint}</p>}
             <CorrectionForm
+              remaining={correctionFor(dialog.purchase)?.remaining ?? null}
+              // Muallif (admin emas) — material va obyektni ham almashtira oladi
+              allowMove={!isAdmin}
               target={{
                 table: 'purchases',
                 id: dialog.purchase.id,
                 materialId: dialog.purchase.material_id,
                 materialName: dialog.purchase.material_name,
+                objectId: dialog.purchase.object_id,
                 qtyInput: dialog.purchase.qty_input,
                 unitId: dialog.purchase.unit_id,
                 totalAmount: dialog.purchase.total_amount,
@@ -591,17 +609,10 @@ export function PurchasesPage() {
           nowIso={nowIso}
           onClose={closeDialog}
           footer={
-            (canDelete || Boolean(purchaseHistoryHref('purchases', dialog.purchase.id))) && (
+            (canDelete || Boolean(purchaseHistoryHref('purchases', dialog.purchase.id)) || correctionFor(dialog.purchase) !== null) && (
               <>
                 <HistoryLink table="purchases" id={dialog.purchase.id} className="flex-1 sm:flex-none" />
-                {canCorrect &&
-                  adminCorrection({
-                    table: 'purchases',
-                    createdBy: dialog.purchase.created_by,
-                    createdAt: dialog.purchase.created_at,
-                    deletedAt: dialog.purchase.deleted_at,
-                    linkedReceipts: dialog.purchase.receipt ? dialog.purchase.receipt.receipt_count : null,
-                  }) && (
+                {correctionFor(dialog.purchase) !== null && (
                     <Button
                       variant="secondary"
                       className="flex-1 sm:flex-none"

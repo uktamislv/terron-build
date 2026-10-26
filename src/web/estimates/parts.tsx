@@ -1,5 +1,6 @@
 // Smeta sahifalari uchun kichik UI bo'laklari.
 import type { ReactNode } from 'react'
+import { Checkbox as Box } from '@/components/ui'
 
 export function Checkbox({
   label,
@@ -14,7 +15,7 @@ export function Checkbox({
 }) {
   return (
     <label className="flex min-h-11 cursor-pointer items-center gap-2.5 text-sm text-ink">
-      <input type="checkbox" className="size-5 shrink-0 accent-brand" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <Box checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span>
         {label}
         {hint && <span className="block text-xs text-muted">{hint}</span>}

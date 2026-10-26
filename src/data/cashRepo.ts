@@ -162,7 +162,8 @@ export async function listCashHistory(
   opts: { profileId?: string; includeDeleted?: boolean } = {},
 ): Promise<CashHistoryEntry[]> {
   let issuedQ = getSupabase().from('cash_advances').select(ADVANCE_SELECT)
-  let spentQ = getSupabase().from('purchases').select(SPENT_SELECT)
+  // Firma to'lagan xaridlar ('firma') podotchet hisobiga kirmaydi
+  let spentQ = getSupabase().from('purchases').select(SPENT_SELECT).eq('payment_source', 'podotchet')
   if (!opts.includeDeleted) {
     issuedQ = issuedQ.is('deleted_at', null)
     spentQ = spentQ.is('deleted_at', null)
@@ -247,6 +248,7 @@ export async function listAllCashHistory(
       let q = getSupabase()
         .from('purchases')
         .select(SPENT_SELECT, req.first ? { count: 'exact' } : undefined)
+        .eq('payment_source', 'podotchet')
         .lte('created_at', req.before)
       if (!opts.includeDeleted) q = q.is('deleted_at', null)
       if (opts.profileId) q = q.eq('buyer_id', opts.profileId)

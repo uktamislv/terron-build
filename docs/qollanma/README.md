@@ -1,6 +1,6 @@
 # TERRON Build — qo‘llanmalar
 
-Har bir rol uchun bir sahifalik qo‘llanma. Matn manbasi — `src/i18n/guides.uz.ts`; bu fayllar chop etish va yuborish uchun nusxa.
+Har bir rol uchun bir sahifalik qo‘llanma. Matn manbasi — `src/i18n/guides.uz.ts`; bu fayllar `npm run guides:md` bilan yaratiladi (qo‘lda tahrirlanmaydi).
 
 | Rol | Fayl |
 |---|---|

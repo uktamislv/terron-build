@@ -1,11 +1,11 @@
 // Davr tugmalari + ixtiyoriy oraliq (dd.mm.yyyy) + obyekt filtri.
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { CalendarRange } from 'lucide-react'
-import { Button, chipClass, FilterBar, TextField, type FilterDef } from '@/components/ui'
+import { Button, chipClass, DateField, FilterBar, type FilterDef } from '@/components/ui'
 import type { ObjectRow } from '@/data/types'
 import { PERIOD_PRESETS, periodRange, validateRange, type PeriodPreset } from '@/domain/reports'
 import { t } from '@/i18n'
-import { isoToUz, MAX_RANGE_DAYS, parseUzDate, type DashboardQuery } from './query'
+import { MAX_RANGE_DAYS, type DashboardQuery } from './query'
 
 const tr = t.reports
 
@@ -28,22 +28,22 @@ export function PeriodBar({
   extra?: ReactNode
 }) {
   const [customOpen, setCustomOpen] = useState(query.preset === null)
-  const [fromText, setFromText] = useState(isoToUz(query.from))
-  const [toText, setToText] = useState(isoToUz(query.to))
+  // ISO (yyyy-mm-dd) — DateField niqobi va min/max tekshiruvi o'zida
+  const [from, setFrom] = useState(query.from)
+  const [to, setTo] = useState(query.to)
   const [rangeError, setRangeError] = useState<string | null>(null)
+  const errorId = useId()
 
   const pickPreset = (p: PeriodPreset) => {
     const r = periodRange(p, todayIso)
     setCustomOpen(false)
     setRangeError(null)
-    setFromText(isoToUz(r.from))
-    setToText(isoToUz(r.to))
+    setFrom(r.from)
+    setTo(r.to)
     onChange({ ...r, objectId: query.objectId })
   }
 
   const applyCustom = () => {
-    const from = parseUzDate(fromText)
-    const to = parseUzDate(toText)
     if (!from || !to) {
       setRangeError(tr.rangeErrors.invalid)
       return
@@ -93,25 +93,38 @@ export function PeriodBar({
         />
       </div>
       {custom && (
-        <div className="grid gap-3 rounded-2xl border border-line bg-paper p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-start">
-          <TextField
+        <div
+          role="group"
+          aria-label={tr.custom}
+          aria-describedby={rangeError ? errorId : undefined}
+          className="grid gap-3 rounded-2xl border border-line bg-paper p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-start"
+        >
+          <DateField
             label={tr.from}
-            inputMode="numeric"
-            placeholder={tr.datePlaceholder}
-            value={fromText}
-            onChange={(e) => setFromText(e.target.value)}
-            error={rangeError}
+            value={from}
+            max={to || undefined}
+            onChange={(v) => {
+              setFrom(v)
+              setRangeError(null)
+            }}
           />
-          <TextField
+          <DateField
             label={tr.to}
-            inputMode="numeric"
-            placeholder={tr.datePlaceholder}
-            value={toText}
-            onChange={(e) => setToText(e.target.value)}
+            value={to}
+            min={from || undefined}
+            onChange={(v) => {
+              setTo(v)
+              setRangeError(null)
+            }}
           />
           <Button className="sm:mt-7" onClick={applyCustom}>
             {tr.apply}
           </Button>
+          {rangeError && (
+            <p id={errorId} role="alert" className="text-sm text-danger sm:col-span-3">
+              {rangeError}
+            </p>
+          )}
         </div>
       )}
     </div>

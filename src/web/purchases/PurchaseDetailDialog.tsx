@@ -96,6 +96,7 @@ export function PurchaseDetailDialog({
           {row(tp.colObject, purchase.object_name)}
           {row(tp.perBase(base), <Money value={round(purchase.price_per_base, 2)} size="sm" />)}
           {row(tp.colSupplier, purchase.supplier_name ?? '—')}
+          {purchase.payment_source && row(tp.colPaymentSource, tp.paymentSources[purchase.payment_source])}
           {row(tp.colStatus, <ReceiptBadge p={purchase} thresholdPct={thresholdPct} nowIso={nowIso} level />)}
           {purchase.request_id && row(tp.byRequest, <span className="font-mono text-xs">{purchase.request_id.slice(0, 8)}</span>)}
           {purchase.note && row(t.movements.note, <span className="whitespace-pre-wrap">{purchase.note}</span>)}

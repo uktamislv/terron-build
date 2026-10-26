@@ -1,36 +1,17 @@
-// O'z yozuvini tuzatish (RPC `correct_entry`): miqdor, birlik, xaridda summa va majburiy sabab.
-// Telegram ilovasida — pastki varaq ("Yozuvlarim", muallif, 30 daqiqa), vebda — admin dialogi.
-import { useEffect, useState, type FormEvent } from 'react'
+// O'z yozuvini tuzatish (RPC `correct_entry`): miqdor, birlik, xaridda summa, majburiy sabab va ixtiyoriy izoh.
+// Veb — admin dialogi va muallif (30 daqiqa). Telegram ilovasi — `src/tg/corrections/TgCorrectionForm.tsx`
+// (katta raqam maydoni); holat va saqlash ikkalasida umumiy (`useCorrectionForm`).
+import type { FormEvent } from 'react'
 import { Button, choiceClass, Notice, RetryNotice, SkeletonRows, TextAreaField, TextField } from '@/components/ui'
-import { correctEntry, CORRECTION_NOTE_MAX, type CorrectableTable } from '@/data/correctionsRepo'
-import { getMaterial } from '@/data/materialsRepo'
-import type { Material } from '@/data/types'
-import { formatSumInput } from '@/domain/cash'
-import { validateCorrection, type CorrectionError, type CorrectionErrorField } from '@/domain/corrections'
-import { formatDecUz, unitLabel } from '@/domain/units'
+import { CORRECTION_NOTE_MAX } from '@/data/correctionsRepo'
+import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
-import { errorText } from '@/i18n/errorText'
+import { MoveFields } from './MoveFields'
+import { correctionErrorMessage, useCorrectionForm, type CorrectionTarget } from './useCorrectionForm'
+
+export type { CorrectionTarget } from './useCorrectionForm'
 
 const tc = t.correction
-
-export interface CorrectionTarget {
-  table: CorrectableTable
-  id: string
-  materialId: string
-  materialName: string | null
-  qtyInput: string
-  unitId: string
-  /** Faqat xarid. */
-  totalAmount?: string | null
-  note: string | null
-}
-
-function errorMessage(field: CorrectionErrorField, code: CorrectionError): string {
-  if (field === 'note') return tc.errNote
-  if (field === 'unit') return tc.errUnit
-  if (field === 'total') return code === 'required' ? tc.errTotalRequired : tc.errTotal
-  return code === 'required' ? tc.errQtyRequired : (t.tg.movement.errors.qty[code as keyof typeof t.tg.movement.errors.qty] ?? tc.errQty)
-}
 
 export function CorrectionForm({
   target,
@@ -38,80 +19,34 @@ export function CorrectionForm({
   onCancel,
   remaining,
   size = 'sm',
+  allowMove = false,
 }: {
   target: CorrectionTarget
   onDone: () => void
   onCancel: () => void
-  /** Muallif uchun qolgan vaqt matni ("12:30"); admin — yo'q. */
-  remaining?: string | null
+  /** Muallif uchun qolgan butun daqiqalar; admin — yo'q. */
+  remaining?: number | null
   /** Chip matni: sm — veb, md — Telegram ilovasi. */
   size?: 'sm' | 'md'
+  /** Muallif (30 daqiqa): material va obyektni ham almashtira oladi. */
+  allowMove?: boolean
 }) {
-  const [material, setMaterial] = useState<Material | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [reloadKey, setReloadKey] = useState(0)
-  const [qty, setQty] = useState(() => formatDecUz(target.qtyInput).replace(/\u202F/g, ''))
-  const [unitId, setUnitId] = useState<string>(target.unitId)
-  const [total, setTotal] = useState(() => (target.totalAmount ? formatSumInput(target.totalAmount.replace('.', ',')) : ''))
-  const [note, setNote] = useState('')
-  const [errors, setErrors] = useState<Partial<Record<CorrectionErrorField, CorrectionError>>>({})
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const f = useCorrectionForm(target, onDone, allowMove)
 
-  useEffect(() => {
-    let alive = true
-    getMaterial(target.materialId)
-      .then((m) => {
-        if (!alive) return
-        setMaterial(m)
-        setLoadError(null)
-      })
-      .catch((err: unknown) => alive && setLoadError(errorText(err)))
-    return () => {
-      alive = false
-    }
-  }, [target.materialId, reloadKey])
-
-  const submit = async (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault()
-    if (saving) return
-    const result = validateCorrection({
-      table: target.table,
-      original: { qtyInput: target.qtyInput, unitId: target.unitId, totalAmount: target.totalAmount ?? null },
-      qtyInput: qty,
-      unitId,
-      totalInput: target.table === 'purchases' ? total : undefined,
-      note,
-    })
-    if (!result.ok) {
-      setErrors(result.errors)
-      return
-    }
-    setSaving(true)
-    setSaveError(null)
-    try {
-      await correctEntry({
-        table: target.table,
-        id: target.id,
-        qtyInput: result.value.qtyInput,
-        unitId: result.value.unitId,
-        totalAmount: result.value.totalAmount,
-        note: result.value.note,
-      })
-      onDone()
-    } catch (err) {
-      setSaveError(errorText(err))
-    } finally {
-      setSaving(false)
-    }
+    void f.submit()
   }
 
-  const units = material?.units ?? []
+  const units = f.material?.units ?? []
   return (
-    <form noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4" aria-label={tc.title}>
+    <form noValidate onSubmit={submit} className="flex flex-col gap-4" aria-label={tc.title}>
       <p className="text-sm text-muted">{target.table === 'purchases' ? tc.introPurchase : tc.introMovement}</p>
-      {target.materialName && <p className="text-base font-semibold text-ink">{target.materialName}</p>}
-      {remaining && (
+      {!allowMove && target.materialName && <p className="text-base font-semibold text-ink">{target.materialName}</p>}
+      {allowMove && (
+        <MoveFields choices={f.choices} materialId={f.materialId} objectId={f.objectId} onMaterial={f.setMaterialId} onObject={f.setObjectId} />
+      )}
+      {remaining != null && (
         <Notice tone="info">
           <span data-testid="correction-remaining">{tc.remaining(remaining)}</span>
         </Notice>
@@ -120,38 +55,33 @@ export function CorrectionForm({
         label={tc.qty}
         inputMode="decimal"
         autoComplete="off"
-        value={qty}
-        error={errors.qty ? errorMessage('qty', errors.qty) : null}
-        onChange={(e) => {
-          setQty(e.target.value)
-          setErrors((er) => ({ ...er, qty: undefined }))
-        }}
+        value={f.qty}
+        suffix={f.unit ? unitLabel(f.unit) : undefined}
+        error={f.errors.qty ? correctionErrorMessage('qty', f.errors.qty) : null}
+        onChange={(e) => f.setQty(e.target.value)}
       />
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm font-medium text-ink">{tc.unit}</legend>
-        {loadError && <RetryNotice message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />}
-        {!material && !loadError && <SkeletonRows rows={1} />}
-        {material && (
+        {f.loadError && <RetryNotice message={f.loadError} onRetry={f.reload} />}
+        {!f.material && !f.loadError && <SkeletonRows rows={1} />}
+        {f.material && (
           <div className="flex flex-wrap gap-2">
             {units.map((u) => (
               <button
                 key={u.id}
                 type="button"
-                aria-pressed={unitId === u.id}
-                className={choiceClass({ selected: unitId === u.id, size })}
-                onClick={() => {
-                  setUnitId(u.id)
-                  setErrors((er) => ({ ...er, unit: undefined }))
-                }}
+                aria-pressed={f.unitId === u.id}
+                className={choiceClass({ selected: f.unitId === u.id, size })}
+                onClick={() => f.setUnitId(u.id)}
               >
                 {unitLabel(u)}
               </button>
             ))}
           </div>
         )}
-        {errors.unit && (
+        {f.errors.unit && (
           <p role="alert" className="text-sm text-danger">
-            {errorMessage('unit', errors.unit)}
+            {correctionErrorMessage('unit', f.errors.unit)}
           </p>
         )}
       </fieldset>
@@ -160,36 +90,39 @@ export function CorrectionForm({
           label={tc.total}
           inputMode="numeric"
           autoComplete="off"
-          value={total}
-          error={errors.total ? errorMessage('total', errors.total) : null}
-          onChange={(e) => {
-            setTotal(formatSumInput(e.target.value))
-            setErrors((er) => ({ ...er, total: undefined }))
-          }}
+          value={f.total}
+          suffix={t.ui.sum}
+          error={f.errors.total ? correctionErrorMessage('total', f.errors.total) : null}
+          onChange={(e) => f.setTotal(e.target.value)}
         />
       )}
       <TextAreaField
-        label={tc.note}
+        label={tc.reason}
         required
         aria-required="true"
         rows={2}
         maxLength={CORRECTION_NOTE_MAX}
-        placeholder={tc.notePlaceholder}
-        value={note}
-        hint={tc.noteHint}
-        error={errors.note ? errorMessage('note', errors.note) : null}
-        onChange={(e) => {
-          setNote(e.target.value)
-          setErrors((er) => ({ ...er, note: undefined }))
-        }}
+        placeholder={tc.reasonPlaceholder}
+        value={f.reason}
+        hint={tc.reasonHint}
+        error={f.errors.reason ? correctionErrorMessage('reason', f.errors.reason) : null}
+        onChange={(e) => f.setReason(e.target.value)}
       />
-      {saveError && <Notice>{saveError}</Notice>}
+      <TextAreaField
+        label={tc.note}
+        rows={2}
+        maxLength={CORRECTION_NOTE_MAX}
+        value={f.note}
+        hint={tc.noteHint}
+        onChange={(e) => f.setNote(e.target.value)}
+      />
+      {f.saveError && <Notice>{f.saveError}</Notice>}
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button variant="secondary" onClick={onCancel}>
           {t.common.cancel}
         </Button>
-        <Button type="submit" loading={saving} disabled={saving}>
-          {saving ? t.common.saving : tc.save}
+        <Button type="submit" loading={f.saving} disabled={f.saving}>
+          {f.saving ? t.common.saving : tc.save}
         </Button>
       </div>
     </form>

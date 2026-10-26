@@ -1046,7 +1046,9 @@ describe('alerts yopish', () => {
       const details = await tryQuery(tx, `update public.alerts set details = '{"x":1}' where id = $1`, [A.ids.alert1])
       // audit_fixes B2: yopishda close_note majburiy
       const closed = await q(`status = 'yopildi', close_note = 'Tekshirildi'`)
-      const touched = await q(`close_note = 'tekshirildi'`)
+      // audit2 S9: yopilgan alert izohi o'zgarmaydi
+      const touchedR = await tryQuery(tx, `update public.alerts set close_note = 'tekshirildi' where id = $1`, [A.ids.alert1])
+      const touched = touchedR.ok ? 'OK' : touchedR.code
       const reopened = await q(`status = 'korildi'`)
       return {
         forged: forged.ok ? 'OK' : forged.code,
@@ -1060,7 +1062,7 @@ describe('alerts yopish', () => {
       forged: '42501',
       details: '42501',
       closed: { closed_by: me.profileId, recent: true },
-      touched: { closed_by: me.profileId, recent: true },
+      touched: '55000',
       reopened: { closed_by: null, recent: null },
     })
   })

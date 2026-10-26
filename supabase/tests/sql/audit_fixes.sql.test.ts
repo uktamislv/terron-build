@@ -295,7 +295,7 @@ describe('A2: manfiy_qoldiq', () => {
     expect(r.a2[0]!.details).toMatchObject({ stock_after: -50, movement_type: 'transfer_in', movement_deleted: true })
   })
 
-  it('24 soatlik bostirish saqlanadi; qo`lda yopilgandan keyin qoldiqni OSHIRGAN kirim yangi alert yaratmaydi', async () => {
+  it('24 soat ichida qayta manfiy — o`sha alert qayta ochiladi (audit2 L3); qo`lda yopilgandan keyin qoldiqni OSHIRGAN kirim yangi alert yaratmaydi', async () => {
     const r = await as('admin', async (tx) => {
       const mat = await newMat(tx)
       const o = A.ids.obj3!
@@ -316,9 +316,10 @@ describe('A2: manfiy_qoldiq', () => {
       return { sup, afterManual, k3 }
     })
     expect(r.sup).toHaveLength(1)
-    expect(r.sup[0]).toMatchObject({ status: 'yopildi' })
-    expect(r.sup[0]!.details).toMatchObject({ closed_reason: 'stock_restored', stock_after: -100, movement_type: 'kirim' })
-    expect(r.sup[0]!.details.renegative_at).toBeTruthy()
+    // audit2 L3: yopilgan alert qayta ochiladi (yangi Telegram xabarisiz)
+    expect(r.sup[0]).toMatchObject({ status: 'yangi' })
+    expect(r.sup[0]!.details).toMatchObject({ stock_after: -100, movement_type: 'kirim', reopen_count: 1 })
+    expect(r.sup[0]!.details.reopened_at).toBeTruthy()
     expect(r.afterManual).toHaveLength(1)
     expect(r.afterManual[0]!.status).toBe('yopildi')
   })
@@ -349,7 +350,7 @@ describe('A3: inventarizatsiya kutilgan qoldig`i', () => {
       expected: await sys(tx, () => scalar<string>(tx, `select qty_expected::text from public.inventory_count_items where inventory_count_id = $1`, [ic])),
       al: await alertsOf(tx, 'inventarizatsiya_kamomadi', `inventory_count_id = $1`, [ic]),
     }))
-    expect(sub).toEqual({ has_shortage: false, not_counted_count: 0, movements_during_count: 1 })
+    expect(sub).toEqual({ ok: true }) // audit2 S6: tekshiruvchiga natija ko'rsatilmaydi
     expect(r).toEqual({ n: 0, st: '70.000000', expected: '100.000000', al: [] })
   })
 
@@ -368,7 +369,7 @@ describe('A3: inventarizatsiya kutilgan qoldig`i', () => {
     })
     expect(r.forged).toBe('OK:1')
     expect(r.cAt).toBe(true)
-    expect(r.sub).toEqual({ has_shortage: true, not_counted_count: 0, movements_during_count: 0 })
+    expect(r.sub).toEqual({ ok: true }) // audit2 S6
     expect(r.al).toHaveLength(1)
     expect(r.al[0]!.details).toMatchObject({ movements_during_count: [], movements_during_count_total: 0 })
   })
@@ -790,7 +791,7 @@ describe('D1: correct_entry', () => {
       pOk: 'OK:1',
       total: '1100.00',
       pLinked: '55000:correct_linked',
-      kLinked: '55000:correct_linked',
+      kLinked: 'OK:1', // audit2: xaridga bog'langan kirimni tuzatish mumkin
       bad1: '22023:correct_invalid',
       bad2: '22023:correct_invalid',
       bad3: '22023:correct_invalid',
@@ -889,9 +890,9 @@ describe('B2: sozlamalar va boshqaruv', () => {
       active: '42501:profile_protected',
       del: '42501:profile_protected',
       selfActive: '42501:profile_protected',
-      name: 'OK:1',
+      name: '42501:profile_protected', // audit2 S7
       prorabPhone: 'OK:1',
-      promote: 'OK:1',
+      promote: '42501:profile_protected', // audit2 S7
       sa: 'OK:1',
     })
   })
@@ -990,7 +991,7 @@ describe('B6: chek tasdig`i', () => {
     expect(r).toEqual({
       total: true,
       line: true,
-      single: true,
+      single: false, // audit2 L1: bitta qatorning o'zi tasdiqlamaydi
       late: false,
       noMatch: false,
       multiNoPhoto: '23514:photo_required',
@@ -1067,7 +1068,7 @@ describe('profillar: profile_directory', () => {
     }))
     expect(r.others).toBe(0)
     expect(r.me.role).toBe('prorab')
-    expect(r.dirCols).toEqual(['company_id', 'full_name', 'id', 'is_active', 'role'])
+    expect(r.dirCols).toEqual(['company_id', 'deleted_at', 'full_name', 'id', 'is_active', 'is_available', 'role'])
     expect(r.dirName).toBe('A direktor')
     expect(r.foreign).toBe(0)
     expect(r.buyer).toBe('A taminotchi')
@@ -1213,7 +1214,8 @@ describe('D2: ish oqimi xabarlari', () => {
     expect(r.created[0]!.payload).toMatchObject({ status: 'kutilmoqda', qty_input: 5, unit_input: 'qop', qty_base: 250, base_unit: 'kg', note: 'tezroq', created_by_name: 'A prorab' })
     expect(r.decided[0]).toMatchObject({ profile_id: P('prorab'), payload: { status: 'tasdiqlandi', decision_note: 'OK', decided_by_name: 'A admin' } })
     expect(r.approved).toHaveLength(1)
-    expect(r).toMatchObject({ rc: ['admin'], rd: ['prorab'], ra: ['taminotchi'], raMuted: [] })
+    // audit2: request_approved — obyektning haydovchi a'zolariga ham
+    expect(r).toMatchObject({ rc: ['admin'], rd: ['prorab'], ra: ['haydovchi', 'taminotchi'], raMuted: ['haydovchi'] })
   })
 
   it('o`tkazma → qabul obyektining prorab/omborchisi; xarid → obyekt prorab/omborchisi (xaridordan tashqari); rad — faqat request_decided', async () => {

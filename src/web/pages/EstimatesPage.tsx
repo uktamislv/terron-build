@@ -324,7 +324,7 @@ export function EstimatesPage() {
             renderMobile={(e) => (
               <EntryRow
                 kind={e.is_current ? 'ok' : 'neutral'}
-                icon={<FileSpreadsheet className="size-[18px]" strokeWidth={1.75} />}
+                icon={<FileSpreadsheet className="size-5" strokeWidth={1.75} />}
                 title={`${te.version(e.version)} — ${e.title}`}
                 badge={e.is_current && <Badge tone="ok">{te.current}</Badge>}
                 meta={

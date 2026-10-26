@@ -32,7 +32,7 @@ export function InspectorCounts({ profileId }: { profileId: string }) {
               as="li"
               testId="inspector-count"
               kind="neutral"
-              icon={<ClipboardCheck className="size-[18px]" strokeWidth={1.75} />}
+              icon={<ClipboardCheck className="size-5" strokeWidth={1.75} />}
               title={c.object_name ?? '—'}
               badge={statusBadge(c)}
               meta={

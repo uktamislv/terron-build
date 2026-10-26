@@ -15,8 +15,12 @@ export interface CorrectableEntry {
   deletedAt: string | null
   /** Harakat turi (faqat `movements`). */
   movementType?: MovementType
-  /** Harakat bog'langan xarid (kirim → xarid). */
+  /** Harakat bog'langan xarid (kirim → xarid). Noma'lum (undefined) — bog'langan deb olinadi. */
   purchaseId?: string | null
+  /** O'tkazma harakati (`movements.transfer_id`). */
+  transferId?: string | null
+  /** Inventarizatsiya tuzatishi (`movements.inventory_count_id`). */
+  inventoryCountId?: string | null
   /** Xaridga bog'langan tirik kirimlar soni (`purchase_receipts.receipt_count`); noma'lum — null. */
   linkedReceipts?: number | null
 }
@@ -24,17 +28,28 @@ export interface CorrectableEntry {
 /** Yozuv bog'lanmaganmi (server `correct_linked` bermaydimi). Noma'lum bog'lanish — bog'langan deb olinadi. */
 export function isUnlinked(e: CorrectableEntry): boolean {
   if (e.table === 'movements') {
-    return (e.movementType === 'kirim' || e.movementType === 'chiqim') && !e.purchaseId
+    // Aniq null bo'lishi shart: maydon yuklanmagan (undefined) — bog'langan deb olinadi
+    return (
+      (e.movementType === 'kirim' || e.movementType === 'chiqim') &&
+      e.purchaseId === null &&
+      (e.transferId ?? null) === null &&
+      (e.inventoryCountId ?? null) === null
+    )
   }
   return e.linkedReceipts === 0
 }
 
-/** Muallif uchun qolgan vaqt (ms); oyna o'tgan — 0. */
-export function correctionRemainingMs(createdAt: string, nowIso: string): number {
+/** Oynaning qolgan vaqti (ms), manfiy — o'tgan; sana noto'g'ri — null. */
+function rawRemainingMs(createdAt: string, nowIso: string): number | null {
   const created = Date.parse(createdAt)
   const now = Date.parse(nowIso)
-  if (!Number.isFinite(created) || !Number.isFinite(now)) return 0
-  return Math.max(0, created + CORRECTION_WINDOW_MS - now)
+  if (!Number.isFinite(created) || !Number.isFinite(now)) return null
+  return created + CORRECTION_WINDOW_MS - now
+}
+
+/** Muallif uchun qolgan vaqt (ms); oyna o'tgan — 0. */
+export function correctionRemainingMs(createdAt: string, nowIso: string): number {
+  return Math.max(0, rawRemainingMs(createdAt, nowIso) ?? 0)
 }
 
 /**
@@ -42,9 +57,10 @@ export function correctionRemainingMs(createdAt: string, nowIso: string): number
  * va 30 daqiqa o'tmagan. Qolgan vaqt bilan.
  */
 export function selfCorrection(e: CorrectableEntry, myProfileId: string, nowIso: string): { allowed: boolean; remainingMs: number } {
-  const remainingMs = correctionRemainingMs(e.createdAt, nowIso)
-  const allowed = e.createdBy === myProfileId && !e.deletedAt && isUnlinked(e) && remainingMs > 0
-  return { allowed, remainingMs: allowed ? remainingMs : 0 }
+  // Chegara kiritiladi (server: now() <= created_at + 30 min)
+  const raw = rawRemainingMs(e.createdAt, nowIso)
+  const allowed = e.createdBy === myProfileId && !e.deletedAt && isUnlinked(e) && raw !== null && raw >= 0
+  return { allowed, remainingMs: allowed ? Math.max(0, raw ?? 0) : 0 }
 }
 
 /** Admin (veb) tuzata oladimi: o'chirilmagan va bog'lanmagan — vaqt cheklovisiz. */
@@ -52,26 +68,33 @@ export function adminCorrection(e: CorrectableEntry): boolean {
   return !e.deletedAt && isUnlinked(e)
 }
 
-/** Qolgan vaqt "mm:ss" (daqiqa:soniya) — tugmadagi sanoq uchun. */
-export function formatRemaining(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000))
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m}:${String(s).padStart(2, '0')}`
+/**
+ * Qolgan butun daqiqalar (pastga yaxlitlanadi): 12:30 → 12. 0 — oxirgi daqiqa ("1 daqiqadan kam").
+ * Matn — `t.correction.minutesLeft`.
+ */
+export function remainingMinutes(ms: number): number {
+  return Math.max(0, Math.floor(ms / 60_000))
 }
 
 export interface CorrectionDraft {
   table: 'movements' | 'purchases'
   /** Asl qiymatlar (o'zgarmagan maydon yuborilmaydi). */
-  original: { qtyInput: Dec; unitId: string; totalAmount?: Dec | null }
+  original: { qtyInput: Dec; unitId: string; totalAmount?: Dec | null; note?: string | null; materialId?: string; objectId?: string }
   qtyInput: string
   unitId: string | null
   /** Faqat xarid: summa kiritilishi ("1 250 000"). */
   totalInput?: string
-  note: string
+  /** Tuzatish sababi — majburiy (RPC `p_reason`, audit va direktor xabarida). */
+  reason: string
+  /** Yozuv izohi — ixtiyoriy; berilmasa yoki o'zgarmasa eski izoh qoladi. */
+  note?: string
+  /** Muallif: boshqa material (birlik shu materialniki bo'lishi shart — server tekshiradi). */
+  materialId?: string | null
+  /** Muallif: boshqa obyekt. */
+  objectId?: string | null
 }
 
-export type CorrectionErrorField = 'qty' | 'unit' | 'total' | 'note'
+export type CorrectionErrorField = 'qty' | 'unit' | 'total' | 'reason'
 export type CorrectionError = QtyError | 'required' | 'invalid'
 
 export interface CorrectionValue {
@@ -79,7 +102,12 @@ export interface CorrectionValue {
   qtyInput: Dec | null
   unitId: string | null
   totalAmount: Dec | null
-  note: string
+  reason: string
+  /** Yangi izoh; null — o'zgarmaydi (bo'sh satr — izohni o'chirish). */
+  note: string | null
+  /** Yangi material / obyekt (faqat muallif, 30 daqiqa); null — o'zgarmaydi. */
+  materialId: string | null
+  objectId: string | null
 }
 
 /**
@@ -90,6 +118,8 @@ export function validateCorrection(
   d: CorrectionDraft,
 ): { ok: true; value: CorrectionValue } | { ok: false; errors: Partial<Record<CorrectionErrorField, CorrectionError>> } {
   const errors: Partial<Record<CorrectionErrorField, CorrectionError>> = {}
+  const materialChanged = Boolean(d.materialId && d.original.materialId && d.materialId !== d.original.materialId)
+  const objectChanged = Boolean(d.objectId && d.original.objectId && d.objectId !== d.original.objectId)
   const qty = validateQtyInput(d.qtyInput)
   if (!qty.ok) errors.qty = qty.reason === 'empty' ? 'required' : qty.reason
   if (!d.unitId) errors.unit = 'required'
@@ -102,18 +132,24 @@ export function validateCorrection(
       if (total === null || cmp(total, '0') <= 0) errors.total = 'invalid'
     }
   }
-  const note = d.note.trim()
-  if (!note) errors.note = 'required'
+  const reason = d.reason.trim()
+  if (!reason) errors.reason = 'required'
   if (!qty.ok || Object.keys(errors).length > 0) return { ok: false, errors }
   const sameQty = cmp(qty.value, d.original.qtyInput) === 0
   const sameTotal = total === null || (d.original.totalAmount != null && cmp(total, d.original.totalAmount) === 0)
+  const note = d.note === undefined ? null : d.note.trim()
+  const sameNote = note === null || note === (d.original.note ?? '').trim()
   return {
     ok: true,
     value: {
       qtyInput: sameQty ? null : qty.value,
-      unitId: d.unitId === d.original.unitId ? null : d.unitId,
+      // Material o'zgarsa — birlik doim yuboriladi (yangi materialniki)
+      unitId: d.unitId === d.original.unitId && !materialChanged ? null : d.unitId,
       totalAmount: d.table === 'purchases' && !sameTotal ? total : null,
-      note,
+      reason,
+      note: sameNote ? null : note,
+      materialId: materialChanged ? (d.materialId ?? null) : null,
+      objectId: objectChanged ? (d.objectId ?? null) : null,
     },
   }
 }

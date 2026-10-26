@@ -280,8 +280,9 @@ describe('/materials — nom va muqobil nom dublikati (oldindan)', () => {
 describe('/materials — katalog himoyalari (hint kalitlari)', () => {
   const guard = (hint: string) => toRepoError({ code: 'P0001', hint, message: 'server' })
 
-  it('qoldig‘i bor material: server xabari (obyekt nomi bilan), "Nofaol qilish" taklif qilinadi', async () => {
-    const msg = '“Qum” materialining “Chilonzor 5” obyektida qoldig‘i bor — o‘chirib bo‘lmaydi.'
+  it('qoldig‘i bor material: obyekt nomi bilan (uz.ts shabloni), "Nofaol qilish" taklif qilinadi', async () => {
+    // Server xabari (migratsiyadagi matn); foydalanuvchiga — faqat obyekt nomi, uz.ts shablonida
+    const msg = `Materialni o'chirib bo'lmaydi: "Chilonzor 5" obyektida qoldig'i bor. Uni nofaol qiling.`
     vi.mocked(materialsRepo.softDeleteMaterial).mockRejectedValue(
       toRepoError({ code: 'P0001', hint: 'catalog_material_has_stock', message: msg }),
     )
@@ -290,7 +291,7 @@ describe('/materials — katalog himoyalari (hint kalitlari)', () => {
     fireEvent.click(dialog.getAllByRole('button', { name: tm.delete })[0] as HTMLElement)
     fireEvent.click(dialog.getByRole('button', { name: t.common.yes }))
     const alert = within(await dialog.findByRole('alert'))
-    expect(alert.getByText(msg)).toBeInTheDocument()
+    expect(alert.getByText(t.errorsWith.catalog_material_has_stock('Chilonzor 5'))).toBeInTheDocument()
     fireEvent.click(alert.getByRole('button', { name: tm.makeInactive }))
     await waitFor(() => expect(materialsRepo.updateMaterial).toHaveBeenCalledWith('m-qum', { isActive: false }))
     await waitFor(() => expect(materialsRepo.listMaterials).toHaveBeenCalledTimes(2))

@@ -7,7 +7,7 @@ import { ChangePasswordForm } from './ChangePasswordForm'
 function CenteredCard({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-canvas px-4 py-10">
-      <div className="flex w-full max-w-[400px] flex-col gap-4 rounded-2xl border border-line bg-paper p-6 sm:p-8">
+      <div className="flex w-full max-w-100 flex-col gap-4 rounded-2xl border border-line bg-paper p-6 sm:p-8">
         <p className="flex items-center gap-2 text-base font-semibold text-ink">
           <BrandMark className="size-8" />
           {t.app.name}

@@ -2,29 +2,30 @@
 
 ## Sizning vazifangiz
 
-Siz material sotib olasiz va har bir xaridni Mini App’da kiritasiz. Tasdiqlangan so‘rovlar bo‘yicha xarid qilasiz. Qo‘lingizdagi pul doim ko‘rinib turadi.
+Siz material sotib olasiz va har bir xaridni Telegram ilovasida yoki veb panelda (“Xaridlar” → “Xarid qo‘shish”) kiritasiz. Tasdiqlangan so‘rovlar bo‘yicha xarid qilasiz. Qo‘lingizdagi pul doim ko‘rinib turadi.
 
 ## Har kuni
 
-### Xarid kiritish (Mini App)
+### Xarid kiritish (Telegram ilovasi)
 
-1. “Xarid” ni oching. Yuqorida “Qo‘limda” — qo‘lingizdagi pul.
-2. So‘rov bo‘yicha olsangiz, “Tasdiqlangan so‘rovlar” dan uni bosing — ma’lumot to‘ladi.
-3. Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing: summa va sotuvchi o‘zi to‘ladi.
-4. Material, miqdor, “Jami summa (chekdagi)”, obyekt va sotuvchini tanlang.
+1. “Xarid” ni oching. Yuqorida “Qo‘limda” — qo‘lingizdagi pul; bosing — “Pul tarixi”.
+2. “Tasdiqlangan so‘rovlar” barcha obyektlar bo‘yicha guruhlangan: so‘rovni bossangiz, obyekt va ma’lumotlar o‘zi to‘ldiriladi.
+3. Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing: summa va sotuvchi o‘zi to‘ldiriladi.
+4. Material, miqdor, “Jami summa (chekdagi)”, obyekt va sotuvchini tanlang. Kechagi xarid — “Kecha”.
 5. “Saqlash” ni bosing.
 
 ### Veb panelda
 
-1. “So‘rovlar” da tasdiqlanganlarni ko‘ring. So‘rov bo‘yicha kiritilgan xarid so‘rovni o‘zi yopadi; aks holda — “Xarid qilindi”.
-2. “Xaridlar” da xaridingiz obyektda qabul qilinganini kuzating.
+1. “Xaridlar” → “Xarid qo‘shish” — xuddi shu ma’lumotlar, oxirgi obyekt eslab qolinadi.
+2. “So‘rovlar” da tasdiqlanganlarni ko‘ring. So‘rov bo‘yicha kiritilgan xarid so‘rovni o‘zi yopadi.
+3. Xato xaridni 30 daqiqa ichida “Tuzatish” (sabab bilan).
 
 ## Muhim qoidalar
 
 - Har xaridni o‘sha kuni kiriting. Summa — chekdagi jami summa.
-- Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda va “majburiy” belgili materialda chek rasmisiz saqlanmaydi. QR skanerlangan chekda rasm shart emas.
+- Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda va “majburiy” belgili materialda chek rasmisiz saqlanmaydi. Soliq.uz tasdiqlagan QR chekda rasm shart emas.
 - Bitta chekni ikki xaridda ishlatib bo‘lmaydi.
-- Mini App joylashuvni so‘raydi — ruxsat bering.
+- Xato xaridni Telegram ilovasida ham 30 daqiqa ichida tuzatasiz: “Yozuvlar” → xarid → “Tuzatish”.
 
 ## Ogohlantirishlar nimani anglatadi
 
@@ -37,4 +38,4 @@ Siz material sotib olasiz va har bir xaridni Mini App’da kiritasiz. Tasdiqlang
 
 ## Savol bo‘lsa
 
-Tasdiqlangan so‘rov muddati o‘tsa, Telegram’da eslatma keladi. Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+Tasdiqlangan so‘rov muddati o‘tsa, Telegram’da eslatma keladi. “Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. “Yozuvlar” da xaridlaringiz, pul yozuvlari va xabarlaringiz. Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.

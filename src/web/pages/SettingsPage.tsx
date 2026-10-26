@@ -16,7 +16,7 @@ function isTab(v: string | null): v is SettingsTab {
 }
 
 const ts = t.settings
-const icon = { className: 'size-[18px]', strokeWidth: 1.75, 'aria-hidden': true } as const
+const icon = { className: 'size-5', strokeWidth: 1.75, 'aria-hidden': true } as const
 
 /**
  * Sozlamalar sahifasi (`/settings`, admin va super_admin — Batch 11): firma sozlamalari va

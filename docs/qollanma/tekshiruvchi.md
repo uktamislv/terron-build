@@ -8,7 +8,7 @@ Siz obyektdagi materialni sanaysiz (inventarizatsiya). Hisobdagi qoldiq sizga ko
 
 ### Sanash
 
-1. Mini App’da “Inventar” ni oching, obyektni tanlang.
+1. Telegram ilovasida “Sanash” ni oching, obyektni tanlang.
 2. “Yangi sanash” ni bosing (boshlangan bo‘lsa — “Davom ettirish”).
 3. Har bir materialni sanab, “Sanalgan miqdor” ni yozing, “Saqlash”. Har kiritish darhol saqlanadi.
 4. Ro‘yxatda yo‘q material bo‘lsa — “Boshqa materiallar”.
@@ -16,7 +16,7 @@ Siz obyektdagi materialni sanaysiz (inventarizatsiya). Hisobdagi qoldiq sizga ko
 ### Yakunlash
 
 1. Hammasi sanalgach, “Yakunlash” ni bosing va tasdiqlang.
-2. Natija admin va direktorga yuboriladi.
+2. Natija admin va direktorga yuboriladi. Sanashlaringiz “Yozuvlar” da ko‘rinadi.
 
 ## Muhim qoidalar
 
@@ -33,4 +33,4 @@ Siz obyektdagi materialni sanaysiz (inventarizatsiya). Hisobdagi qoldiq sizga ko
 
 ## Savol bo‘lsa
 
-Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.

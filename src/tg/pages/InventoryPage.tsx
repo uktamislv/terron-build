@@ -144,7 +144,7 @@ function CountSession({
   profile: Profile
   count: InventoryCount
   materials: Material[]
-  onFinished: (hasShortage: boolean) => void
+  onFinished: (hasShortage: boolean | null) => void
   onExit: () => void
 }) {
   const [items, setItems] = useState<InventoryCountItem[] | null>(null)
@@ -301,7 +301,7 @@ function CountSession({
   )
 }
 
-type Phase = { kind: 'start' } | { kind: 'count'; count: InventoryCount } | { kind: 'result'; shortage: boolean }
+type Phase = { kind: 'start' } | { kind: 'count'; count: InventoryCount } | { kind: 'result'; shortage: boolean | null }
 
 /** Mini App: inventarizatsiya (tekshiruvchi, admin) — obyekt → yangi sanash yoki qoralamani davom ettirish. */
 export function InventoryPage() {
@@ -438,13 +438,14 @@ export function InventoryPage() {
             <section role="status" className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-paper px-5 py-8 text-center">
               <span
                 aria-hidden
-                className={`inline-flex size-16 items-center justify-center rounded-full ${phase.shortage ? 'bg-danger-bg text-danger' : 'bg-ok-bg text-ok'}`}
+                className={`inline-flex size-16 items-center justify-center rounded-full ${phase.shortage === true ? 'bg-danger-bg text-danger' : phase.shortage === false ? 'bg-ok-bg text-ok' : 'bg-ice text-brand'}`}
               >
-                {phase.shortage ? <TriangleAlert className="size-8" strokeWidth={1.5} /> : <ClipboardCheck className="size-8" strokeWidth={1.5} />}
+                {phase.shortage === true ? <TriangleAlert className="size-8" strokeWidth={1.5} /> : <ClipboardCheck className="size-8" strokeWidth={1.5} />}
               </span>
               <p className="text-lg font-semibold text-ink">{ti.resultTitle}</p>
               <p data-testid="inventory-result" className="max-w-xs text-base text-muted">
-                {phase.shortage ? ti.resultShortage : ti.resultOk}
+                {/* Natija yashirin (tekshiruvchi) — faqat "yuborildi" */}
+                {phase.shortage === null ? ti.resultSent : phase.shortage ? ti.resultShortage : ti.resultOk}
               </p>
               <Button variant="secondary" size="lg" className="mt-2 self-stretch" onClick={backToStart}>
                 {ti.again}

@@ -149,3 +149,19 @@ export function formatDecUz(value: Dec): string {
 export function conversionHint(u: UnitDef, baseUnit: string): string {
   return `1\u00A0${unitLabel(u)} = ${formatDecUz(u.factor)}\u00A0${baseUnit.trim()}`
 }
+
+/**
+ * Qoldiqni foydalanuvchi odatda kiritadigan birlikda ham ko'rsatish ("12 qop (600 kg)").
+ * Faqat oxirgi ishlatilgan birlik hali mavjud va koeffitsienti > 1 bo'lsa; aks holda null (asosiy birlik yetarli).
+ */
+export function inputUnitView(
+  qtyBase: Dec,
+  units: readonly Pick<UnitDef, 'id' | 'unit' | 'variant' | 'factor'>[],
+  lastUnitId: string | null,
+  scale = 2,
+): { qty: Dec; unit: string } | null {
+  if (!lastUnitId) return null
+  const u = units.find((x) => x.id === lastUnitId)
+  if (!u || cmp(u.factor, '1') <= 0) return null
+  return { qty: fromBaseQty(qtyBase, u.factor, scale), unit: unitLabel(u) }
+}

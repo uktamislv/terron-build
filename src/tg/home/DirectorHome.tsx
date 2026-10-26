@@ -1,6 +1,6 @@
 // Mini App direktor bosh ekrani (faqat ko'rish): bugun / 7 kun, kartochkalar, smeta ishlatilishi,
 // oxirgi 10 ogohlantirish. Ma'lumot — veb bilan umumiy repo'lar (RLS).
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { ArrowDownLeft, ArrowUpRight, ChevronRight, ShoppingCart, TriangleAlert } from 'lucide-react'
 import {
   Badge,
@@ -44,7 +44,7 @@ function pctNumber(pct: string | null): number {
   return pct === null ? 0 : Number(pct)
 }
 
-export function DirectorHome({ name }: { name: string | null }) {
+export function DirectorHome({ name, sections }: { name: string | null; sections?: ReactNode }) {
   const todayIso = useMemo(() => tashkentIsoDate(), [])
   const [period, setPeriod] = useState<DirectorPeriod>('today')
   const [objectId, setObjectId] = useState<string | null>(null)
@@ -72,6 +72,7 @@ export function DirectorHome({ name }: { name: string | null }) {
       summary={summary}
       usage={{ ...norms, data: usage }}
       alerts={alerts}
+      sections={sections}
       onPickObject={(id) => {
         haptic.select()
         setObjectId(id)
@@ -120,6 +121,7 @@ export function DirectorHomeView({
   usage,
   alerts,
   onPickObject,
+  sections,
 }: {
   name: string | null
   period: DirectorPeriod
@@ -128,6 +130,8 @@ export function DirectorHomeView({
   usage: Loaded<ObjectUsage[]>
   alerts: Loaded<Alert[]>
   onPickObject: (objectId: string) => void
+  /** "Bo'limlar" — kartochkalar ostida. */
+  sections?: ReactNode
 }) {
   const s = summary.data
   return (
@@ -171,6 +175,7 @@ export function DirectorHomeView({
           />
         </div>
       )}
+      {sections}
 
       <section aria-label={tt.usage} className="flex flex-col gap-2">
         <SectionTitle>{tt.usage}</SectionTitle>
@@ -215,7 +220,7 @@ export function DirectorHomeView({
                 // Bosilganda — shu ogohlantirish bosh ekran tepasida (AlertDeepLink)
                 to={`/tg?alert=${a.id}`}
                 kind={SEVERITY_KIND[a.severity]}
-                icon={<TriangleAlert className="size-[18px]" strokeWidth={1.75} />}
+                icon={<TriangleAlert className="size-5" strokeWidth={1.75} />}
                 title={t.alertTexts.types[a.type]}
                 badge={<Badge tone={SEVERITY_TONE[a.severity]}>{t.alertTexts.severities[a.severity]}</Badge>}
                 meta={

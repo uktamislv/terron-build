@@ -15,6 +15,8 @@ export {
 } from './unsourcedKirim'
 export type { CandidateKirim, KirimSourceReason, UnsourcedKirimInput } from './unsourcedKirim'
 export { RECEIPT_TOTAL_TOLERANCE, receiptTotalMismatch } from './receiptTotal'
+export { RECEIPT_DATE_TOLERANCE_DAYS, receiptVerified } from './receiptVerified'
+export type { ReceiptVerifiedInput } from './receiptVerified'
 export { DEFAULT_REQUEST_OVERBUY_PCT, requestOverbuy } from './requestOverbuy'
 export { DEFAULT_CASH_MAX_DAYS, cashAging } from './cashAging'
 export type { CashAgingResult, CashEntry, CashEntryKind } from './cashAging'

@@ -53,6 +53,7 @@ Gradientlar yo'q. Soya faqat "suzuvchi" elementlarda (pastki varaq, menyu, toast
 - Qizil (`danger`) faqat haqiqiy muammo uchun: kamomad, normadan oshish, manfiy qoldiq/balans, jiddiy ogohlantirish. Norma jadvalida material nomi faqat oshganda qizil. Ogohlantirish holati "yangi" — `info` (ko'k), "ko'rildi" — neytral, "yopildi" — `ok`.
 - Rang yagona belgi emas: manfiy son U+2212 minus bilan yoziladi (podotchet diagrammasidagi manfiy ustun yonida ham qiymat yoziladi), holat — belgi va matn bilan.
 - Ochiq ogohlantirishlar kartochkasi: jiddiy bor — `danger`, ogohlantirish bor — `warn`, yo'q — `ok`. "hozir" belgisi — `ice` fon, `brand` matn.
+- `warn` va `danger` — faqat ogohlantirishlar (alerts) uchun, veb va Telegram ilovasida bir xil. Reja holatlari muammo emas (`src/components/statusTones.ts`): so'rov "kutilmoqda" va "tasdiqlandi" — `info`, "rad" — neytral, "xarid qilindi" — `ok`; o'tkazma "yuborildi" — `info`, "qabul qilindi" — `ok`, "bekor" — neytral. So'rov qatorining chap chizig'i — neytral (holat belgida).
 
 ## Shrift
 

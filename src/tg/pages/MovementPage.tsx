@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
 import { Notice, RetryNotice, SkeletonRows } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
@@ -27,7 +28,7 @@ import { errorText } from '@/i18n/errorText'
 import { formatQty } from '@/lib/format'
 import { uuid } from '@/lib/uuid'
 import { entryDateFor } from '@/domain/entryDate'
-import { DateChips } from '../entry/DateChips'
+import { DateChip } from '../entry/DateChips'
 import { TODAY_CHOICE, type DateChipsValue } from '../entry/dateChoice'
 import { MaterialGrid } from '../entry/MaterialGrid'
 import { initialUnitId, loadLastEntry, rememberLastEntry } from '../entry/lastEntry'
@@ -40,6 +41,8 @@ import { IncomingTransfers } from '../movement/IncomingTransfers'
 import { EntryTypeSwitch } from '../movement/EntryTypeSwitch'
 import { MovementDetails } from '../movement/MovementDetails'
 import { loadEntryType, loadLastObject, saveEntryType, saveLastObject } from '../movement/prefs'
+import { readMovementPrefill } from '../movement/prefill'
+import { readUuidParam } from '../deepLinks'
 import { getWebApp, haptic } from '../telegram'
 import { SavedBanner } from '../ui'
 import { pinnedMaterialIds } from '../entry/useRankedMaterials'
@@ -56,7 +59,23 @@ type FieldErrors = Partial<Record<DraftField, DraftErrorCode>>
 export function MovementPage() {
   const { profile } = useAuth()
   const companyId = profile?.company_id
-  const [type, setType] = useState<EntryType>(loadEntryType)
+  // "Qoldiq" qatoridan kelgan bo'lsa — obyekt, material va tur (chiqim) oldindan tanlanadi
+  const location = useLocation()
+  const [prefill] = useState(() => readMovementPrefill(location.state))
+  // Telegram xabaridagi havola: ?transfer=<id> — kelgan o'tkazmani qabul qilish varag'i
+  const [params, setParams] = useSearchParams()
+  const linkedTransfer = readUuidParam(params, 'transfer')
+  const clearLinkedTransfer = useCallback(() => {
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('transfer')
+        return next
+      },
+      { replace: true },
+    )
+  }, [setParams])
+  const [type, setType] = useState<EntryType>(() => prefill?.type ?? loadEntryType())
   const [objects, setObjects] = useState<ObjectRow[] | null>(null)
   const [materials, setMaterials] = useState<Material[] | null>(null)
   const [usage, setUsage] = useState<UsageStat[]>([])
@@ -116,8 +135,15 @@ export function MovementPage() {
         // super_admin boshqa firmalarni ham ko'radi — Mini App faqat o'z firmasida ishlaydi
         const active = objs.filter((o) => o.status === 'faol' && o.company_id === companyId)
         setObjects(active)
-        setMaterials(mats.filter((m) => m.is_active && m.company_id === companyId))
-        setObjectId((cur) => cur ?? defaultObjectId(active.map((o) => o.id), loadLastObject()))
+        const usable = mats.filter((m) => m.is_active && m.company_id === companyId)
+        setMaterials(usable)
+        const pre = prefill && active.some((o) => o.id === prefill.objectId) ? prefill : null
+        setObjectId((cur) => cur ?? pre?.objectId ?? defaultObjectId(active.map((o) => o.id), loadLastObject()))
+        const preMaterial = pre ? usable.find((m) => m.id === pre.materialId) : undefined
+        if (preMaterial) {
+          setMaterialId((cur) => cur ?? preMaterial.id)
+          setUnitId((cur) => cur ?? initialUnitId(preMaterial.units, profileId ? loadLastEntry(profileId, preMaterial.id) : null))
+        }
         setLoadError(null)
       })
       .catch((err: unknown) => {
@@ -132,6 +158,8 @@ export function MovementPage() {
     return () => {
       alive = false
     }
+    // prefill — faqat birinchi ochilishda (useState), profileId — barqaror
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId, reloadKey])
 
   const ranked = useMemo(
@@ -412,7 +440,13 @@ export function MovementPage() {
   return (
     <div className="flex flex-col gap-4">
       {objects && objects.length > 0 && (
-        <IncomingTransfers objectIds={objects.map((o) => o.id)} open={incomingOpen} onOpenChange={setIncomingOpen} />
+        <IncomingTransfers
+          objectIds={objects.map((o) => o.id)}
+          open={incomingOpen}
+          onOpenChange={setIncomingOpen}
+          linkedId={linkedTransfer}
+          onLinkedHandled={clearLinkedTransfer}
+        />
       )}
       {!incomingOpen && (
         <>
@@ -429,7 +463,31 @@ export function MovementPage() {
               {step === 'object' ? (
                 <ObjectChooser objects={objects} selectedId={objectId} lastUsed={loadLastObject()} onPick={chooseObject} />
               ) : (
-                object && <ObjectBar object={object} onChange={manyObjects ? () => setPickingObject(true) : null} />
+                object && (
+                  <div className="flex flex-col gap-1">
+                    <ObjectBar
+                      object={object}
+                      onChange={manyObjects ? () => setPickingObject(true) : null}
+                      // Sana — ixcham chip shu satrda: klaviatura ochilganda ham ko'rinadi, standart "Bugun"
+                      extra={
+                        <DateChip
+                          value={entryDate}
+                          isAdmin={isAdmin}
+                          error={dateError}
+                          onChange={(next) => {
+                            setEntryDate(next)
+                            setDateError(null)
+                          }}
+                        />
+                      }
+                    />
+                    {dateError && (
+                      <p role="alert" className="text-sm text-danger">
+                        {dateError}
+                      </p>
+                    )}
+                  </div>
+                )
               )}
 
               {step === 'material' && <MaterialGrid materials={ranked} pinnedIds={pinned} onPick={chooseMaterial} />}
@@ -466,17 +524,6 @@ export function MovementPage() {
                   duplicateMinutes={duplicate ? settings.duplicateWindowMinutes : null}
                   onConfirmDuplicate={saveDuplicate}
                   onCancelDuplicate={() => setDuplicate(false)}
-                  dateField={
-                    <DateChips
-                      value={entryDate}
-                      isAdmin={isAdmin}
-                      error={dateError}
-                      onChange={(next) => {
-                        setEntryDate(next)
-                        setDateError(null)
-                      }}
-                    />
-                  }
                   extra={
                     isAdmin && object ? (
                       <ObjectLocationButton

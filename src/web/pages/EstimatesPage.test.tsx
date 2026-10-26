@@ -322,14 +322,15 @@ describe('/estimates — import ustasi', () => {
 
   it('server estimate_item_invalid xabari ko‘rsatiladi; qayta urinishda yaratilganlar takrorlanmaydi', async () => {
     vi.mocked(estimatesRepo.importEstimate).mockRejectedValueOnce(
-      toRepoError({ code: '22023', hint: 'estimate_item_invalid', message: 'Qator 4: birlik materialga tegishli emas' }),
+      toRepoError({ code: '22023', hint: 'estimate_item_invalid', message: 'Qator 4: birlik materialga tegishli emas', details: '4' }),
     )
     await throughCatalog()
     const q = (await screen.findAllByTestId(/^unitq-/))[0] as HTMLElement
     fireEvent.click(within(q).getByRole('button', { name: 'qop' }))
     next()
     fireEvent.click(await screen.findByRole('button', { name: tw.saveButton }))
-    expect(await screen.findByText('Qator 4: birlik materialga tegishli emas')).toBeInTheDocument()
+    // Server matni xom ko'rsatilmaydi — qator raqami uz.ts shablonida
+    expect(await screen.findByText(t.errorsWith.estimate_item_invalid('4'))).toBeInTheDocument()
     const firstId = vi.mocked(estimatesRepo.importEstimate).mock.calls[0]?.[0].id
 
     fireEvent.click(screen.getByRole('button', { name: tw.retry }))

@@ -170,6 +170,16 @@ export function normalizeHealth(raw: unknown): NotificationHealth {
   }
 }
 
+/**
+ * Admin: profilning "botni bloklagan" belgisini tozalash (RPC `reset_chat_blocked`) — foydalanuvchi botni
+ * qayta ochganini aytganda. `true` — belgi tozalandi, `false` — allaqachon tozalangan edi.
+ */
+export async function resetChatBlocked(profileId: string): Promise<boolean> {
+  const { data, error } = await getSupabase().rpc('reset_chat_blocked', { p_profile_id: profileId })
+  if (error) throw toRepoError(error)
+  return data === true
+}
+
 /** RPC `notification_health()` — faqat admin (`notification_health_forbidden`). */
 export async function getNotificationHealth(): Promise<NotificationHealth> {
   const { data, error } = await getSupabase().rpc('notification_health')

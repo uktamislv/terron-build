@@ -54,7 +54,7 @@ export function Tabs<K extends string>({
             onClick={() => onChange(item.key)}
             onKeyDown={(e) => onKey(e, i)}
             className={cx(
-              'relative inline-flex min-h-11 shrink-0 items-center gap-2 px-3 text-sm font-semibold whitespace-nowrap transition-colors [&>svg]:size-[18px]',
+              'relative inline-flex min-h-11 shrink-0 items-center gap-2 px-3 text-sm font-semibold whitespace-nowrap transition-colors [&>svg]:size-5',
               selected ? 'text-brand' : 'text-muted hover:text-ink',
             )}
           >

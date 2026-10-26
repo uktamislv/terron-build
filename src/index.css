@@ -48,6 +48,8 @@
   --color-brand-600: #1a52e0;
   --color-brand-700: #1747c4;
   --color-navy: #0b2a6b;
+  /* Navy yon menyudagi ikkinchi darajali matn (faol bo'lmagan band, rol) — shaffoflik o'rniga */
+  --color-navy-muted: #bcc8e3;
   --color-ice: #eaf1ff;
   --color-paper: #ffffff;
   --color-canvas: #f4f6fa;

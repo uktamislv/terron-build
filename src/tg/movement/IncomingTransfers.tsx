@@ -135,14 +135,21 @@ export function IncomingTransfers({
   objectIds,
   open,
   onOpenChange,
+  linkedId = null,
+  onLinkedHandled,
 }: {
   objectIds: string[]
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Telegram xabaridagi havola (?transfer=<id>): ro'yxatda bo'lsa — darhol qabul qilish varag'i. */
+  linkedId?: string | null
+  /** Havola ishlatildi (topildi yoki topilmadi) — parametr tozalanadi. */
+  onLinkedHandled?: () => void
 }) {
   const [rows, setRows] = useState<Transfer[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Havola (?transfer=<id>) — shu o'tkazma tanlangan holda; ro'yxatda bo'lmasa, tanlov e'tiborsiz
+  const [selectedId, setSelectedId] = useState<string | null>(linkedId)
   const [doneText, setDoneText] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const idsKey = objectIds.join(',')
@@ -164,6 +171,14 @@ export function IncomingTransfers({
       alive = false
     }
   }, [idsKey, reloadKey])
+
+  // Havola: o'tkazma kutilayotganlar ichida bo'lsa ochiladi, aks holda jim (qabul qilingan yoki ruxsat yo'q)
+  useEffect(() => {
+    if (!linkedId || !rows) return
+    // selectedId havoladan boshlang'ich qiymat oladi; bu yerda faqat ro'yxat ochiladi
+    if (rows.some((r) => r.id === linkedId)) onOpenChange(true)
+    onLinkedHandled?.()
+  }, [linkedId, rows, onOpenChange, onLinkedHandled])
 
   const selected = rows?.find((r) => r.id === selectedId) ?? null
   const back = useCallback(() => {

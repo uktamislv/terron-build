@@ -12,3 +12,12 @@ describe('simpleReceiptStatus — "Yozuvlarim" xarid holati', () => {
     expect(simpleReceiptStatus('500', undefined)).toBeNull()
   })
 })
+
+describe('simpleReceiptStatus — firma chegarasi (receipt_mismatch_pct)', () => {
+  it('farq chegaradan oshmasa — Qabul qilindi (evaluateReceipt bilan bir xil, chegara kiradi)', () => {
+    expect(simpleReceiptStatus('500', '498', '1')).toBe('received')
+    expect(simpleReceiptStatus('500', '495', '1')).toBe('received')
+    expect(simpleReceiptStatus('500', '494', '1')).toBe('partial')
+    expect(simpleReceiptStatus('500', '498')).toBe('partial')
+  })
+})

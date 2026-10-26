@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
 import { BottomSheet, Notice, RetryNotice, SkeletonRows } from '@/components/ui'
 import { getMyBalance } from '@/data/cashRepo'
@@ -8,7 +9,7 @@ import { listMaterials } from '@/data/materialsRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { checkPurchasePrice, createPurchase, listMyPurchases, type PriceCheck, type PurchaseReceiptQr } from '@/data/purchasesRepo'
 import { receiptLookup, type ReceiptLookup } from '@/data/receiptRepo'
-import { listApprovedRequests } from '@/data/requestsRepo'
+import { listApprovedRequests, listApprovedRequestsAll } from '@/data/requestsRepo'
 import { createSupplier, findByTin, listSuppliers, supplierKey } from '@/data/suppliersRepo'
 import type { Material, MaterialRequest, ObjectRow, Purchase, Supplier } from '@/data/types'
 import { getMyMaterialUsage } from '@/data/usageRepo'
@@ -17,7 +18,7 @@ import { formatSumInput, parseSumInput } from '@/domain/cash'
 import { cmp, isZero, round } from '@/domain/decimal'
 import { defaultObjectId, rankMaterials, validateMovementDraft, type UsageStat } from '@/domain/movements'
 import { parseReceiptQr, type ReceiptQr } from '@/domain/receipt'
-import { findDuplicateEntry, photoRequired } from '@/domain/rules'
+import { findDuplicateEntry, photoRequired, receiptVerified } from '@/domain/rules'
 import { purchasePrices, toBaseQty, unitLabel, validateQtyInput } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
@@ -25,6 +26,7 @@ import { formatQty, formatSum } from '@/lib/format'
 import { uuid } from '@/lib/uuid'
 import { entryDateFor } from '@/domain/entryDate'
 import { DateChips } from '../entry/DateChips'
+import { readUuidParam } from '../deepLinks'
 import { TODAY_CHOICE, type DateChipsValue } from '../entry/dateChoice'
 import { MaterialGrid } from '../entry/MaterialGrid'
 import { initialUnitId, loadLastEntry, rememberLastEntry } from '../entry/lastEntry'
@@ -222,9 +224,31 @@ export function PurchasePage() {
   // Batch 12 (D): xarid do'konda — joylashuv faqat saqlanadi (alert yo'q). Ekran ochilishi bilan so'raladi.
   const geo = useGeoCapture(step === 'details')
 
+  // Ta'minotchi: barcha obyektlardagi tasdiqlangan so'rovlar (obyekt bo'yicha guruhlangan); bittasini
+  // tanlash — obyekt ham tanlanadi. Telegram xabaridagi ?request=<id> — shu so'rov oldindan tanlanadi.
+  const allObjectsMode = profile?.role === 'taminotchi'
+  const [approvedAll, setApprovedAll] = useState<MaterialRequest[] | null>(null)
+  const [params, setParams] = useSearchParams()
+  const linkedRequest = readUuidParam(params, 'request')
+  useEffect(() => {
+    if (!allObjectsMode) return
+    let alive = true
+    Promise.resolve()
+      .then(() => listApprovedRequestsAll())
+      .then((rows) => {
+        if (alive) setApprovedAll(Array.isArray(rows) ? rows : [])
+      })
+      .catch(() => {
+        if (alive) setApprovedAll([])
+      })
+    return () => {
+      alive = false
+    }
+  }, [allObjectsMode])
+
   // Batch 12 (H): obyektning tasdiqlangan so'rovlari (ko'rinmasa — chiplar yo'q)
   useEffect(() => {
-    if (!objectId) return
+    if (!objectId || allObjectsMode) return
     let alive = true
     Promise.resolve()
       .then(() => listApprovedRequests(objectId))
@@ -237,12 +261,22 @@ export function PurchasePage() {
     return () => {
       alive = false
     }
-  }, [objectId])
-  const approvedRows = approved && approved.objectId === objectId ? approved.rows : []
+  }, [objectId, allObjectsMode])
+  const approvedRows = allObjectsMode ? (approvedAll ?? []) : approved && approved.objectId === objectId ? approved.rows : []
 
   const lastEntry = profileId && materialId ? loadLastEntry(profileId, materialId) : null
-  // Server bilan bir xil: 200 javob (keshda chek bor) — tasdiqlangan, maydonlarning to'liqligi shart emas
-  const qrVerified = Boolean(receipt?.lookup)
+  // Server bilan bir xil (receiptVerified): soliq.uz javobidagi chek jami yoki qator summasi xarid summasidan
+  // ≤ 1 so'm farq qiladi va chek sanasi xarid sanasidan ±3 kun ichida. Javob yo'q yoki jami noma'lum — tasdiqlanmagan.
+  // Rasm majburiyatidan ozod qilish va "Chek tasdiqlandi" belgisi shu natijaga tayanadi.
+  const qrVerified = receipt?.lookup
+    ? receiptVerified({
+        lookupTotal: receipt.lookup.total,
+        lookupItems: receipt.lookup.items,
+        lookupReceiptAt: receipt.lookup.datetime ?? receipt.qr.datetime,
+        totalAmount: parseSumInput(sum),
+        purchasedAt: receipt.lookup.datetime ?? receipt.qr.datetime ?? entryDateFor(entryDate.choice, entryDate.other, new Date().toISOString(), isAdmin) ?? new Date().toISOString(),
+      })
+    : false
 
   // Jonli narx: "1 kg narxi: …" va oxirgi o'rtachadan og'ish (bloklamaydi)
   const parsedQty = validateQtyInput(qty)
@@ -368,11 +402,14 @@ export function PurchasePage() {
     setReceiptUsed(false)
   }
 
-  /** So'rov chipi: material, birlik va miqdor to'ladi; xarid shu so'rovga bog'lanadi. */
+  /** So'rov chipi: obyekt, material, birlik va miqdor to'ladi; xarid shu so'rovga bog'lanadi. */
   const pickRequest = (r: MaterialRequest) => {
     const m = materials?.find((x) => x.id === r.material_id)
     if (!m) return
+    if (!objects?.some((o) => o.id === r.object_id)) return
     haptic.tap()
+    setObjectId(r.object_id)
+    setPickingObject(false)
     setRequest(r)
     setMaterialId(m.id)
     setUnitId(m.units.some((u) => u.id === r.unit_id) ? r.unit_id : (m.units[0]?.id ?? null))
@@ -557,7 +594,10 @@ export function PurchasePage() {
         saveLastObject(objectId)
         rememberLastEntry(profile.id, materialId, unitId, result.qtyInput)
         setRecent((list) => [row, ...list.filter((p) => p.id !== row.id)].slice(0, RECENT_LIMIT))
-        if (request) setApproved((a) => (a ? { ...a, rows: a.rows.filter((r) => r.id !== request.id) } : a))
+        if (request) {
+          setApproved((a) => (a ? { ...a, rows: a.rows.filter((r) => r.id !== request.id) } : a))
+          setApprovedAll((list) => list?.filter((r) => r.id !== request.id) ?? list)
+        }
         if (supplierId) rememberSupplier(supplierId)
         setSavedText({
           text: tp.saved(
@@ -627,7 +667,7 @@ export function PurchasePage() {
   const receiptView = receipt
     ? {
         receiptNo: receipt.qr.receiptNo,
-        verified: receipt.lookup !== null,
+        verified: qrVerified,
         total: receipt.lookup?.total ?? null,
         sellerName: receipt.lookup?.sellerName ?? null,
         datetime: receipt.lookup?.datetime ?? receipt.qr.datetime,
@@ -645,6 +685,19 @@ export function PurchasePage() {
     </>
   )
   const insideTelegram = getWebApp() !== null
+
+  // Havoladagi so'rov ro'yxatda bo'lsa — tanlanadi (topilmasa — jim); parametr bir marta ishlatiladi
+  useEffect(() => {
+    if (!linkedRequest || !approvedAll || !materials || !objects) return
+    const r = approvedAll.find((x) => x.id === linkedRequest)
+    // Holat yangilanishi — effekt tanasida emas, navbatdagi mikrotopshiriqda
+    if (r) void Promise.resolve().then(() => pickRequest(r))
+    const next = new URLSearchParams(params)
+    next.delete('request')
+    setParams(next, { replace: true })
+    // pickRequest — har renderda yangi; faqat ma'lumot yuklanganda bir marta
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedRequest, approvedAll, materials, objects])
 
   if (!profile) return null
 
@@ -671,6 +724,7 @@ export function PurchasePage() {
 
       {objects && objects.length > 0 && materials && (
         <>
+          {step === 'object' && allObjectsMode && <ApprovedRequestChips requests={approvedRows} onPick={pickRequest} groupByObject />}
           {step === 'object' ? (
             <ObjectChooser objects={objects} selectedId={objectId} lastUsed={loadLastObject()} onPick={chooseObject} />
           ) : (
@@ -680,7 +734,7 @@ export function PurchasePage() {
           {step === 'material' && (
             <>
               {receiptBlock}
-              <ApprovedRequestChips requests={approvedRows} onPick={pickRequest} />
+              <ApprovedRequestChips requests={approvedRows} onPick={pickRequest} groupByObject={allObjectsMode} />
               <MaterialGrid materials={ranked} pinnedIds={pinned} onPick={chooseMaterial} />
             </>
           )}

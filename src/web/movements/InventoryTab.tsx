@@ -329,7 +329,7 @@ export function InventoryTab({ objects, canApply }: { objects: ObjectRow[]; canA
           renderMobile={(c) => (
             <EntryRow
               kind={c.applied_at ? 'ok' : c.status === 'draft' ? 'neutral' : 'warn'}
-              icon={<ClipboardCheck className="size-[18px]" strokeWidth={1.75} />}
+              icon={<ClipboardCheck className="size-5" strokeWidth={1.75} />}
               title={c.object_name ?? '—'}
               badge={statusBadges(c)}
               meta={

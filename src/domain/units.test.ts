@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseDec } from './decimal'
 import {
+  inputUnitView,
   MONEY_SCALE,
   PRICE_PER_BASE_SCALE,
   QTY_SCALE,
@@ -242,5 +243,23 @@ describe('formatDecUz / conversionHint', () => {
     expect(conversionHint(GISHT[3]!, 'dona')).toBe("1\u00A0m² devor · bir g'isht · 250 mm = 102\u00A0dona")
     expect(conversionHint(ARMATURA[4]!, 'kg')).toBe('1\u00A0metr · Ø12 = 0,888\u00A0kg')
     expect(conversionHint(u('t', 'arm', 'tonna', '1000.0000000000'), 'kg')).toBe('1\u00A0tonna = 1\u202F000\u00A0kg')
+  })
+})
+
+describe('inputUnitView — qoldiq odatiy birlikda', () => {
+  const units = [
+    { id: 'kg', unit: 'kg', variant: null, factor: '1' },
+    { id: 'qop', unit: 'qop', variant: null, factor: '50' },
+  ]
+  it('oxirgi birlik koeffitsienti > 1 — shu birlikda', () => {
+    expect(inputUnitView('600', units, 'qop')).toEqual({ qty: '12', unit: 'qop' })
+  })
+  it('kasr 2 xonagacha', () => {
+    expect(inputUnitView('625', units, 'qop')).toEqual({ qty: '12.5', unit: 'qop' })
+  })
+  it('asosiy birlik, noma’lum yoki yo‘q birlik — null', () => {
+    expect(inputUnitView('600', units, 'kg')).toBeNull()
+    expect(inputUnitView('600', units, null)).toBeNull()
+    expect(inputUnitView('600', units, 'gone')).toBeNull()
   })
 })

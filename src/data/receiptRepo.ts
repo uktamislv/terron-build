@@ -7,6 +7,8 @@ export interface ReceiptLine {
   qty: string
   price: string
   sum: string
+  /** Chekdagi birlik ("kg", "dona"), bo'lmasa null — "ta" deb taxmin qilinmaydi. */
+  unit: string | null
 }
 
 /** `receipt-lookup` Edge Function natijasi. */
@@ -34,7 +36,7 @@ export function normalizeReceipt(raw: unknown): ReceiptLookup {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const items = (Array.isArray(r.items) ? r.items : [])
     .filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
-    .map((x) => ({ name: str(x.name) ?? '', qty: str(x.qty) ?? '0', price: str(x.price) ?? '0', sum: str(x.sum) ?? '0' }))
+    .map((x) => ({ name: str(x.name) ?? '', qty: str(x.qty) ?? '0', price: str(x.price) ?? '0', sum: str(x.sum) ?? '0', unit: str(x.unit) ?? str(x.unitName) ?? null }))
     .filter((x) => x.name !== '')
   return {
     sellerName: str(r.sellerName),

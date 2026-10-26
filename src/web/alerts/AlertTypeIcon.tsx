@@ -24,10 +24,12 @@ import {
   TrendingUp,
   Trash2,
   UserCheck,
+  UserRoundPen,
+  Merge,
 } from 'lucide-react'
 import type { AlertType } from '@/data/types'
 
-const p = { className: 'size-[18px]', strokeWidth: 1.75, 'aria-hidden': true } as const
+const p = { className: 'size-5', strokeWidth: 1.75, 'aria-hidden': true } as const
 
 /** Ogohlantirish turi belgisi. */
 export function AlertTypeIcon({ type }: { type: AlertType }) {
@@ -56,6 +58,10 @@ export function AlertTypeIcon({ type }: { type: AlertType }) {
       return <PackageSearch {...p} />
     case 'manfiy_qoldiq':
       return <MinusCircle {...p} />
+    case 'xarid_boshqa_nomidan':
+      return <UserRoundPen {...p} />
+    case 'sotuvchi_birlashtirildi':
+      return <Merge {...p} />
     case 'takroriy_yozuv':
       return <CopyX {...p} />
     case 'joylashuv_farqi':

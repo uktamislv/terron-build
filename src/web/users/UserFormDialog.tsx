@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Button, choiceClass, Modal, Notice, TextField } from '@/components/ui'
+import { Button, Checkbox, choiceClass, Modal, Notice, TextField } from '@/components/ui'
 import { listObjectMembers, syncProfileObjects } from '@/data/objectMembersRepo'
 import { createProfile, updateProfile, type ProfilePatch } from '@/data/profilesRepo'
 import type { ObjectMember, ObjectRow, Profile } from '@/data/types'
@@ -192,9 +192,7 @@ export function UserFormDialog({
                       emphasis: false,
                     })}
                   >
-                    <input
-                      type="checkbox"
-                      className="size-5 border-line-strong accent-brand"
+                    <Checkbox
                       checked={values.objectIds.includes(o.id)}
                       onChange={() => toggleObject(o.id)}
                     />

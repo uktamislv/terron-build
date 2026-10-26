@@ -2,7 +2,7 @@
 // Taqdimot komponentlari — ImportWizard va ko'rgazma (/__preview) uchun umumiy.
 import type { ReactNode } from 'react'
 import { Check, X } from 'lucide-react'
-import { Button, cx, PageHeader } from '@/components/ui'
+import { Button, choiceClass, cx, PageHeader } from '@/components/ui'
 import { t } from '@/i18n'
 import { STEPS, type StepKey } from './wizardModel'
 
@@ -39,14 +39,13 @@ export function WizardStepper({
               {pos > 0 && <span aria-hidden className={cx('h-0.5 w-4 rounded-full lg:w-6', i <= step ? 'bg-brand' : 'bg-line')} />}
               <button
                 type="button"
-                disabled={!reachable || active}
+                disabled={!reachable}
                 aria-current={active ? 'step' : undefined}
                 title={tw.steps[key]}
-                onClick={() => onStep(i)}
-                className={cx(
-                  'group inline-flex min-h-11 items-center gap-2 rounded-full py-1 pr-3 pl-1 text-sm font-semibold transition-colors',
-                  active ? 'bg-ice text-brand' : reachable ? 'text-ink hover:bg-ice/60' : 'text-muted',
-                )}
+                onClick={() => {
+                  if (!active) onStep(i)
+                }}
+                className={cx(choiceClass({ selected: active, shape: 'pill' }), 'group gap-2 py-1 pr-3 pl-1 font-semibold')}
               >
                 <span
                   aria-hidden

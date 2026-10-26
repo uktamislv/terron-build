@@ -4,13 +4,14 @@ import { Bug, CircleHelp } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { BugReportForm } from '@/components/bugReport/BugReportForm'
 import { Forbidden } from '@/components/Forbidden'
-import { BottomSheet, BrandMark, cx, IconButton } from '@/components/ui'
+import { BottomSheet, BrandMark, cx, IconButton, SheetChromeContext } from '@/components/ui'
 import { tgExtraFor, type TgExtraKey, type TgNavKey } from '@/domain/roles'
 import { t } from '@/i18n'
 import { tgBottomNavForRole, tgNavForRole } from './nav'
+import { deepLinkTarget } from './deepLinks'
 import { tgNavIcons } from './navIcons'
 import { haptic, initTelegram } from './telegram'
-import { TgChromeContext } from './useTelegramButtons'
+import { registerSheet, TgChromeContext } from './useTelegramButtons'
 
 /** Mini App sarlavhasidagi sahifa nomi (yo'l bo'yicha). Bosh ekranda — salomlashish sahifa ichida. */
 function pageTitle(pathname: string): string | null {
@@ -76,7 +77,8 @@ export function TgLayout({ children }: { children?: ReactNode } = {}) {
   )
   const typing = useTextEntryFocused()
   // Telegram MainButton ko'rinib turganda yoki klaviatura ochiq bo'lsa — pastki menyu yashiriladi
-  const navHidden = mainButtons > 0 || typing
+  // Rolda bitta band bo'lsa — menyu kerak emas (bitta tugmali menyu joy egallaydi, xolos)
+  const navHidden = mainButtons > 0 || typing || nav.length <= 1
   const title = pageTitle(pathname)
 
   useEffect(() => {
@@ -85,6 +87,7 @@ export function TgLayout({ children }: { children?: ReactNode } = {}) {
 
   return (
     <TgChromeContext.Provider value={chrome}>
+      <SheetChromeContext.Provider value={registerSheet}>
       <div className="min-h-app mx-auto flex max-w-md flex-col bg-canvas [--header-h:3.5rem]">
         {profile && (
           // Sarlavha: chapda sahifa nomi, o'ngda kichik yordamchi tugmalar (Yordam, Xatolik haqida xabar)
@@ -129,7 +132,7 @@ export function TgLayout({ children }: { children?: ReactNode } = {}) {
         >
           {children ?? <Outlet />}
         </main>
-        {nav.length > 0 && !navHidden && (
+        {!navHidden && (
           <nav
             aria-label={t.app.name}
             className="fixed inset-x-0 bottom-0 z-30 mx-auto grid max-w-md border-t border-line bg-paper/95 px-0.5 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] backdrop-blur print:hidden"
@@ -170,14 +173,21 @@ export function TgLayout({ children }: { children?: ReactNode } = {}) {
           </BottomSheet>
         )}
       </div>
+      </SheetChromeContext.Provider>
     </TgChromeContext.Provider>
   )
 }
 
-/** /tg ochilganda: rolda "Bosh" bo'lmasa — birinchi ruxsat etilgan bandga. */
+/**
+ * /tg ochilganda: ish xabaridagi havola (?request= / ?transfer=) — tegishli ekranga; rolda "Bosh" bo'lmasa —
+ * birinchi ruxsat etilgan bandga.
+ */
 export function TgIndex({ home }: { home: ReactNode }) {
   const { profile } = useAuth()
+  const { search } = useLocation()
   if (!profile) return null
+  const linked = deepLinkTarget(profile.role, new URLSearchParams(search))
+  if (linked) return <Navigate to={linked} replace />
   const nav = tgNavForRole(profile.role)
   if (nav.some((item) => item.key === 'home')) return <>{home}</>
   const first = nav[0]

@@ -79,16 +79,15 @@ describe('Mini App pastki menyu', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/tg/purchase'))
   })
 
-  it('prorab — Bosh, Kirim/chiqim, Xarid, So‘rov, Yozuvlarim', async () => {
+  it('prorab — Bosh, Ombor, Xarid, So‘rov, Yozuvlar', async () => {
     await openAs('prorab')
-    expect(within(bottomNav()).getAllByRole('link').map((a) => a.textContent)).toEqual([
-      t.tg.nav.home,
-      // Menyuda qisqa yorliq — bir qatorga sig'adi
-      t.tg.navShort.movement,
-      t.tg.nav.purchase,
-      t.tg.nav.request,
-      t.tg.nav.mine,
-    ])
+    expect(within(bottomNav()).getAllByRole('link').map((a) => a.textContent)).toEqual(['Bosh', 'Ombor', 'Xarid', 'So‘rov', 'Yozuvlar'])
+  })
+
+  it('bitta bandli rol (buxgalter) — pastki menyu yo‘q', async () => {
+    await openAs('buxgalter')
+    await screen.findByRole('heading', { name: t.tg.mine.title })
+    expect(screen.queryByRole('navigation', { name: t.app.name })).not.toBeInTheDocument()
   })
 
   it('direktor — Bosh ekran ochiladi', async () => {

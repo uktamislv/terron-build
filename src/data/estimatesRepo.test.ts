@@ -67,11 +67,11 @@ describe('estimatesRepo', () => {
     ])
   })
 
-  it('importEstimate: estimate_item_invalid — server xabari foydalanuvchiga', async () => {
-    fake.results.push({ data: null, error: { code: '22023', hint: 'estimate_item_invalid', message: 'Qator 12: miqdor 0' } })
+  it('importEstimate: estimate_item_invalid — qator raqami parametr sifatida', async () => {
+    fake.results.push({ data: null, error: { code: '22023', hint: 'estimate_item_invalid', message: 'Qator 12: miqdor 0', details: '12' } })
     await expect(importEstimate({ id: 'e', objectId: 'o', title: 't', sourceFileName: null, estimateDate: null, items: [] })).rejects.toMatchObject({
       code: 'estimate_item_invalid',
-      userMessage: 'Qator 12: miqdor 0',
+      params: ['12'],
     })
   })
 
@@ -157,11 +157,11 @@ describe('estimatesRepo', () => {
     expect(all('rpc')[0]).toEqual(['rpc', 'remember_estimate_aliases', { p_estimate_id: 'e1', p_items: items }])
   })
 
-  it('rememberEstimateAliases: estimate_aliases_invalid — server xabari', async () => {
+  it('rememberEstimateAliases: estimate_aliases_invalid — qator raqami parametr sifatida', async () => {
     fake.results.push({ data: null, error: { code: '22023', hint: 'estimate_aliases_invalid', message: 'Qator 2: material topilmadi yoki o‘chirilgan' } })
     await expect(rememberEstimateAliases('e1', [{ material_id: 'x', code: null, name: null }])).rejects.toMatchObject({
       code: 'estimate_aliases_invalid',
-      userMessage: 'Qator 2: material topilmadi yoki o‘chirilgan',
+      params: ['2'],
     })
   })
 })

@@ -113,7 +113,8 @@ Deno.serve(async (req: Request) => {
     if (!auth.ok) return json(auth.result.status, auth.result.body)
     const er = edgeRuntime()
     if (er !== null) {
-      // pg_net 5 s da uziladi — darhol 202, yuborish sikli (≤ ~50 s byudjet) fonda davom etadi.
+      // Darhol 202 — pg_net (timeout 60 s, 20261108) so'rovni ushlab turmaydi; yuborish sikli
+      // (≤ ~50 s byudjet) fonda davom etadi.
       er.waitUntil(
         runDispatch(deps, auth.secret).catch((e) => {
           log('error', 'tg-dispatch: fon vazifasi xatosi', { error: e instanceof Error ? e.name : 'unknown' })

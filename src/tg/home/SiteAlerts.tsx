@@ -2,7 +2,7 @@
 // normadan oshish, manfiy qoldiq, o'tkazma farqi, smetadan ortiq so'rov, smetasiz chiqim. Faqat ko'rish;
 // bosilsa — `?alert=<id>` (AlertDeepLink kartochkasi).
 import { useSearchParams } from 'react-router-dom'
-import { EntryRow } from '@/components/ui'
+import { EntryRow, RetryNotice } from '@/components/ui'
 import { listSiteAlerts } from '@/data/alertsRepo'
 import { t } from '@/i18n'
 import { formatDateTime } from '@/lib/format'
@@ -18,7 +18,14 @@ const SITE_ALERT_LIMIT = 5
 export function SiteAlerts({ profileId }: { profileId: string }) {
   const alerts = useLoad(() => listSiteAlerts(SITE_ALERT_LIMIT), profileId)
   const [params, setParams] = useSearchParams()
-  // Ixtiyoriy blok: yuklanmasa yoki bo'sh bo'lsa — ko'rsatilmaydi
+  // Yuklanmadi — bir qatorli xabar va "Qayta urinish" (muammo yashirilmaydi)
+  if (alerts.error)
+    return (
+      <section aria-label={t.tg.siteAlerts.title} data-testid="site-alerts-error">
+        <RetryNotice message={t.tg.siteAlerts.loadError} onRetry={alerts.reload} />
+      </section>
+    )
+  // Bo'sh yoki hali yuklanmoqda — ko'rsatilmaydi
   if (!alerts.data || alerts.data.length === 0) return null
   return (
     <section aria-label={t.tg.siteAlerts.title} className="flex flex-col gap-2" data-testid="site-alerts">

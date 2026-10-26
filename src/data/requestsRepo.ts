@@ -182,3 +182,30 @@ export async function listApprovedRequests(objectId: string, limit = 20): Promis
   if (error) throw toRepoError(error)
   return withNames(((data ?? []) as unknown as RawRequest[]).map(normalize))
 }
+
+/** Tasdiq kutayotgan so'rovlar soni (Mini App "Bo'limlar" belgisi). RLS — faqat ko'ra oladiganlari. */
+export async function countPendingRequests(): Promise<number> {
+  const { count, error } = await getSupabase()
+    .from('material_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'kutilmoqda')
+    .is('deleted_at', null)
+  if (error) throw toRepoError(error)
+  return count ?? 0
+}
+
+/**
+ * Ta'minotchi: barcha ko'ra oladigan obyektlardagi tasdiqlangan (hali xarid qilinmagan) so'rovlar
+ * (RLS — faqat ruxsat etilganlari). Eskisi birinchi.
+ */
+export async function listApprovedRequestsAll(limit = 50): Promise<MaterialRequest[]> {
+  const { data, error } = await getSupabase()
+    .from('material_requests')
+    .select(REQUEST_SELECT)
+    .eq('status', 'tasdiqlandi')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .limit(limit)
+  if (error) throw toRepoError(error)
+  return withNames(((data ?? []) as unknown as RawRequest[]).map(normalize))
+}

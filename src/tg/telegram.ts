@@ -31,6 +31,8 @@ interface TgWebApp {
   ready(): void
   expand(): void
   close(): void
+  /** Bot API 6.1+: tashqi havolani brauzerda ochish. */
+  openLink?(url: string): void
   setHeaderColor(color: string): void
   setBackgroundColor(color: string): void
   /** Bot API 7.10+. */
@@ -99,6 +101,16 @@ export function initTelegram(): void {
 /** Mini App'ni yopish (Telegram tashqarisida — hech narsa qilmaydi). */
 export function closeApp(): void {
   getWebApp()?.close()
+}
+
+/** Tashqi havolani ochish: Telegram ichida — tizim brauzerida (openLink), tashqarida — yangi oynada. */
+export function openExternalLink(url: string): void {
+  const app = getWebApp()
+  if (app?.openLink && supportsVersion(app, '6.1')) {
+    app.openLink(url)
+    return
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 /** Xom initData — serverga (tg-auth) yuborish uchun. */

@@ -1,11 +1,12 @@
-// "Excel" tugmasi: eksport jarayonida spinner va "Bekor qilish"; xato — qisqa xabar.
+// "Excel" tugmasi: o'zgarmas kenglik (jarayonda sakramaydi), spinner tugma ichida, yonida "Bekor qilish"
+// belgisi (X); xato — Toast orqali.
 import { useEffect, useRef, useState } from 'react'
-import { FileSpreadsheet, LoaderCircle } from 'lucide-react'
-import { Button } from '@/components/ui'
+import { FileSpreadsheet, LoaderCircle, X } from 'lucide-react'
+import { Button, IconButton, useToast } from '@/components/ui'
 import { isAbortError } from '@/data/fetchAll'
+import { RepoError } from '@/data/errors'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
-import { RepoError } from '@/data/errors'
 
 export function ExportButton({
   run,
@@ -18,8 +19,8 @@ export function ExportButton({
   label?: string
 }) {
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const controller = useRef<AbortController | null>(null)
+  const toast = useToast()
 
   // Sahifadan chiqilsa — yuklash to'xtaydi
   useEffect(() => () => controller.current?.abort(), [])
@@ -28,12 +29,11 @@ export function ExportButton({
     const ctrl = new AbortController()
     controller.current = ctrl
     setBusy(true)
-    setError(null)
     try {
       await run(ctrl.signal)
     } catch (err) {
       if (!ctrl.signal.aborted && !isAbortError(err)) {
-        setError(err instanceof RepoError ? errorText(err) : t.excel.failed)
+        toast.show(err instanceof RepoError ? errorText(err) : t.excel.failed, 'danger')
       }
     } finally {
       if (controller.current === ctrl) {
@@ -50,29 +50,30 @@ export function ExportButton({
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      {busy ? (
-        <div className="flex items-center gap-2" role="status">
-          <LoaderCircle aria-hidden className="size-5 animate-spin text-brand" strokeWidth={1.75} />
-          <span className="text-sm text-muted">{t.excel.exporting}</span>
-          <Button variant="secondary" onClick={cancel}>
-            {t.excel.cancel}
-          </Button>
-        </div>
-      ) : (
-        <Button
-          variant="secondary"
-          disabled={disabled}
-          onClick={() => void start()}
-          icon={<FileSpreadsheet aria-hidden className="size-5 text-ok" strokeWidth={1.75} />}
-        >
-          {label}
-        </Button>
-      )}
-      {error && (
-        <p role="alert" className="max-w-xs text-right text-sm text-danger">
-          {error}
-        </p>
+    <div className="inline-flex items-center gap-1">
+      <Button
+        variant="secondary"
+        className="w-32 justify-center"
+        disabled={disabled || busy}
+        aria-busy={busy || undefined}
+        onClick={() => void start()}
+        icon={
+          busy ? (
+            <LoaderCircle aria-hidden className="size-5 animate-spin text-brand" strokeWidth={1.75} />
+          ) : (
+            <FileSpreadsheet aria-hidden className="size-5 text-ok" strokeWidth={1.75} />
+          )
+        }
+      >
+        {label}
+      </Button>
+      {busy && (
+        <>
+          <span role="status" className="sr-only">
+            {t.excel.exporting}
+          </span>
+          <IconButton label={t.excel.cancel} variant="secondary" icon={<X className="size-5" strokeWidth={1.75} />} onClick={cancel} />
+        </>
       )}
     </div>
   )

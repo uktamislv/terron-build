@@ -16,7 +16,7 @@ function RequestSummary({ r }: { r: MaterialRequest }) {
   return (
     <EntryRow
       kind="neutral"
-      icon={<ClipboardList className="size-[18px]" strokeWidth={1.75} />}
+      icon={<ClipboardList className="size-5" strokeWidth={1.75} />}
       title={r.material_name ?? '—'}
       meta={r.object_name ? <span>{r.object_name}</span> : undefined}
       trailing={<Qty value={r.qty_input} unit={unitLabel({ unit: r.unit_input, variant: r.unit_variant })} size="lg" />}

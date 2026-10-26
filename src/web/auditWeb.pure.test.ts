@@ -9,7 +9,7 @@ import { estimateItemsSheet, inventorySheet, materialsSheets, transfersSheet } f
 import { filterSuppliers } from './materials/supplierFilter'
 import { emptyPurchaseForm, validateAddPurchase } from './purchases/addPurchaseForm'
 import { fromForm, INT_LIMITS, PCT_LIMITS, parseTime, QUIET_TIME_OPTIONS, toForm } from './settings/settingsForm'
-import { healthLevel, needsSetupHint } from './settings/telegramHealth'
+import { healthLevel, kindLabel, needsSetupHint, statusLabel } from './settings/telegramHealth'
 
 describe('settingsForm — yangi chegaralar (B2) va tinch soatlar (C)', () => {
   const base = toForm(DEFAULT_COMPANY_SETTINGS)
@@ -78,7 +78,17 @@ describe('Telegram holati', () => {
     expect(needsSetupHint(ok)).toBe(false)
     expect(needsSetupHint({ ...ok, failed7dCount: 1 })).toBe(true)
     expect(needsSetupHint({ ...ok, blockedProfiles: blocked })).toBe(false)
-    expect(t.settings.health.fixHint).toContain('setup-telegram')
+    // Admin uchun — qo'llab-quvvatlashga murojaat; dasturchi skripti faqat docs'da
+    expect(t.settings.health.fixHint).toContain('qo‘llab-quvvatlash')
+    expect(t.settings.health.fixHint).not.toContain('setup-telegram')
+  })
+
+  it('xabar turi va holati — o‘zbekcha, noma’lumi xom ko‘rsatilmaydi', () => {
+    expect(kindLabel('daily_report')).toBe(t.settings.health.kinds.daily_report)
+    expect(kindLabel('request_created')).toBe(t.settings.health.kinds.request_created)
+    expect(kindLabel('xyz')).toBe(t.settings.health.kindOther)
+    expect(statusLabel('failed')).toBe(t.settings.health.statuses.failed)
+    expect(statusLabel('weird')).toBe(t.settings.health.statusOther)
   })
 })
 

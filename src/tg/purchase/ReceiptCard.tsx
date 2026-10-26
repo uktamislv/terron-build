@@ -1,7 +1,7 @@
 // Batch 12 (G): chek QR — skanerlash tugmasi, chek kartasi (tasdiqlangan / qo'lda), ko'p qatorli chekda
 // qator tanlash. Taqdimot komponenti — holat PurchasePage'da.
 import { BadgeCheck, LoaderCircle, QrCode, ReceiptText, X } from 'lucide-react'
-import { cx, Notice } from '@/components/ui'
+import { choiceClass, cx, Notice } from '@/components/ui'
 import type { ReceiptLine } from '@/data/receiptRepo'
 import { t } from '@/i18n'
 import { formatDateTime, formatQty, formatSum } from '@/lib/format'
@@ -102,13 +102,10 @@ export function ReceiptCard({
                 type="button"
                 aria-pressed={receipt.lineIndex === i}
                 onClick={() => onPickLine(i)}
-                className={cx(
-                  'flex min-h-12 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left',
-                  receipt.lineIndex === i ? 'border-brand bg-ice' : 'border-line bg-paper active:bg-ice',
-                )}
+                className={cx(choiceClass({ selected: receipt.lineIndex === i, shape: 'row', emphasis: false }), 'min-h-12 justify-between')}
               >
                 <span className="min-w-0 flex-1 text-sm font-medium text-ink">{line.name}</span>
-                <span className="tabular shrink-0 text-sm text-muted">{ta.receiptLine(formatQty(line.qty), formatSum(line.sum))}</span>
+                <span className="tabular shrink-0 text-sm text-muted">{ta.receiptLine(formatQty(line.qty), line.unit, formatSum(line.sum))}</span>
               </button>
             ))}
           </div>

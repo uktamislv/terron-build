@@ -97,7 +97,7 @@ export function ActionMenu({ items, label = t.ui.actions }: { items: readonly (A
                 item.onSelect()
               }}
               className={cx(
-                'flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm font-medium whitespace-nowrap disabled:opacity-50 [&>svg]:size-[18px]',
+                'flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm font-medium whitespace-nowrap disabled:opacity-50 [&>svg]:size-5',
                 item.danger ? 'text-danger hover:bg-danger-bg' : 'text-ink hover:bg-ice',
               )}
             >

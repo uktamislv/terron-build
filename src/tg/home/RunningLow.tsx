@@ -11,7 +11,10 @@ import { cmp, isZero, round } from '@/domain/decimal'
 import { isRunningOut, SUGGEST_DAYS, suggestRequestQty } from '@/domain/forecast'
 import { can, type Role } from '@/domain/roles'
 import { t } from '@/i18n'
-import { formatQty } from '@/lib/format'
+import { formatQty, formatQtyUnit } from '@/lib/format'
+import type { Material } from '@/data/types'
+import { inputUnitView } from '@/domain/units'
+import { loadLastEntry } from '../entry/lastEntry'
 import { useLoad } from '@/lib/useLoad'
 import { useCompanySettings } from '../entry/useCompanySettings'
 import { makePrefillState } from '../request/prefill'
@@ -25,6 +28,8 @@ export interface RunningLowItem {
   objectName: string
   materialName: string
   baseUnit: string
+  /** Material birliklari (qoldiqni odatiy birlikda ko'rsatish uchun). */
+  units: Material['units']
   /** So'rov miqdori taklifi (asosiy birlikda, 2 kasrgacha) yoki null. */
   suggestQty: string | null
 }
@@ -48,6 +53,7 @@ async function loadRunningLow(companyId: string, warnDays: number): Promise<Runn
         objectName: object.name,
         materialName: material.name,
         baseUnit: material.base_unit,
+        units: material.units,
         suggestQty: rounded !== null && !isZero(rounded) ? rounded : null,
       })
     }
@@ -55,7 +61,7 @@ async function loadRunningLow(companyId: string, warnDays: number): Promise<Runn
   return items.sort((a, b) => cmp(a.row.daysLeft ?? '0', b.row.daysLeft ?? '0') || a.materialName.localeCompare(b.materialName, 'uz'))
 }
 
-export function RunningLow({ companyId, role }: { companyId: string; role: Role }) {
+export function RunningLow({ companyId, role, profileId }: { companyId: string; role: Role; profileId?: string }) {
   const settings = useCompanySettings(companyId)
   const data = useLoad(() => loadRunningLow(companyId, settings.forecastDaysWarn), `${companyId}:${settings.forecastDaysWarn}`)
   const navigate = useNavigate()
@@ -83,6 +89,12 @@ export function RunningLow({ companyId, role }: { companyId: string; role: Role 
         {data.data.map((item) => {
           const zero = item.row.daysLeft !== null && cmp(item.row.daysLeft, '0') <= 0
           const hasOther = cmp(item.row.otherStockQtyBase, '0') > 0
+          // Odatiy kiritish birligida ("12 qop (600 kg)") — oxirgi ishlatilgan birlik koeffitsienti > 1 bo'lsa
+          const view = inputUnitView(
+            item.row.stockQtyBase,
+            item.units,
+            profileId ? (loadLastEntry(profileId, item.row.materialId)?.unitId ?? null) : null,
+          )
           return (
             <li
               key={`${item.row.objectId}:${item.row.materialId}`}
@@ -94,7 +106,11 @@ export function RunningLow({ companyId, role }: { companyId: string; role: Role 
                 <div className="min-w-0">
                   <p className="truncate text-base font-semibold text-ink">{item.materialName}</p>
                   {manyObjects && <p className="text-xs text-muted">{item.objectName}</p>}
-                  <p className="tabular text-sm text-muted">{ta.stockNow(formatQty(item.row.stockQtyBase), item.baseUnit)}</p>
+                  <p className="tabular text-sm text-muted">
+                    {view
+                      ? ta.stockNowIn(formatQtyUnit(view.qty, view.unit), formatQtyUnit(item.row.stockQtyBase, item.baseUnit))
+                      : ta.stockNow(formatQty(item.row.stockQtyBase), item.baseUnit)}
+                  </p>
                   {hasOther && (
                     <p className="tabular text-xs text-muted">{ta.otherStock(formatQty(item.row.otherStockQtyBase), item.baseUnit)}</p>
                   )}

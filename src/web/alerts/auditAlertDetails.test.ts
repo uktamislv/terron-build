@@ -56,7 +56,7 @@ describe('yangi alert turlari', () => {
       actor_name: 'Ali',
       author_name: 'Ali',
     })
-    expect(s).toBe('Xarid tuzatildi (muallif): Qum — Summa: 50 000 so‘m → 55 000 so‘m (Ali)')
+    expect(s).toBe('Ali o‘z xaridini tuzatdi: Qum — Summa: 50 000 so‘m → 55 000 so‘m')
   })
 
   it('sozlama_ozgardi: kalit yorlig‘i, tinch soatlar vaqti, o‘chiq', () => {
@@ -88,12 +88,12 @@ describe('yangi alert turlari', () => {
       recipient_name: 'Ali',
       actor_name: 'Buxgalter',
     })
-    expect(s).toBe('Ali: 500 000 so‘m qaytarildi — pul qaytarildi, sana 3 kunlik oynadan tashqarida (10.10.2026)')
+    expect(s).toBe('Ali: 500 000 so‘m qaytarildi — pul qaytarildi, sana 3 kundan oldingi (10.10.2026)')
   })
 
   it('sotuvchi_stir_farqi: chekdagi va tanlangan STIR', () => {
     expect(text('sotuvchi_stir_farqi', { seller_tin: '123456789', supplier_name: 'Bozor', supplier_tin: '987654321' })).toBe(
-      'Chekdagi sotuvchi STIR 123456789, tanlangan sotuvchi «Bozor»: 987654321',
+      'Chekdagi sotuvchi STIR 123456789, tanlangan sotuvchi “Bozor”: 987654321',
     )
     expect(text('sotuvchi_stir_farqi', { seller_tin: '123456789', supplier_name: 'Bozor', supplier_tin: null })).toContain('STIR kiritilmagan')
   })

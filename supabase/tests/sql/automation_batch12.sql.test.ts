@@ -362,23 +362,23 @@ describe('B: manfiy_qoldiq va transfer_insufficient_stock', () => {
     expect(r.a3[0]!.details).toMatchObject({ auto_closed: true, closed_reason: 'stock_restored', stock_after: 0 })
   })
 
-  it('stock_restored bilan yopilgandan keyin 24 soat ichida — yangi alert yo`q, yopilganining details yangilanadi', async () => {
+  it('stock_restored bilan yopilgandan keyin 24 soat ichida — yangi alert yo`q, yopilgani qayta ochiladi (audit2 L3)', async () => {
     const r = await as('admin', async (tx) => {
       await mv(tx, 'chiqim', A.ids.obj3!, '10')
       await mv(tx, 'kirim', A.ids.obj3!, '10')
       const c3 = await mv(tx, 'chiqim', A.ids.obj3!, '4')
       const a1 = await alertsOf(tx, 'manfiy_qoldiq')
-      // 24 soatdan eski yopilish — yangi alert yaratiladi
-      await raw(tx, `update public.alerts set closed_at = now() - interval '25 hours' where id = $1`, [a1[0]!.id])
+      // qoldiq tiklanadi (yopiladi), yopilish 24 soatdan eski — yangi alert yaratiladi
       await mv(tx, 'kirim', A.ids.obj3!, '4')
+      await raw(tx, `update public.alerts set closed_at = now() - interval '25 hours' where id = $1`, [a1[0]!.id])
       await mv(tx, 'chiqim', A.ids.obj3!, '1')
       const a2 = await alertsOf(tx, 'manfiy_qoldiq')
       return { c3, a1, a2 }
     })
     expect(r.a1).toHaveLength(1)
-    expect(r.a1[0]).toMatchObject({ status: 'yopildi', movement_id: r.c3 })
-    expect(r.a1[0]!.details).toMatchObject({ closed_reason: 'stock_restored', stock_after: -4, qty_base: 4 })
-    expect(r.a1[0]!.details).toHaveProperty('renegative_at')
+    expect(r.a1[0]).toMatchObject({ status: 'yangi', movement_id: r.c3 })
+    expect(r.a1[0]!.details).toMatchObject({ stock_after: -4, qty_base: 4, reopen_count: 1 })
+    expect(r.a1[0]!.details).toHaveProperty('reopened_at')
     expect(r.a2.map((a) => a.status)).toEqual(['yopildi', 'yangi'])
     expect(r.a2[1]!.details).toMatchObject({ stock_after: -1 })
   })
@@ -772,9 +772,10 @@ describe('G: chek', () => {
       const upd = await scalar<string>(tx, `select receipt_total::text from public.purchases where id = $1`, [p])
       return { p, row, upd, a: await alertsOf(tx, 'chek_farqi', 'purchase_id = $1', [p]) }
     })
-    expect(r.row).toEqual({ receipt_verified: true, receipt_total: '5000.00', seller_tin: '301111111' })
+    // audit2 L1: bir qatorli chek summasi mos kelmasa — tasdiqlanmaydi
+    expect(r.row).toEqual({ receipt_verified: false, receipt_total: '5000.00', seller_tin: '301111111' })
     expect(r.a).toHaveLength(1)
-    expect(r.a[0]!.details).toMatchObject({ receipt_total: 5000, total_amount: 4000, diff: -1000, receipt_verified: true })
+    expect(r.a[0]!.details).toMatchObject({ receipt_total: 5000, total_amount: 4000, diff: -1000, receipt_verified: false })
     // foydalanuvchi sessiyasidagi UPDATE da ham — keshdagi qiymat
     expect(r.upd).toBe('5000.00')
   })

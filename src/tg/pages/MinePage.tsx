@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
-import { CorrectionForm, type CorrectionTarget } from '@/components/corrections/CorrectionForm'
+import type { CorrectionTarget } from '@/components/corrections/CorrectionForm'
 import { MovementPhoto } from '@/components/MovementPhoto'
 import { NotifyWorkflowToggle } from '@/components/NotifyWorkflowToggle'
 import { INVENTORY_TONE, REQUEST_TONE, TRANSFER_TONE } from '@/components/statusTones'
@@ -14,6 +14,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   PencilLine,
+  Trash2,
   Scale,
   ShoppingCart,
   Undo2,
@@ -24,7 +25,9 @@ import {
   Badge,
   BottomSheet,
   Button,
+  choiceClass,
   DetailRows,
+  FilterBar,
   EmptyState,
   EntryRow,
   type BadgeTone,
@@ -45,17 +48,32 @@ import { listMyPurchases } from '@/data/purchasesRepo'
 import { listMyRequests } from '@/data/requestsRepo'
 import { cancelTransfer, CANCEL_REASON_MAX, listMyTransfers } from '@/data/transfersRepo'
 import type { CashAdvance, InventoryCount, MaterialRequest, Movement, Purchase, Transfer } from '@/data/types'
-import { formatRemaining, selfCorrection, type CorrectableEntry } from '@/domain/corrections'
+import { cancelOwnEntry, CORRECTION_NOTE_MAX } from '@/data/correctionsRepo'
+import { remainingMinutes, selfCorrection, type CorrectableEntry } from '@/domain/corrections'
 import { simpleReceiptStatus, type SimpleReceiptStatus } from '@/domain/purchaseStatus'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatDate, formatDateTime, formatQtyUnit, formatSum } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
+import { useCompanySettings } from '../entry/useCompanySettings'
 import { haptic } from '../telegram'
 import { BackLink } from '../ui'
 import { useBackButton } from '../useTelegramButtons'
-import { MINE_LIMIT, mergeEntries, mineSources, type Entry, type OtherEntry, type PlanEntry, type RecordEntry } from '../mine/mineEntries'
+import {
+  filterEntries,
+  MINE_LIMIT,
+  mergeEntries,
+  mineSources,
+  presentCategories,
+  type Entry,
+  type MineCategory,
+  type OtherEntry,
+  type PlanEntry,
+  type RecordEntry,
+} from '../mine/mineEntries'
+import { TgCorrectionForm } from '../corrections/TgCorrectionForm'
+import { readUuidParam } from '../deepLinks'
 
 const tm = t.tg.mine
 
@@ -75,11 +93,11 @@ function baseQty(m: Pick<Movement, 'qty_base' | 'base_unit'>): string {
   return formatQtyUnit(m.qty_base, m.base_unit)
 }
 
-const ic = 'size-[18px]'
+const ic = 'size-5'
 
 /** Yozuv turi: chiziq rangi, belgi va nom (kirim — yashil, chiqim — ko'k, xarid — navy, o'tkazma — kulrang-ko'k). */
 function typeMark(e: Entry): { kind: EntryKind; icon: ReactNode; label: string } {
-  if (e.kind === 'request') return { kind: 'warn', icon: <ClipboardList className={ic} strokeWidth={1.75} />, label: tm.request }
+  if (e.kind === 'request') return { kind: 'neutral', icon: <ClipboardList className={ic} strokeWidth={1.75} />, label: tm.request }
   if (e.kind === 'transfer') return { kind: 'transfer', icon: <ArrowLeftRight className={ic} strokeWidth={1.75} />, label: tm.transfer }
   if (e.kind === 'purchase') return { kind: 'xarid', icon: <ShoppingCart className={ic} strokeWidth={1.75} />, label: tm.purchase }
   if (e.kind === 'count') return { kind: 'neutral', icon: <ClipboardCheck className={ic} strokeWidth={1.75} />, label: tm.count }
@@ -114,8 +132,9 @@ function byOther(p: Purchase, myId: string): boolean {
 
 const RECEIPT_TONE: Record<SimpleReceiptStatus, BadgeTone> = { received: 'ok', partial: 'warn', pending: 'neutral' }
 
-function receiptBadge(p: Purchase): ReactNode {
-  const status = simpleReceiptStatus(p.qty_base, p.receipt?.received_qty_base)
+/** Qabul holati belgisi — firma chegarasi (receipt_mismatch_pct) bilan. */
+function receiptBadge(p: Purchase, thresholdPct: string): ReactNode {
+  const status = simpleReceiptStatus(p.qty_base, p.receipt?.received_qty_base, thresholdPct)
   return status ? <Badge tone={RECEIPT_TONE[status]}>{tm.receiptStatus[status]}</Badge> : null
 }
 
@@ -136,6 +155,8 @@ function correctable(e: RecordEntry): CorrectableEntry {
         deletedAt: e.row.deleted_at,
         movementType: e.row.type,
         purchaseId: e.row.purchase_id,
+        transferId: e.row.transfer_id ?? null,
+        inventoryCountId: e.row.inventory_count_id ?? null,
       }
     : {
         table: 'purchases',
@@ -153,6 +174,7 @@ function correctionTarget(e: RecordEntry): CorrectionTarget {
     id: r.id,
     materialId: r.material_id,
     materialName: r.material_name,
+    objectId: r.object_id,
     qtyInput: r.qty_input,
     unitId: r.unit_id,
     totalAmount: e.kind === 'purchase' ? e.row.total_amount : null,
@@ -169,6 +191,19 @@ export function MinePage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  // "Ko'proq yuklash": har bosishda yana 50 ta (har bir manba shu chegaragacha o'qiladi)
+  const [limit, setLimit] = useState(MINE_LIMIT)
+  const [hasMore, setHasMore] = useState(false)
+  const [category, setCategory] = useState<MineCategory>('all')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  // Telegram xabaridagi havola: /tg/mine?request=<id> yoki ?purchase=<id> — tafsilot ochiladi (topilmasa — jim)
+  const [params, setParams] = useSearchParams()
+  const linkedRequest = readUuidParam(params, 'request')
+  const linkedPurchase = readUuidParam(params, 'purchase')
+  const linkedKey = linkedRequest ? `r:${linkedRequest}` : linkedPurchase ? `p:${linkedPurchase}` : null
+  // Havola birinchi ochilishda eslab qolinadi; ro'yxatda topilmasa — jim (oddiy ro'yxat)
+  const [pendingLink, setPendingLink] = useState(linkedKey)
   const profileId = profile?.id
   const role = profile?.role
 
@@ -186,10 +221,10 @@ export function MinePage() {
     }
     const none = <T,>(): Promise<T[]> => Promise.resolve([])
     Promise.all([
-      listMyMovements(profileId, MINE_LIMIT),
-      src.purchases ? optional(listMyPurchases(profileId, MINE_LIMIT), [] as Purchase[]) : none<Purchase>(),
-      src.requests ? optional(listMyRequests(profileId, MINE_LIMIT), [] as MaterialRequest[]) : none<MaterialRequest>(),
-      optional<Transfer[] | null>(listMyTransfers(profileId, MINE_LIMIT), null),
+      src.movements ? listMyMovements(profileId, limit) : none<Movement>(),
+      src.purchases ? optional(listMyPurchases(profileId, limit), [] as Purchase[]) : none<Purchase>(),
+      src.requests ? optional(listMyRequests(profileId, limit), [] as MaterialRequest[]) : none<MaterialRequest>(),
+      optional<Transfer[] | null>(listMyTransfers(profileId, limit), null),
       src.counts ? optional(listCounts({ createdBy: profileId }).then((r) => r.rows), [] as InventoryCount[]) : none<InventoryCount>(),
       src.cashRecipient ? optional(listMyAdvances(profileId, 'recipient'), [] as CashAdvance[]) : none<CashAdvance>(),
       src.cashCreator ? optional(listMyAdvances(profileId, 'creator'), [] as CashAdvance[]) : none<CashAdvance>(),
@@ -197,7 +232,10 @@ export function MinePage() {
     ])
       .then(([movements, purchases, requests, transfers, counts, cashIn, cashOut, bugs]) => {
         if (!alive) return
-        setRows(mergeEntries(movements, purchases, requests, transfers, { counts, cash: [...cashIn, ...cashOut], bugs }))
+        const all = mergeEntries(movements, purchases, requests, transfers, { counts, cash: [...cashIn, ...cashOut], bugs }, Number.MAX_SAFE_INTEGER)
+        setRows(all.slice(0, limit))
+        // Biror manba chegaraga yetdi yoki birlashgan ro'yxat uzunroq — yana bor
+        setHasMore(all.length > limit || [movements, purchases, requests, transfers ?? []].some((list) => list.length >= limit))
         setPartial(failed)
         setError(null)
       })
@@ -207,16 +245,32 @@ export function MinePage() {
     return () => {
       alive = false
     }
-  }, [profileId, role, reloadKey])
+  }, [profileId, role, reloadKey, limit])
 
-  const close = useCallback(() => setOpenKey(null), [])
+  const close = useCallback(() => {
+    setOpenKey(null)
+    setPendingLink(null)
+  }, [])
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
-  const open = rows?.find((r) => r.key === openKey) ?? null
+  const open = rows?.find((r) => r.key === (openKey ?? pendingLink)) ?? null
+  // Havola parametri bir marta ishlatiladi — URL tozalanadi (orqaga qaytganda qayta ochilmasin)
+  useEffect(() => {
+    if (!linkedKey) return
+    const next = new URLSearchParams(params)
+    next.delete('request')
+    next.delete('purchase')
+    setParams(next, { replace: true })
+  }, [linkedKey, params, setParams])
+  const shown = useMemo(() => (rows ? filterEntries(rows, category, from, to) : null), [rows, category, from, to])
+  const categories = useMemo(() => (rows ? presentCategories(rows) : []), [rows])
   useBackButton(open ? close : null)
   // Tuzatish oynasi sanog'i — faqat ro'yxat ko'rinib turganda
   const now = useNow(15_000, Boolean(rows))
+  const settings = useCompanySettings(profile?.company_id)
 
   if (!profile) return null
+  // Faqat ko'ruvchi rol (direktor): ish xabarlari va yozuv kiritish yo'q
+  const viewer = profile.role === 'direktor'
 
   const finished = (text: string) => {
     haptic.success()
@@ -227,19 +281,71 @@ export function MinePage() {
 
   if (open && isPlan(open)) return <PlanDetail entry={open} myId={profile.id} onClose={close} onCancelled={() => finished(tm.cancelled)} />
   if (open && isRecord(open))
-    return <RecordDetail entry={open} myId={profile.id} nowIso={now} onClose={close} onCorrected={() => finished(t.correction.saved)} />
+    return (
+      <RecordDetail
+        entry={open}
+        myId={profile.id}
+        nowIso={now}
+        thresholdPct={settings.receiptMismatchPct}
+        onClose={close}
+        onCorrected={() => finished(t.correction.saved)}
+        onCancelled={() => finished(t.correction.cancelled)}
+      />
+    )
   if (open) return <OtherDetail entry={open} onClose={close} />
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Ish xabarlari (so'rov, o'tkazma, xarid) — tepada; direktorga tegishli emas */}
+      {!viewer && <NotifyWorkflowToggle compact />}
       {done && <Notice tone="ok">{done}</Notice>}
       {error && <RetryNotice message={error} onRetry={reload} />}
       {!error && partial && <RetryNotice message={tm.partialError} onRetry={reload} />}
       {!rows && !error && <SkeletonRows rows={4} />}
-      {rows && rows.length === 0 && <EmptyState icon={<ClipboardList strokeWidth={1.5} />} title={tm.empty} />}
+      {rows && rows.length === 0 && (
+        <EmptyState
+          icon={<ClipboardList strokeWidth={1.5} />}
+          title={viewer ? tm.emptyViewerTitle : tm.empty}
+          text={viewer ? tm.emptyViewerHint : tm.emptyHint}
+        />
+      )}
       {rows && rows.length > 0 && (
+        <>
+          {categories.length > 2 && (
+            <div role="group" aria-label={tm.filterLabel} className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5">
+              {categories.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  aria-pressed={category === c}
+                  className={choiceClass({ selected: category === c, size: 'md' })}
+                  onClick={() => {
+                    haptic.select()
+                    setCategory(c)
+                  }}
+                >
+                  {tm.filters[c]}
+                </button>
+              ))}
+            </div>
+          )}
+          <FilterBar
+            filters={[
+              { kind: 'dateRange', key: 'date', label: tm.dateFilter, from, to, onFrom: setFrom, onTo: setTo, fromLabel: tm.dateFrom, toLabel: tm.dateTo },
+            ]}
+            onClear={() => {
+              setFrom('')
+              setTo('')
+            }}
+          />
+        </>
+      )}
+      {shown && rows && rows.length > 0 && shown.length === 0 && (
+        <EmptyState compact icon={<ClipboardList strokeWidth={1.5} />} title={tm.emptyFiltered} text={hasMore ? tm.emptyFilteredHint : undefined} />
+      )}
+      {shown && shown.length > 0 && (
         <ul className="flex flex-col gap-2" aria-label={tm.title}>
-          {rows.map((e) => {
+          {shown.map((e) => {
             const openRow = () => {
               haptic.tap()
               setDone(null)
@@ -266,10 +372,10 @@ export function MinePage() {
                     )}
                     {r.deleted_at && <Badge tone="danger">{t.movements.deleted}</Badge>}
                     {e.kind === 'purchase' && byOther(e.row, profile.id) && <Badge tone="info">{tm.enteredByOther}</Badge>}
-                    {e.kind === 'purchase' && !r.deleted_at && receiptBadge(e.row)}
+                    {e.kind === 'purchase' && !r.deleted_at && receiptBadge(e.row, settings.receiptMismatchPct)}
                     {fix.allowed && (
                       <Badge tone="info" icon={<PencilLine aria-hidden strokeWidth={2} />}>
-                        {t.correction.remainingShort(formatRemaining(fix.remainingMs))}
+                        {t.correction.remainingShort(remainingMinutes(fix.remainingMs))}
                       </Badge>
                     )}
                   </>
@@ -293,8 +399,18 @@ export function MinePage() {
           })}
         </ul>
       )}
-      {/* Ish xabarlari (so'rov, o'tkazma, xarid) — o'z profilida yoqish/o'chirish */}
-      <NotifyWorkflowToggle compact />
+      {rows && hasMore && (
+        <Button
+          variant="secondary"
+          size="lg"
+          onClick={() => {
+            haptic.tap()
+            setLimit((n) => n + MINE_LIMIT)
+          }}
+        >
+          {tm.loadMore}
+        </Button>
+      )}
     </div>
   )
 }
@@ -341,16 +457,21 @@ function RecordDetail({
   entry,
   myId,
   nowIso,
+  thresholdPct,
   onClose,
   onCorrected,
+  onCancelled,
 }: {
   entry: RecordEntry
   myId: string
   nowIso: string
+  thresholdPct: string
   onClose: () => void
   onCorrected: () => void
+  onCancelled: () => void
 }) {
   const [correcting, setCorrecting] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const mark = typeMark(entry)
   const r = entry.row
   const fix = selfCorrection(correctable(entry), myId, nowIso)
@@ -360,7 +481,7 @@ function RecordDetail({
       <DetailHeader mark={mark}>
         {r.deleted_at && <Badge tone="danger">{t.movements.deleted}</Badge>}
         {entry.kind === 'purchase' && byOther(entry.row, myId) && <Badge tone="info">{tm.enteredByOther}</Badge>}
-        {entry.kind === 'purchase' && !r.deleted_at && receiptBadge(entry.row)}
+        {entry.kind === 'purchase' && !r.deleted_at && receiptBadge(entry.row, thresholdPct)}
       </DetailHeader>
       <div className="flex flex-col gap-1 rounded-xl border border-line bg-paper px-4 py-3">
         <span className="text-sm text-muted">{r.material_name}</span>
@@ -376,7 +497,20 @@ function RecordDetail({
             setCorrecting(true)
           }}
         >
-          {t.correction.actionWithTime(formatRemaining(fix.remainingMs))}
+          {t.correction.actionWithTime(remainingMinutes(fix.remainingMs))}
+        </Button>
+      )}
+      {fix.allowed && (
+        <Button
+          variant="danger"
+          size="lg"
+          icon={<Trash2 aria-hidden className="size-5" strokeWidth={1.75} />}
+          onClick={() => {
+            haptic.tap()
+            setCancelling(true)
+          }}
+        >
+          {t.correction.cancelAction}
         </Button>
       )}
       <DetailRows
@@ -417,14 +551,30 @@ function RecordDetail({
       )}
       {correcting && (
         <BottomSheet title={t.correction.title} onClose={() => setCorrecting(false)}>
-          <CorrectionForm
+          <TgCorrectionForm
             target={correctionTarget(entry)}
-            size="md"
-            remaining={fix.allowed ? formatRemaining(fix.remainingMs) : null}
+            remaining={fix.allowed ? remainingMinutes(fix.remainingMs) : null}
             onCancel={() => setCorrecting(false)}
             onDone={() => {
               setCorrecting(false)
               onCorrected()
+            }}
+          />
+        </BottomSheet>
+      )}
+      {cancelling && (
+        <BottomSheet title={t.correction.cancelTitle} onClose={() => setCancelling(false)}>
+          <ReasonForm
+            text={t.correction.cancelText}
+            label={t.correction.cancelReason}
+            requiredText={t.correction.errCancelReason}
+            confirm={t.correction.cancelConfirm}
+            maxLength={CORRECTION_NOTE_MAX}
+            onCancel={() => setCancelling(false)}
+            onSubmit={(reason) => cancelOwnEntry(entry.kind === 'movement' ? 'movements' : 'purchases', r.id, reason)}
+            onDone={() => {
+              setCancelling(false)
+              onCancelled()
             }}
           />
         </BottomSheet>
@@ -540,14 +690,42 @@ function PlanDetail({
       )}
       {cancelling && entry.kind === 'transfer' && (
         <BottomSheet title={tm.cancelTitle} onClose={() => setCancelling(false)}>
-          <CancelTransferForm transferId={entry.row.id} onCancel={() => setCancelling(false)} onDone={onCancelled} />
+          <ReasonForm
+            text={t.ombor.transfers.cancelText}
+            label={t.ombor.transfers.cancelReason}
+            requiredText={t.ombor.transfers.cancelReasonRequired}
+            confirm={tm.cancelTransfer}
+            maxLength={CANCEL_REASON_MAX}
+            onCancel={() => setCancelling(false)}
+            onSubmit={(reason) => cancelTransfer(entry.row.id, reason)}
+            onDone={onCancelled}
+          />
         </BottomSheet>
       )}
     </article>
   )
 }
 
-function CancelTransferForm({ transferId, onCancel, onDone }: { transferId: string; onCancel: () => void; onDone: () => void }) {
+/** Sabab majburiy bo'lgan tasdiq formasi (o'tkazmani yoki o'z yozuvini bekor qilish). */
+function ReasonForm({
+  text,
+  label,
+  requiredText,
+  confirm,
+  maxLength,
+  onCancel,
+  onSubmit,
+  onDone,
+}: {
+  text: string
+  label: string
+  requiredText: string
+  confirm: string
+  maxLength: number
+  onCancel: () => void
+  onSubmit: (reason: string) => Promise<void>
+  onDone: () => void
+}) {
   const [reason, setReason] = useState('')
   const [missing, setMissing] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -562,7 +740,7 @@ function CancelTransferForm({ transferId, onCancel, onDone }: { transferId: stri
     setBusy(true)
     setError(null)
     try {
-      await cancelTransfer(transferId, reason)
+      await onSubmit(reason)
       onDone()
     } catch (err) {
       haptic.error()
@@ -573,15 +751,15 @@ function CancelTransferForm({ transferId, onCancel, onDone }: { transferId: stri
   }
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-muted">{t.ombor.transfers.cancelText}</p>
+      <p className="text-sm text-muted">{text}</p>
       <TextAreaField
-        label={t.ombor.transfers.cancelReason}
+        label={label}
         required
         aria-required="true"
         rows={2}
-        maxLength={CANCEL_REASON_MAX}
+        maxLength={maxLength}
         value={reason}
-        error={missing ? t.ombor.transfers.cancelReasonRequired : null}
+        error={missing ? requiredText : null}
         onChange={(e) => {
           setReason(e.target.value)
           setMissing(false)
@@ -593,7 +771,7 @@ function CancelTransferForm({ transferId, onCancel, onDone }: { transferId: stri
           {t.common.back}
         </Button>
         <Button variant="danger" size="lg" loading={busy} onClick={() => void submit()}>
-          {tm.cancelTransfer}
+          {confirm}
         </Button>
       </div>
     </div>

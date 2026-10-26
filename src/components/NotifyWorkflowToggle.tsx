@@ -1,5 +1,6 @@
 // "Ish xabarlari" (profiles.notify_workflow) — har bir foydalanuvchi o'z profilida yoqadi/o'chiradi
-// (docs/audit-fixes.md D2). Veb: Yordam sahifasi; Telegram ilovasi: "Yozuvlarim".
+// (docs/audit-fixes.md D2). Veb: yon menyudagi foydalanuvchi bloki ("Parol" yonida) va Yordam sahifasi;
+// Telegram ilovasi: "Yozuvlar" tepasida. Izoh har doim ko'rinadi (nima yoqilayotgani tushunarli bo'lsin).
 import { useState } from 'react'
 import { BellRing } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
@@ -43,14 +44,14 @@ export function NotifyWorkflowToggle({ className, compact = false }: { className
   }
 
   return (
-    <section aria-label={tn.title} className={cx('flex flex-col gap-2 rounded-xl border border-line bg-paper p-4', className)}>
+    <section aria-label={tn.title} className={cx('flex flex-col gap-2 rounded-xl border border-line bg-paper', compact ? 'p-3' : 'p-4', className)}>
       <div className="flex items-start gap-3">
         <span aria-hidden className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-ice text-brand">
           <BellRing className="size-5" strokeWidth={1.75} />
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-base font-semibold text-ink">{tn.title}</p>
-          {!compact && <p className="text-sm text-muted">{tn.text}</p>}
+          <p className="text-sm text-muted">{tn.text}</p>
         </div>
         <button
           type="button"

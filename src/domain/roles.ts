@@ -138,7 +138,7 @@ export function tgOverflowFor(role: Role): TgNavKey[] {
 const TG_EXTRA: Record<Role, readonly TgExtraKey[]> = {
   super_admin: ['stock', 'approvals'],
   admin: ['stock', 'approvals'],
-  direktor: [],
+  direktor: ['stock'],
   buxgalter: [],
   taminotchi: [],
   prorab: ['stock'],

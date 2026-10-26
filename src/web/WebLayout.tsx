@@ -1,9 +1,10 @@
 import { useCallback, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Bug, CircleHelp, KeyRound, LogOut, Menu, X } from 'lucide-react'
+import { BellRing, Bug, CircleHelp, KeyRound, LogOut, Menu, X } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { ChangePasswordForm } from '@/auth/ChangePasswordForm'
 import { BugReportForm } from '@/components/bugReport/BugReportForm'
+import { NotifyWorkflowToggle } from '@/components/NotifyWorkflowToggle'
 import { BrandMark, cx, IconButton, Modal, useOverlay } from '@/components/ui'
 import { t } from '@/i18n'
 import { webNavForRole } from './nav'
@@ -27,6 +28,9 @@ function DrawerBehaviour({ target, onClose }: { target: RefObject<HTMLElement | 
 export function WebLayout({ children }: { children?: ReactNode } = {}) {
   const [open, setOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
+  // Ish xabarlari (so'rov, o'tkazma, xarid) — o'z profilida; direktorga tegishli emas
+  const [notifyOpen, setNotifyOpen] = useState(false)
+  const closeNotify = useCallback(() => setNotifyOpen(false), [])
   // Batch 11: xatolik haqida xabar (sozlamalar endi alohida sahifa — /settings)
   const [bugOpen, setBugOpen] = useState(false)
   const closeBug = useCallback(() => setBugOpen(false), [])
@@ -48,12 +52,12 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
           'fixed inset-y-0 left-0 z-40 flex w-72 flex-col bg-navy text-white outline-none transition-[transform,visibility] duration-200 print:hidden',
           // Navy fonda ko'k halqa ko'rinmaydi — oq halqa
           '[&_:focus-visible]:outline-white',
-          'lg:sticky lg:top-0 lg:z-30 lg:h-screen lg:w-[76px] lg:translate-x-0 xl:w-64',
+          'lg:sticky lg:top-0 lg:z-30 lg:h-screen lg:w-19 lg:translate-x-0 xl:w-64',
           open ? 'visible translate-x-0 shadow-float' : 'invisible -translate-x-full lg:visible',
         )}
       >
         <div className="flex h-16 shrink-0 items-center gap-3 px-5 lg:justify-center lg:px-0 xl:justify-start xl:px-5">
-          <BrandMark className="size-9 shrink-0 rounded-[10px] ring-1 ring-white/15" />
+          <BrandMark className="size-9 shrink-0 rounded-lg ring-1 ring-white/15" />
           <span className="text-base font-semibold tracking-tight lg:hidden xl:inline">{t.app.name}</span>
           {open && (
             <IconButton
@@ -78,7 +82,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
               className={({ isActive }) =>
                 cx(
                   'group relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors lg:justify-center lg:px-0 xl:justify-start xl:px-3',
-                  isActive ? 'bg-ice/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white',
+                  isActive ? 'bg-ice/10 text-white' : 'text-navy-muted hover:bg-white/5 hover:text-white',
                 )
               }
             >
@@ -116,7 +120,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
               </span>
               <div className="min-w-0 leading-tight lg:sr-only xl:not-sr-only">
                 <p className="truncate text-sm font-semibold">{profile.full_name}</p>
-                <p className="truncate text-xs text-white/60">{t.roles[profile.role]}</p>
+                <p className="truncate text-xs text-navy-muted">{t.roles[profile.role]}</p>
               </div>
             </div>
             <NavLink
@@ -126,7 +130,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
               className={({ isActive }) =>
                 cx(
                   'mt-1 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-2 text-sm hover:bg-white/10 hover:text-white xl:justify-start xl:px-3',
-                  isActive ? 'bg-ice/10 text-white' : 'text-white/75',
+                  isActive ? 'bg-ice/10 text-white' : 'text-navy-muted',
                 )
               }
             >
@@ -140,17 +144,31 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
                 closeMenu()
                 setBugOpen(true)
               }}
-              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-2 text-sm text-white/75 hover:bg-white/10 hover:text-white xl:justify-start xl:px-3"
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-2 text-sm text-navy-muted hover:bg-white/10 hover:text-white xl:justify-start xl:px-3"
             >
               <Bug aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
               <span className="truncate lg:sr-only xl:not-sr-only">{t.bugReport.open}</span>
             </button>
+            {profile.role !== 'direktor' && (
+              <button
+                type="button"
+                title={t.settings.notify.title}
+                onClick={() => {
+                  closeMenu()
+                  setNotifyOpen(true)
+                }}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-2 text-sm text-navy-muted hover:bg-white/10 hover:text-white xl:justify-start xl:px-3"
+              >
+                <BellRing aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
+                <span className="truncate lg:sr-only xl:not-sr-only">{t.settings.notify.title}</span>
+              </button>
+            )}
             <div className="mt-1 flex gap-1 lg:flex-col xl:flex-row">
               <button
                 type="button"
                 title={t.password.change}
                 onClick={() => setPasswordOpen(true)}
-                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-2 text-sm text-white/75 hover:bg-white/10 hover:text-white"
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-2 text-sm text-navy-muted hover:bg-white/10 hover:text-white"
               >
                 <KeyRound aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
                 <span className="lg:sr-only xl:not-sr-only">{t.password.change}</span>
@@ -159,7 +177,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
                 type="button"
                 title={t.common.signOut}
                 onClick={() => void signOut()}
-                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-2 text-sm text-white/75 hover:bg-white/10 hover:text-white"
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl px-2 text-sm text-navy-muted hover:bg-white/10 hover:text-white"
               >
                 <LogOut aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
                 <span className="lg:sr-only xl:not-sr-only">{t.common.signOut}</span>
@@ -200,6 +218,11 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
       {bugOpen && profile && (
         <Modal title={t.bugReport.title} onClose={closeBug}>
           <BugReportForm screen={pathname} onClose={closeBug} />
+        </Modal>
+      )}
+      {notifyOpen && (
+        <Modal title={t.settings.notify.title} onClose={closeNotify}>
+          <NotifyWorkflowToggle />
         </Modal>
       )}
       {passwordOpen && (

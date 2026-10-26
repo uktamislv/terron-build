@@ -175,6 +175,8 @@ export function MovementsTabView({
         deletedAt: m.deleted_at,
         movementType: m.type,
         purchaseId: m.purchase_id,
+        transferId: m.transfer_id ?? null,
+        inventoryCountId: m.inventory_count_id ?? null,
       })
     )
       items.push({ key: 'correct', label: t.correction.action, icon: <PencilLine {...ic} />, disabled: busy, onSelect: () => onCorrect(m) })
@@ -253,11 +255,12 @@ export function MovementsTabView({
               meta={
                 <>
                   <span>
-                    {t.movements.types[m.type]}, {m.object_name}
+                    <span className="font-medium text-ink">{t.movements.types[m.type]}</span>
+                    <span>{m.object_name}</span>
                   </span>
                   <span className="tabular">{formatDateTime(m.occurred_at)}</span>
                   {m.created_by_name && <span>{m.created_by_name}</span>}
-                  {m.note && <span className="text-ink/80">{m.note}</span>}
+                  {m.note && <span className="text-ink">{m.note}</span>}
                 </>
               }
               qty={{ value: m.qty_input, unit: inputUnit(m) }}

@@ -2,7 +2,7 @@
 // shuning uchun har qatorda aniq qiymat (Dec satr, tooltip uchun) va chizish uchun `number` bor.
 import { colors } from '@/components/ui/tokens'
 import type { CashBalance, Profile } from '@/data/types'
-import type { DailyRow, NormOverviewRow, SpendGroup, SpendRow } from '@/data/reportsRepo'
+import type { DailyRow, EstimateSpendRow, NormOverviewRow, SpendGroup, SpendRow } from '@/data/reportsRepo'
 import { add, cmp, isNegative, sub, type Dec } from '@/domain/decimal'
 import { fillDays, topN } from '@/domain/reports'
 import { usagePct } from '@/domain/norms'
@@ -190,4 +190,34 @@ export function cashChartRows(balances: CashBalance[], profiles: Pick<Profile, '
 /** Normadan oshgan miqdor (ko'rsatish uchun). */
 export function overBy(p: Pick<NormPoint, 'consumedText' | 'allowedText'>): Dec {
   return sub(p.consumedText, p.allowedText)
+}
+
+export interface EstimateSpendPoint {
+  objectId: string
+  name: string
+  estimate: number
+  spent: number
+  estimateText: Dec | null
+  spentText: Dec
+  /** Xarid smeta jamidan oshgan. */
+  over: boolean
+}
+
+/**
+ * "Smeta va haqiqiy" diagrammasi — obyekt bo'yicha PUL: smeta jami va davrdagi xaridlar (bitta o'q, so'm).
+ * Smeta bo'yicha kamayish tartibida, eng katta `limit` ta.
+ */
+export function estimateSpendRows(rows: EstimateSpendRow[], limit = 10): EstimateSpendPoint[] {
+  return rows
+    .map((r) => ({
+      objectId: r.object_id,
+      name: r.object_name ?? t.reports.charts.noName,
+      estimate: r.estimate_sum === null ? 0 : plot(r.estimate_sum),
+      spent: plot(r.spent_sum),
+      estimateText: r.estimate_sum,
+      spentText: r.spent_sum,
+      over: r.estimate_sum !== null && cmp(r.spent_sum, r.estimate_sum) > 0,
+    }))
+    .sort((a, b) => b.estimate - a.estimate || b.spent - a.spent || a.name.localeCompare(b.name, 'uz'))
+    .slice(0, limit)
 }

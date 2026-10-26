@@ -12,6 +12,18 @@
 
 import { timingSafeEqual } from '../_shared/telegramAuth.ts'
 import {
+  formatAlertsDigest,
+  formatInventoryApplied,
+  formatPurchaseDeleted,
+  formatPurchaseOnYourName,
+  formatTransferCancelled,
+  formatTransferReceived,
+  workflowOpenUrl,
+  type AlertsDigestPayload,
+  type InventoryAppliedPayload,
+  type PurchaseDeletedPayload,
+  type PurchaseOnYourNamePayload,
+  type TransferWorkflowPayload,
   formatLoginChanged,
   formatPurchaseForObject,
   formatRequestApproved,
@@ -65,6 +77,8 @@ export const TOKEN_RETRY_SEC = 600
 export const COMPLETE_SENDS_BLOCKED_CHAT_IDS = true
 /** 400 javobida qabul qiluvchiga bog'liq (chat yo'q) xatolar — o'tkazib yuboriladi. */
 const UNREACHABLE_400_RE = /chat not found|user not found|peer_id_invalid|user is deactivated/i
+/** 400 javobida sozlama (tugma, URL, web_app, klaviatura) xatolari — qayta urinish, failed emas. */
+const CONFIG_400_RE = /button|url|web_?app|reply.?markup|keyboard/i
 
 export interface OutboxRow {
   id: string
@@ -108,6 +122,11 @@ export type SendResult =
    * uzoq kutish (`TOKEN_RETRY_SEC`), urinish hisoblanmaydi; shu chaqiruvdagi qolganlari ham.
    */
   | { ok: false; kind: 'token_invalid'; error: string }
+  /**
+   * Sozlama xatosi (400: tugma / URL / web_app / reply markup — masalan MINI_APP_URL noto'g'ri):
+   * failed EMAS — `TOKEN_RETRY_SEC` dan keyin qayta (sozlama tuzatilguncha), qolganlari ham.
+   */
+  | { ok: false; kind: 'config_error'; error: string }
   /** Xabarning o'zi yaroqsiz (400, masalan "can't parse entities") — shu qator darhol failed. */
   | { ok: false; kind: 'invalid_message'; error: string }
   | { ok: false; kind: 'error'; error: string }
@@ -202,6 +221,7 @@ export function classifyTelegramResponse(status: number, body: unknown): SendRes
     return { ok: false, kind: 'unreachable', error }
   }
   if (status === 401 || status === 404) return { ok: false, kind: 'token_invalid', error }
+  if (status === 400 && CONFIG_400_RE.test(description)) return { ok: false, kind: 'config_error', error }
   if (status === 400) return { ok: false, kind: 'invalid_message', error }
   return { ok: false, kind: 'error', error }
 }
@@ -238,6 +258,18 @@ export function buildMessage(row: OutboxRow): string {
       return formatPurchaseForObject(row.payload as unknown as PurchaseForObjectPayload)
     case 'login_changed':
       return formatLoginChanged(row.payload as unknown as LoginChangedPayload)
+    case 'transfer_cancelled':
+      return formatTransferCancelled(row.payload as unknown as TransferWorkflowPayload)
+    case 'transfer_received':
+      return formatTransferReceived(row.payload as unknown as TransferWorkflowPayload)
+    case 'purchase_deleted':
+      return formatPurchaseDeleted(row.payload as unknown as PurchaseDeletedPayload)
+    case 'purchase_on_your_name':
+      return formatPurchaseOnYourName(row.payload as unknown as PurchaseOnYourNamePayload)
+    case 'inventory_applied':
+      return formatInventoryApplied(row.payload as unknown as InventoryAppliedPayload)
+    case 'alerts_digest':
+      return formatAlertsDigest(row.payload as unknown as AlertsDigestPayload)
     default:
       throw new Error(`noma'lum kind: ${String(row.kind).slice(0, 40)}`)
   }
@@ -273,6 +305,13 @@ export const WORKFLOW_KINDS: readonly string[] = [
   'transfer_sent',
   'purchase_for_object',
   'login_changed',
+  // 2-tur
+  'transfer_cancelled',
+  'transfer_received',
+  'purchase_deleted',
+  'purchase_on_your_name',
+  'inventory_applied',
+  'alerts_digest',
 ]
 
 /** Faqat admin / super_admin "Ko'rildi" bosa oladi (`svc_mark_alert_seen`). */
@@ -414,13 +453,14 @@ export async function runDispatch(deps: DispatchDeps, secret: string): Promise<H
   const appUrl = resolveMiniAppUrl(deps.env.miniAppUrl)
   const keyboard = miniAppKeyboard(appUrl)
   const bugKeyboard = bugReportKeyboard(appUrl)
-  // Ish oqimi xabarlari: oddiy Mini App havolasi (deep link yo'q — har rol uchun xavfsiz).
-  const workflowKeyboard = miniAppKeyboard(appUrl, NOTIFY_TEXTS.buttons.open)
+  // Ish oqimi xabarlari: "Ochish" — ?request= / ?transfer= / ?purchase= (payload'da id bo'lsa), aks holda Mini App.
+  const workflowKeyboard = (row: OutboxRow) =>
+    miniAppKeyboard(workflowOpenUrl(appUrl, String(row.kind), row.payload), NOTIFY_TEXTS.buttons.open)
   const keyboardFor = (unit: Unit, r: Recipient): unknown =>
     unit.rows[0]?.kind === 'bug_report'
       ? bugKeyboard
-      : WORKFLOW_KINDS.includes(unit.rows[0]?.kind ?? '')
-        ? workflowKeyboard
+      : unit.rows[0] !== undefined && WORKFLOW_KINDS.includes(unit.rows[0].kind)
+        ? workflowKeyboard(unit.rows[0])
         : unit.alertId === null
         ? keyboard
         : alertKeyboard(appUrl, unit.alertId, SEEN_ROLES.includes(r.role), ALERT_READER_ROLES.includes(r.role))
@@ -523,9 +563,10 @@ export async function runDispatch(deps: DispatchDeps, secret: string): Promise<H
         stop = { kind: 'rate_limited', retryAfterSec: res.retryAfterSec, error: res.error }
         break
       }
-      if (res.kind === 'token_invalid') {
+      if (res.kind === 'token_invalid' || res.kind === 'config_error') {
         stop = { kind: 'token_invalid', error: res.error }
-        deps.log('error', `tg-dispatch: bot tokeni yaroqsiz — ${TOKEN_RETRY_SEC} s dan keyin qayta (failed emas)`, {
+        const what = res.kind === 'config_error' ? 'sozlama xatosi (tugma / URL — MINI_APP_URL?)' : 'bot tokeni yaroqsiz'
+        deps.log('error', `tg-dispatch: ${what} — ${TOKEN_RETRY_SEC} s dan keyin qayta (failed emas)`, {
           error: sanitizeError(res.error, secrets),
         })
         break

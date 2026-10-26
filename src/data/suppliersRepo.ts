@@ -140,3 +140,19 @@ async function findSupplier(id: string, name: string): Promise<Supplier | null> 
   const key = supplierKey(name)
   return (await listSuppliers()).find((s) => supplierKey(s.name) === key) ?? null
 }
+
+/** Sotuvchilar bo'yicha (o'chirilmagan) xaridlar soni — birlashtirish oynasi uchun. RLS — o'z firmasi. */
+export async function countPurchasesBySupplier(): Promise<Map<string, number>> {
+  const { data, error } = await getSupabase()
+    .from('purchases')
+    .select('supplier_id')
+    .is('deleted_at', null)
+    .not('supplier_id', 'is', null)
+    .limit(50000)
+  if (error) throw toRepoError(error)
+  const counts = new Map<string, number>()
+  for (const row of (data ?? []) as { supplier_id: string | null }[]) {
+    if (row.supplier_id) counts.set(row.supplier_id, (counts.get(row.supplier_id) ?? 0) + 1)
+  }
+  return counts
+}

@@ -1,17 +1,22 @@
 // Telegram ilovasi: admin uchun so'rovlarni tasdiqlash / rad etish (bosh ekrandan). Izoh (decision_note) —
 // tasdiqlashda ixtiyoriy, rad etishda majburiy.
-import { useCallback, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Check, ClipboardList, X } from 'lucide-react'
-import { REQUEST_TONE } from '@/components/statusTones'
-import { Badge, BottomSheet, Button, DetailRows, EmptyState, EntryRow, Notice, Qty, RetryNotice, SkeletonRows, TextAreaField } from '@/components/ui'
+import { BottomSheet, Button, DetailRows, EmptyState, EntryRow, LevelBar, Notice, Qty, RetryNotice, SkeletonRows, TextAreaField } from '@/components/ui'
+import { listNormUsage } from '@/data/normsRepo'
+import { getStock } from '@/data/stockRepo'
 import { approveRequest, DECISION_NOTE_MAX, listRequests, rejectRequest } from '@/data/requestsRepo'
-import type { MaterialRequest } from '@/data/types'
+import type { MaterialRequest, NormUsage } from '@/data/types'
+import { sub } from '@/domain/decimal'
+import { usagePct } from '@/domain/norms'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatDate, formatDateTime, formatQtyUnit } from '@/lib/format'
 import { useLoad } from '@/lib/useLoad'
+import { requestNormState } from '@/lib/requestNorm'
+import { readUuidParam } from '../deepLinks'
 import { haptic } from '../telegram'
 import { useBackButton } from '../useTelegramButtons'
 
@@ -20,12 +25,22 @@ const tap = t.tg.approvals
 export function ApprovalsPage() {
   const navigate = useNavigate()
   const back = useCallback(() => navigate('/tg'), [navigate])
-  const [openId, setOpenId] = useState<string | null>(null)
+  // Telegram xabaridagi havola: ?request=<id> — kutilayotgan bo'lsa varaq ochiladi, aks holda jim
+  const [params, setParams] = useSearchParams()
+  const linked = readUuidParam(params, 'request')
+  const [openId, setOpenId] = useState<string | null>(linked)
   const [done, setDone] = useState<string | null>(null)
   const closeSheet = useCallback(() => setOpenId(null), [])
-  useBackButton(openId ? closeSheet : back)
   const pending = useLoad(() => listRequests({ statuses: ['kutilmoqda'] }).then((r) => r.rows), 'approvals')
   const open = pending.data?.find((r) => r.id === openId) ?? null
+  useBackButton(open ? closeSheet : back)
+  // Parametr bir marta ishlatiladi — URL tozalanadi
+  useEffect(() => {
+    if (!linked) return
+    const next = new URLSearchParams(params)
+    next.delete('request')
+    setParams(next, { replace: true })
+  }, [linked, params, setParams])
 
   return (
     <div className="flex flex-col gap-4">
@@ -41,10 +56,10 @@ export function ApprovalsPage() {
               key={r.id}
               as="li"
               testId="approval-row"
-              kind="warn"
-              icon={<ClipboardList className="size-[18px]" strokeWidth={1.75} />}
+              // So'rov — reja, muammo emas: neytral chiziq; ro'yxatda faqat kutilayotganlar (holat belgisi ortiqcha)
+              kind="neutral"
+              icon={<ClipboardList className="size-5" strokeWidth={1.75} />}
               title={r.material_name ?? ''}
-              badge={<Badge tone={REQUEST_TONE[r.status]}>{t.requests.statuses[r.status]}</Badge>}
               meta={
                 <>
                   <span>{r.object_name}</span>
@@ -131,6 +146,7 @@ function DecisionForm({ request: r, onDone }: { request: MaterialRequest; onDone
           r.note ? { label: t.movements.note, value: <span className="whitespace-pre-wrap">{r.note}</span> } : null,
         ]}
       />
+      <RequestContext request={r} />
       <TextAreaField
         label={tap.note}
         rows={2}
@@ -166,5 +182,63 @@ function DecisionForm({ request: r, onDone }: { request: MaterialRequest; onDone
         </Button>
       </div>
     </div>
+  )
+}
+
+/** Qaror uchun kontekst: smeta normasi, sarflangan, smetada qolgan (oshsa — ogohlantirish) va obyektdagi qoldiq. */
+function RequestContext({ request: r }: { request: MaterialRequest }) {
+  const ctx = useLoad(
+    async (): Promise<{ norms: NormUsage[]; stock: string | null }> => {
+      const [norms, stock] = await Promise.all([listNormUsage({ objectId: r.object_id }), getStock(r.object_id, r.material_id).catch(() => null)])
+      return { norms, stock }
+    },
+    `${r.object_id}:${r.material_id}`,
+  )
+  const unit = r.base_unit ?? ''
+  if (ctx.loading) return <SkeletonRows rows={1} />
+  if (ctx.error || !ctx.data) return <p className="text-sm text-muted">{tap.contextError}</p>
+  const norm = ctx.data.norms.find((n) => n.material_id === r.material_id)
+  // `requested_open_qty_base` shu so'rovni ham o'z ichiga oladi — boshqalari ajratiladi (veb bilan bir xil)
+  const other = norm ? sub(norm.requested_open_qty_base, r.qty_base) : undefined
+  const state = requestNormState(ctx.data.norms, r.material_id, r.qty_base, other)
+  const stock = ctx.data.stock
+  return (
+    <section aria-label={tap.context} className="flex flex-col gap-2">
+      {state.kind === 'over' && (
+        <Notice tone="warn">
+          <span data-testid="approval-overrun">{tap.overrun(formatQtyUnit(state.overQty, unit))}</span>
+        </Notice>
+      )}
+      <DetailRows
+        className="rounded-xl border border-line bg-paper px-4"
+        items={[
+          state.kind === 'no_estimate'
+            ? { label: t.requestsPage.colEstimate, value: t.requestsPage.noEstimate }
+            : state.kind === 'not_in_estimate' || !norm
+              ? { label: t.requestsPage.colEstimate, value: t.requestsPage.notInEstimate }
+              : null,
+          norm && state.kind !== 'not_in_estimate' && state.kind !== 'no_estimate'
+            ? { label: tap.normAllowed, value: <span className="tabular">{formatQtyUnit(norm.allowed_qty_base, unit)}</span> }
+            : null,
+          norm && state.kind !== 'not_in_estimate' && state.kind !== 'no_estimate'
+            ? { label: tap.consumed, value: <span className="tabular">{formatQtyUnit(norm.consumed_qty_base, unit)}</span> }
+            : null,
+          state.kind === 'ok' || state.kind === 'over'
+            ? {
+                label: t.requestsPage.colEstimate,
+                value: (
+                  <span data-testid="approval-remaining" className={state.kind === 'over' ? 'tabular font-semibold text-warn' : 'tabular'}>
+                    {tap.remaining(formatQtyUnit(state.available, unit))}
+                  </span>
+                ),
+              }
+            : null,
+          stock !== null ? { label: tap.stock, value: <span className="tabular">{formatQtyUnit(stock, unit)}</span> } : null,
+        ]}
+      />
+      {norm && state.kind !== 'not_in_estimate' && state.kind !== 'no_estimate' && (
+        <LevelBar label={tap.consumed} value={Number(usagePct(norm.consumed_qty_base, norm.allowed_qty_base) ?? 0)} max={100} />
+      )}
+    </section>
   )
 }

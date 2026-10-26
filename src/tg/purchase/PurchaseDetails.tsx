@@ -33,7 +33,7 @@ export function BalanceCard({
   const Tag = onOpen ? 'button' : 'div'
   return (
     <Tag
-      {...(onOpen ? { type: 'button' as const, onClick: onOpen, 'aria-label': t.tg.cashHistory.open } : {})}
+      {...(onOpen ? { type: 'button' as const, onClick: onOpen } : {})}
       className={cx(
         'flex w-full items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3 text-left',
         onOpen && 'min-h-11 transition-colors hover:border-line-hover active:bg-ice',
@@ -47,11 +47,13 @@ export function BalanceCard({
       ) : balance.failed || balance.value === null ? (
         <span className="text-sm text-muted">{tp.balanceUnknown}</span>
       ) : (
-        <p data-testid="cash-balance" data-negative={negative ? 'true' : undefined} className="flex flex-col">
+        // Balans ekran o'quvchiga ham o'qiladi (aria-label bilan yashirilmaydi)
+        <span data-testid="cash-balance" data-negative={negative ? 'true' : undefined} className="flex flex-col">
           <span className="text-sm text-muted">{tp.balance}: </span>
           <Money value={balance.value} size="lg" />
-        </p>
+        </span>
       )}
+      {onOpen && <span className="sr-only">, {t.tg.cashHistory.openSr}</span>}
       {onOpen && <ChevronRight aria-hidden className="ml-auto size-5 shrink-0 text-muted" strokeWidth={1.75} />}
     </Tag>
   )

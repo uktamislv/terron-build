@@ -45,8 +45,6 @@ export interface MovementDetailsProps {
   onCancelDuplicate?: () => void
   /** Admin: "Shu yerni obyekt joyi qilish" va boshqa qo'shimchalar. */
   extra?: ReactNode
-  /** "Bugun / Kecha / Boshqa sana" (standart — bugun, qo'shimcha bosishsiz). */
-  dateField?: ReactNode
   note: string
   photo: { photo: PickedPhoto | null; notice: string | null; error: string | null; preparing: boolean }
   saving: boolean
@@ -70,6 +68,7 @@ export function MovementDetails(p: MovementDetailsProps) {
     <section className="flex flex-col gap-4" aria-label={material.name}>
       <MaterialHeader name={material.name} onChange={p.onChangeMaterial} />
 
+      <div className="flex flex-col gap-2">
       <BigNumberInput
         id="movement-qty"
         label={tm.qty}
@@ -78,15 +77,16 @@ export function MovementDetails(p: MovementDetailsProps) {
         suffix={p.unit?.unit ?? null}
         error={p.qtyError ? tm.errors.qty[p.qtyError] : null}
       />
-      {p.qty.trim() === '' && p.onUseLast && (
-        <LastQtyChip last={p.lastEntry ?? null} units={material.units} onUse={p.onUseLast} />
-      )}
-
+      {/* Birlik chiplari — miqdor maydoni ostida darhol (klaviatura ochiq bo'lsa ham ko'rinadi) */}
       <UnitChips units={material.units} selectedId={p.unitId} onPick={p.onUnit} errorId={p.unitError ? 'movement-unit-error' : undefined} />
       {p.unitError && (
         <p id="movement-unit-error" role="alert" className="text-sm text-danger">
           {tm.errors.unit}
         </p>
+      )}
+      </div>
+      {p.qty.trim() === '' && p.onUseLast && (
+        <LastQtyChip last={p.lastEntry ?? null} units={material.units} onUse={p.onUseLast} />
       )}
 
       {p.qtyBase !== null && (
@@ -109,8 +109,6 @@ export function MovementDetails(p: MovementDetailsProps) {
           onSelect={p.onSelectLinked}
         />
       )}
-
-      {p.dateField}
 
       <PhotoField
         label={tm.photo}

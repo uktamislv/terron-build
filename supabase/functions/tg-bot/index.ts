@@ -67,6 +67,15 @@ const deps: TgBotDeps = {
     }
     throw new Error(`svc_mark_chat_blocked: ${error.message}`)
   },
+  touchChat: async (chatId) => {
+    const { error } = await getAdminClient().rpc('svc_touch_chat', { p_chat_id: chatId })
+    if (!error) return
+    if (error.code === 'PGRST202') {
+      log('warn', "tg-bot: svc_touch_chat hali yo'q — faollik yozilmadi")
+      return
+    }
+    throw new Error(`svc_touch_chat: ${error.message}`)
+  },
   answerCallbackQuery: (callbackQueryId, text, showAlert) =>
     botCall('answerCallbackQuery', {
       callback_query_id: callbackQueryId,

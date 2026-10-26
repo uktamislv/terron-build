@@ -112,8 +112,11 @@ function clearClipboard() {
   else console.warn('Diqqat: buferni tozalab bo‘lmadi — uni qo‘lda tozalang (boshqa matn nusxalang).')
 }
 
-/** Bot API chaqiruvi; javob `ok` bo'lmasa — xabar bilan to'xtaydi. Token hech qachon chiqarilmaydi. */
-async function bot(token, method, payload) {
+/**
+ * Bot API chaqiruvi; javob `ok` bo'lmasa — xabar bilan to'xtaydi (`onFail` — to'xtashdan oldin).
+ * Token hech qachon chiqarilmaydi.
+ */
+async function bot(token, method, payload, onFail) {
   let body
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
@@ -127,9 +130,35 @@ async function bot(token, method, payload) {
   }
   if (!body?.ok) {
     console.error(`${method} bajarilmadi: ${body?.description ?? 'tarmoq xatosi'}`)
+    onFail?.()
     process.exit(1)
   }
   return body.result
+}
+
+/**
+ * Secrets yozilgandan keyin webhook ulanmasa: Supabase'dagi TELEGRAM_WEBHOOK_SECRET yangi, Telegram'dagi
+ * webhook esa eski sir bilan qolgan — bot xabarlarni qabul qilmaydi (401). Tiklash yo'llari.
+ */
+function printRecovery() {
+  console.error(
+    [
+      '',
+      'DIQQAT: Supabase secrets allaqachon YANGILANDI, lekin Telegram webhook ulanmadi.',
+      'Bu holatda bot xabarlarni qabul qilmaydi (webhook siri mos emas). Tiklash:',
+      '  1. Internet / tokenni tekshiring va skriptni qayta ishga tushiring:',
+      `       node scripts/setup-telegram.mjs --project-ref ${PROJECT_REF} --app-url ${MINI_APP_URL}`,
+      '     (yangi sir yaratiladi va ikkala tomonga yoziladi).',
+      '  2. Webhook holatini ko‘rish: https://api.telegram.org/bot<TOKEN>/getWebhookInfo',
+      '  3. Muammo davom etsa — docs/deploy-supabase.md, "7. Telegram webhook" (qo‘lda setWebhook).',
+      '',
+    ].join('\n'),
+  )
+}
+
+/** Windows'da `shell: true` bilan argumentlar qo'shtirnoqsiz birlashadi — bo'sh joyli yo'l buziladi. */
+function shellArg(a) {
+  return process.platform === 'win32' && /[\s"&^|<>()]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a
 }
 
 // Avval buferdan (ichki terminallar yashirin kiritishni qo'llamasligi mumkin); bo'lmasa — so'raladi.
@@ -165,7 +194,8 @@ try {
     { mode: 0o600 },
   )
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
-  const res = spawnSync(npx, ['supabase', 'secrets', 'set', '--project-ref', PROJECT_REF, '--env-file', envFile], {
+  // Vaqtinchalik papka yo'lida bo'sh joy bo'lishi mumkin (C:\Users\Ism Familiya\...) — qo'shtirnoq
+  const res = spawnSync(npx, ['supabase', 'secrets', 'set', '--project-ref', PROJECT_REF, '--env-file', shellArg(envFile)], {
     stdio: 'inherit',
     shell: process.platform === 'win32',
   })
@@ -178,16 +208,36 @@ try {
 }
 console.log('Supabase secrets yozildi.')
 
-await bot(token, 'setWebhook', {
-  url: WEBHOOK_URL,
-  secret_token: webhookSecret,
-  allowed_updates: ALLOWED_UPDATES,
-  drop_pending_updates: true,
-})
-const info = await bot(token, 'getWebhookInfo')
+await bot(
+  token,
+  'setWebhook',
+  {
+    url: WEBHOOK_URL,
+    secret_token: webhookSecret,
+    allowed_updates: ALLOWED_UPDATES,
+    drop_pending_updates: true,
+  },
+  printRecovery,
+)
+
+// Tekshirish: Telegram aynan biz yozgan URL va update turlarini qabul qilganmi
+const info = await bot(token, 'getWebhookInfo', {}, printRecovery)
+const gotUpdates = Array.isArray(info.allowed_updates) ? info.allowed_updates : []
+const missingUpdates = ALLOWED_UPDATES.filter((u) => !gotUpdates.includes(u))
 console.log(`Webhook: ${info.url}`)
-console.log(`Update turlari: ${(info.allowed_updates ?? ALLOWED_UPDATES).join(', ')}`)
+console.log(`Update turlari: ${gotUpdates.length ? gotUpdates.join(', ') : '(barchasi — standart)'}`)
 console.log(`Oxirgi xato: ${info.last_error_message ?? 'yo‘q'}`)
+if (info.url !== WEBHOOK_URL) {
+  console.error(`Webhook URL mos emas: kutilgan ${WEBHOOK_URL}`)
+  printRecovery()
+  process.exit(1)
+}
+// Bo'sh ro'yxat — Telegram standarti (chat_member va boshqalardan tashqari hammasi) — bizga yetarli emas
+if (missingUpdates.length > 0) {
+  console.error(`Webhook update turlari to‘liq emas, yetishmaydi: ${missingUpdates.join(', ')}`)
+  printRecovery()
+  process.exit(1)
+}
 
 // Buyruqlar ro'yxati
 await bot(token, 'setMyCommands', { commands: [{ command: 'start', description: 'Boshlash' }] })

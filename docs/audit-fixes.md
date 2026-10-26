@@ -159,3 +159,189 @@ Qabul qiluvchilar — `svc_outbox_recipients(p_outbox_id)` (create or replace). 
 - A1 taqsimlash maqsad xariddan 14 kun oldingi xaridlarni hisobga oladi (uzunroq zanjirlar amalda yo'q, baholash tez qoladi).
 - `inventory_adjust` va o'tkazma harakatlarini admin ham to'g'ridan-to'g'ri o'chira olmaydi (`movement_rpc_only`) — xato tuzatish: o'tkazma — `cancel_transfer`, inventarizatsiya — qayta sanash.
 - `tg-dispatch` shablonlari, `admin-users` va rasm yuklash Edge Function'lari (xeshni `svc_set_photo_hash` bilan yozish) — baza tashqarisida.
+
+---
+
+# 2-tur
+
+Migratsiya: `supabase/migrations/20261109000001_audit2_fixes.sql`. Testlar: `supabase/tests/sql/audit2_fixes.sql.test.ts` (audit repro'lari F1–F6, C1 — regressiya testlari). Oldingi testlarda kutilgan natijasi ataylab o'zgargan joylar yangilangan (`audit_fixes`, `automation_batch12`, `batch1_hardening`, `purchases_batch5`, `reports_batch9`, `requests_batch8` — har birida `audit2` izohi bilan).
+
+## Xavfsizlik
+
+| # | Nima o'zgardi |
+|---|---|
+| S1 | Rasm xeshi klientga bog'liq emas. `movements.photo_path` / `purchases.receipt_photo_path` qo'yilsa va xesh yo'q bo'lsa (INSERT, yo'l o'zgarishi, xesh tozalanishi, tiklash) — AFTER trigger `zz_photo_hash_ins/upd` `private.photo_hash_queue` ga ish qo'yadi (yozuv+yo'l bo'yicha bitta ochiq) va `photo-hash` ni pg_net bilan uyg'otadi (tranzaksiyada bir marta). Zaxira — cron `terron-photo-hash-sweep` (`*/5 * * * *`, `private.photo_hash_sweep()`). `svc_set_photo_hash` ga `p_expected_path text default null`. |
+| S2 | Admin boshqa odam nomidan xarid kiritsa (`buyer_id ≠ created_by`, INSERT yoki `buyer_id` o'zgarishi): xaridor shu firmaning faol, o'chirilmagan `haydovchi` / `taminotchi` / `prorab` / `admin` profili bo'lishi shart (`purchase_buyer_invalid`); `xarid_boshqa_nomidan` alerti (ogohlantirish ✉) + xaridorga `purchase_on_your_name`. Boshqa rollar uchun RLS avvalgidek rad etadi (42501); boshqa firma profili — kompozit FK (23503). |
+| S3 / L1 | `receipt_verified`: "chekda aynan bitta qator" sharti olib tashlandi — endi `|kesh.total − total_amount| ≤ 1` YOKI biror `items[].sum` ≤ 1 so'm farq (bitta qatorli chekda bu `items[0].sum`). Rasm talabidan ozod: tasdiqlangan VA bir qatorli VA `receipt_total` null emas. |
+| S4 | Tinch oyna ≤ 12 soat (`companies_quiet_hours_window_check`, `private.quiet_window_minutes`); mavjud uzun oynalar `end = start + 12 soat` ga keltirildi. `sozlama_ozgardi`, `login_ozgardi`, `yozuv_ozgartirildi`, `xarid_boshqa_nomidan` alertlari (va ularning eslatmalari) hech qachon ushlanmaydi. |
+| S5 | `yozuv_ozgartirildi` kuzatadigan ustunlar: harakat — + `photo_path`, `geo_lat`, `geo_lng`, `geo_accuracy_m`, `geo_status`; xarid — + `receipt_photo_path`, `receipt_fiscal_sign`, `supplier_id`, `seller_tin`, `request_id`, geo, `payment_source`. `merge_suppliers` ichida — alertsiz; o'rniga bitta `sotuvchi_birlashtirildi` (belgi). `suppliers.merged_into`. O'chirilgan xaridlar ham ko'chiriladi. |
+| S6 | Ko'r-ko'rona sanash: `inventory_counts_select` — tekshiruvchi faqat o'zi yaratgan hisoblar (qatorlar ota-yozuv orqali). `submit_inventory_count` tekshiruvchiga `{ok: true}` qaytaradi (admin — avvalgi `{has_shortage, not_counted_count, movements_during_count}`). `inventory_candidate_materials` tekshiruvchiga — firmaning faol katalogi (qoldiq filtrisiz). Tekshiruvchi qoldiq, harakat, xarid va pulni ko'rmaydi: `movements_select` / `purchases_select` Batch 8 dan beri `is_company_wide_ops()` (tekshiruvchisiz); qo'shimcha himoya — `private.is_blind_counter()`: `movements_select_own_deleted`, `purchases_select_own_deleted`, `cash_advances_select`, `receipt_lookups_select` siyosatlari, `stock_balances` va `cash_balances` view'lari (to'g'ridan-to'g'ri o'qishda bo'sh; definer RPC'lar ichida — to'liq), `stock_forecast` → `42501 stock_forbidden`, `my_material_usage` → bo'sh, `dashboard_summary` → hamma raqamlar 0 (`private.dashboard_blind_summary()`). `private.low_stock_count` — foydalanuvchiga execute yo'q (faqat kunlik hisobot). |
+| S7 | Admin (super_admin emas): hech kimga `admin` / `direktor` rolini bera olmaydi; admin/direktor profilining `full_name` ini ham o'zgartira olmaydi; admin/direktor profilini yarata olmaydi (`b_profiles_protect_ins`) — `profile_protected`. `svc_alert_login_set(p_target_profile, p_actor, p_first_login boolean default false)`. |
+| S8 | `check_purchase_price` — profil bo'yicha 10 daqiqada 30 chaqiruv (sirpanuvchi oyna, `private.rate_limits`); oshsa `54000 rate_limited`. Funksiya endi `volatile`. |
+| S9 | `close_note`: foydalanuvchi sessiyasida `status = 'yopildi'` bo'lsa izoh bo'sh bo'lolmaydi (`alert_close_note_required`), yopilgan alertning izohi o'zgarmaydi (`alert_close_note_locked`) — tizim yopganlari ham. |
+| S12 | `profile_directory`: + `deleted_at`, `is_available` (= `is_active and deleted_at is null`). **Frontend:** tanlash ro'yxatlari (xaridor, oluvchi, a'zo) faqat `is_available = true`. |
+| S13 | `dashboard_summary`: + `telegram_blocked_count` (firma bo'yicha bloklangan tirik profillar; admin/direktor/super_admin, boshqalarga `null`), `telegram_me_blocked` (chaqiruvchining o'zi). `public.reset_chat_blocked(p_profile_id uuid) → boolean` (admin). |
+| S14 | `alerts_select_site`: omborchi — `normadan_oshish`, `manfiy_qoldiq`, `otkazma_farqi`, `smetasiz_chiqim`; prorab — + `smetadan_ortiq_sorov`. |
+
+## Ekspluatatsiya
+
+- `public.svc_touch_chat(p_chat_id bigint) → integer` — shu chat profillarining `telegram_blocked_at` i tozalanadi (tg-bot / tg-auth har kiruvchi faollikda chaqiradi).
+- Indeks `notification_outbox_company_status_idx (company_id, status, updated_at)`. `notification_outbox_ref_idx` olib tashlandi — hech bir so'rov `(company_id, ref_id)` bo'yicha qidirmaydi (`(kind, ref_id)` unique indekslari bor).
+
+## Mahsulot
+
+- **Haydovchi:** `material_requests_select` — a'zo obyektlarining `tasdiqlandi` holatidagi tirik so'rovlari (faqat o'qish). `request_approved` — taminotchilar + obyektning haydovchi a'zolari.
+- **Yangi ish oqimi turlari:** `transfer_cancelled`, `transfer_received`, `purchase_deleted`, `inventory_applied` (pastda). Ish oqimi turlari tinch oynada ushlanadi (oyna oxirigacha); `login_changed` va `purchase_on_your_name` — hech qachon.
+- **correct_entry:** xaridga bog'langan kirimni tuzatish mumkin (keyin shu xarid uchun qoida 1 va FIFO zanjiri); material / obyekt almashtirish — faqat muallif, 30 daqiqa ichida, material o'zgarsa birlik majburiy va yangi materialniki; bog'langan kirimda material/obyekt — `correct_linked`. `p_reason` — alohida (`details.reason`). `public.cancel_own_entry(p_table, p_id, p_reason)` — muallif 30 daqiqa ichida bekor qiladi (soft delete), `yozuv_tuzatildi` (belgi, `via = 'cancel_own_entry'`), `yozuv_ochirildi` emas.
+- **Sana oynasi:** `ops_occurred_at_range` xatosining `detail` i — ruxsat etilgan eng erta vaqt, UTC ISO (`"2026-10-23T09:15:00Z"`); xabarda Toshkent `dd.mm.yyyy HH:MI`. Buxgalter podotchet sanasi uchun ham shu (3 kun).
+- **Tekshiruvchi natijasi:** inventarizatsiya qoldiqqa qo'llansa — muallifga `inventory_applied` (miqdorlarsiz).
+
+## Mantiq (L1–L13)
+
+| # | Nima o'zgardi |
+|---|---|
+| L1 | S3 bilan bir xil (F5 regressiyasi). |
+| L2 | `private.reevaluate_receipt_chain(company, object, material, from)` — `receipt_alloc` qulfi ostida obyekt+materialning tirik xaridlarini (`purchased_at ∈ [from − 14 kun, now]`) qayta baholaydi: xarid INSERT, tiklash, soft delete, `purchased_at` / `qty_base` / obyekt / material o'zgarishi, kirim o'zgarishi (`occurred_at − 72 soat` dan). Zanjir mavjud alertlarni yangilaydi/yopadi va nomzodlarni belgilaydi; **yangi** `xarid_qabul_farqi` ni yaratmaydi (`terron.receipt_chain`) — uni hourly cron yaratadi (o'tkinchi "jiddiy" xabarlar bo'lmasin). Orqa sanali xarid (`created_at − purchased_at > 24 soat`) FIFO ustuvorligisiz: oddiylaridan keyin, o'zaro `created_at` bo'yicha. |
+| L3 | `manfiy_qoldiq`: `stock_restored` bilan yopilganidan 24 soat ichida yana manfiy — o'sha alert qayta ochiladi (`status = 'yangi'`, `details.reopened_at`, `reopen_count`, yopilish kalitlari olib tashlanadi); yangi Telegram xabari yo'q. |
+| L4 | `receipt_candidates` — qisman taqsimlash: kirim xaridning qolgan farqi qadar beriladi, qoldig'i keyingi xaridga (bitta 200 lik kirim — ikki 100 lik xarid). |
+| L5 | `merge_suppliers` tartibi: (1) birlashtiriladigan sotuvchi soft delete + `merged_into`; (2) bo'sh `tin/phone/note` to'ldiriladi; (3) xaridlar ko'chiriladi. Birlashtirish rejimida tarixiy xaridning `receipt_verified`, `receipt_total`, `seller_tin` o'zgarmaydi. `suppliers.tin` o'zgarsa — shu sotuvchi xaridlari bo'yicha `sotuvchi_stir_farqi` qayta baholanadi (`zz_tin_reeval`). |
+| L6 | `purchases.payment_source text not null check in ('podotchet','firma')`. Qoida: xaridorga hech qachon tirik `berildi` podotchet berilmagan bo'lsa — `firma`, aks holda `podotchet`. Admin / super_admin / buxgalter qiymatni o'zi tanlaydi (null → qoida); boshqa rollar — INSERT'da qoida (klient qiymati e'tiborsiz), UPDATE'da o'zgarmaydi. Tizim INSERT'i (auth.uid yo'q), qiymatsiz — `podotchet`. Mavjud xaridlar migratsiyada qoida bo'yicha to'ldirildi. `cash_balances`, `private.cash_position` (podotchet muddati, haftalik hisobot), kunlik hisobot va dashboard pul yig'indilari — faqat `podotchet`. |
+| L7 | `tg_movements_norm` (chiqim): qoida 4 dan keyin shu obyekt+materialning ochiq so'rovlari (qoida 6) qayta baholanadi. |
+| L8 | `reevaluate_open_requests` (smeta RPC'lari, smeta qatorlari, so'rov holati, L7) dayjest rejimida: yaratilgan `smetadan_ortiq_sorov` alertlari darhol yuborilmaydi; commit oldidan (deferred `zz_alert_digest`) firma bo'yicha — ochiq bitta bo'lsa oddiy `alert` xabari, ikki va undan ko'p — bitta `alerts_digest`. |
+| L9 | `correct_entry(..., p_note, p_reason, ...)`: `p_note` — yangi izoh (null — o'zgarmaydi, `''` — tozalaydi), `p_reason` — faqat alert `details.reason`. |
+| L10 | Tuzatishdan keyin `private.reevaluate_duplicate`: yozuv qatnashgan ochiq `takroriy_yozuv` (record) mos kelmay qolsa — yopiladi (`not_applicable`); yozuv endi takroriy bo'lsa — yaratiladi (avtomatik yopilgani qayta ochiladi); oynadagi keyingi yozuvlar ham tekshiriladi. Harakat va xarid uchun. |
+| L11 | Qulf tartibi: `terron.receipt_alloc:<obyekt>:<material>` → `terron.alert:kirim_manbasiz:<kirim>`. `evaluate_kirim_source` avval `receipt_alloc` ni oladi; `evaluate_purchase_receipt` xarid qatorini (`for no key update`) qulflamaydi — avval `receipt_alloc`. Kirim triggeri juftliklarni kalit tartibida qulflaydi. |
+| L12 | `purchase_for_object` — faqat foydalanuvchi kiritgan (`auth.uid()` bor) va `purchased_at > now − 24 soat` xarid uchun. |
+| L13 | S4 / ish oqimi bilan bir xil. |
+
+## Yangi alert turlari
+
+| type | severity | Bog'lanish | `details` |
+|---|---|---|---|
+| `xarid_boshqa_nomidan` ✉ | ogohlantirish | `purchase_id`, `object_id`, `material_id` | `purchase_id`, `buyer_id`, `buyer_name`, `actor_profile_id`, `actor_name`, `amount`, `object_id`, `object_name`, `material_id`, `material_name`, `qty_base`, `base_unit`, `purchased_at`, `payment_source`, `via` (`insert` \| `update`) |
+| `sotuvchi_birlashtirildi` | belgi | — | `keep_supplier_id`, `keep_name`, `merged_supplier_id`, `merged_name`, `moved_count` (tirik), `moved_deleted_count`, `moved_purchase_ids` (hammasi), `filled` (`tin` \| `phone` \| `note`), `actor_profile_id`, `actor_name` |
+
+O'zgargan `details`: `login_ozgardi` — + `first_login` (bool). `yozuv_tuzatildi` / `yozuv_ozgartirildi` — + `reason` (null bo'lishi mumkin); `cancel_own_entry` dan — `via = 'cancel_own_entry'`, `changed = ['deleted_at']`, `reason`, `author_id`, `material_name`, `base_unit`, `qty_base`, `amount`, `movement_type`, `purchase_id`. `manfiy_qoldiq` — `reopened_at`, `reopen_count`.
+
+## Yangi hint'lar
+
+| hint | errcode | Qayerda |
+|---|---|---|
+| `purchase_buyer_invalid` | 23514 | `b_buyer_guard` — xaridor nofaol / o'chirilgan / ruxsat etilmagan rol |
+| `rate_limited` | 54000 | `check_purchase_price` (10 daqiqada > 30) |
+| `alert_close_note_locked` | 55000 | `b_alerts_close_note` — yopilgan alert izohi |
+| `chat_reset_forbidden` | 42501 | `reset_chat_blocked` — admin emas |
+| `profile_not_found` | P0002 | `reset_chat_blocked` |
+| `stock_forbidden` | 42501 | `stock_forecast` — tekshiruvchi |
+
+Qayta ishlatiladi: `profile_protected` (INSERT, rol berish, ism), `correct_invalid` / `correct_forbidden` / `correct_window_passed` / `correct_linked` / `correct_not_found` (`cancel_own_entry` ham), `ops_occurred_at_range` (endi `detail` bilan), `photo_hash_invalid`, `photo_sha256_invalid`, `alert_close_note_required` (yopilgan holatda bo'sh izoh).
+
+## RPC imzolari (yangi va o'zgargan)
+
+```sql
+-- authenticated
+public.correct_entry(p_table text, p_id uuid, p_qty_input numeric default null, p_unit_id uuid default null,
+                     p_total_amount numeric default null, p_note text default null, p_reason text default null,
+                     p_material_id uuid default null, p_object_id uuid default null) returns void
+public.cancel_own_entry(p_table text, p_id uuid, p_reason text) returns void
+public.reset_chat_blocked(p_profile_id uuid) returns boolean
+public.check_purchase_price(p_material_id uuid, p_price_per_base numeric) returns text   -- endi volatile, rate_limited
+-- service_role
+public.svc_set_photo_hash(p_table text, p_id uuid, p_sha256 text, p_expected_path text default null) returns boolean
+public.svc_claim_photo_hash_jobs(p_limit integer default 20)
+  returns table (job_id uuid, company_id uuid, table_name text, record_id uuid, photo_path text, attempts integer)
+public.svc_complete_photo_hash_job(p_job_id uuid, p_sha256 text default null, p_error text default null,
+                                   p_final boolean default false) returns text   -- done | stale | pending | failed | null
+public.svc_alert_login_set(p_target_profile uuid, p_actor uuid, p_first_login boolean default false) returns uuid
+public.svc_touch_chat(p_chat_id bigint) returns integer
+public.svc_photo_hash_secret() returns text   -- Vault photo_hash_secret (svc_dispatch_secret kabi)
+```
+
+`correct_entry` ning eski 6 argumentli pozitsion chaqiruvi (`p_note` — 6-o'rinda) o'zgarishsiz ishlaydi. **UI:** sabab endi `p_reason` da (izoh ustiga yozilmasin); material/obyekt almashtirish — `p_material_id` + `p_unit_id` (yangi materialning birligi), `p_object_id`. PostgREST'da nomli argumentlar bilan chaqirish tavsiya etiladi.
+
+## Edge Function shartnomasi
+
+### photo-hash — sweep rejimi
+
+- Uyg'otish: pg_net `POST <private.app_settings.photo_hash_url>` (standart `https://srriiiugmxgrdnuvhgix.supabase.co/functions/v1/photo-hash`), sarlavhalar `Content-Type: application/json`, `x-photo-secret: <vault photo_hash_secret>`, tana `{"mode":"sweep"}`, timeout 60 s. Har tranzaksiyada bir marta (`terron.photo_hash_woken`); cron har 5 daqiqada muddati kelgan ish bo'lsa yana uyg'otadi.
+- Sir: Vault `photo_hash_secret` (32 bayt hex, migratsiyada tasodifiy yaratiladi — `tg_dispatch_secret` bilan bir xil usul). Edge Function sirni `svc_photo_hash_secret()` (service_role) bilan o'qiydi va `x-photo-secret` sarlavhasi bilan doimiy vaqtda (constant-time) solishtiradi — alohida function secret kerak emas (tg-dispatch / `svc_dispatch_secret` bilan bir xil usul).
+- Ish sikli (service_role): `svc_claim_photo_hash_jobs(20)` → har ish uchun Storage `photos/<photo_path>` ni o'qish → SHA-256 (hex) → `svc_complete_photo_hash_job(job_id, sha256)`. Xato: `svc_complete_photo_hash_job(job_id, null, '<xato>', p_final)` — fayl yo'q / ruxsat yo'q → `p_final = true` (`failed`); vaqtinchalik → `false` (`pending`, `2^attempts` daqiqadan keyin; 6 urinishdan keyin `failed`). `stale` — yozuv o'chirilgan yoki rasm yo'li o'zgargan (xesh yozilmaydi). Olingan, lekin 10 daqiqada yakunlanmagan ish keyingi claim'da qayta beriladi.
+- Klient oqimi (`{table, id}`) saqlanadi; u ham `svc_set_photo_hash(table, id, sha, p_expected_path => o'qilgan yo'l)` bilan yozishi kerak (eski yuklash javobi yangi rasmga yozilmasin). Muvaffaqiyatli yozuv shu yozuv+yo'lning ochiq navbat ishini `done` qiladi.
+
+### tg-bot / tg-auth — `svc_touch_chat`
+
+Har kiruvchi update (xabar, callback, `/start`, `my_chat_member` → `member`) va har muvaffaqiyatli `tg-auth`: `select public.svc_touch_chat(<chat_id>)` (qaytaradi: tozalangan profillar soni). Bot bloklansa — avvalgidek `svc_mark_chat_blocked(chat_id, true)` / `svc_complete_notification(..., p_blocked_chat_ids)`.
+
+### admin-users — birinchi login
+
+Admin (super_admin emas) `auth_user_id` null bo'lgan **direktor** (yoki admin) profiliga login bog'laganda: `svc_alert_login_set(p_target_profile => <profil>, p_actor => <admin profili>, p_first_login => true)`. Mavjud loginni almashtirish — avvalgidek (`p_first_login` siz, standart `false`). DB `profile_protected` admin/direktor profilini yaratish va rolini berishni faqat super_admin ga qoldiradi (foydalanuvchi sessiyasi) — Edge Function service_role bilan yozsa trigger ushlamaydi, shuning uchun u ham shu qoidani tekshirishi kerak.
+
+## Bildirishnoma payloadlari (yangi)
+
+Hamma kalitlar har doim bor (qiymati `null` bo'lishi mumkin); miqdor/summa — JSON son; vaqt — ISO timestamptz. `tg-dispatch` bu turlar uchun shablon talab qiladi.
+
+| kind | `profile_id` | `ref_id` | Kimga | Takrorlanish |
+|---|---|---|---|---|
+| `transfer_cancelled` | — | o'tkazma | qabul obyektining prorab / omborchi a'zolari (bekor qiluvchidan tashqari) | bir marta |
+| `transfer_received` | yuboruvchi (`created_by`) | o'tkazma | yuboruvchi (o'zi qabul qilmagan bo'lsa) | bir marta |
+| `purchase_deleted` | — | xarid | obyektning prorab / omborchi a'zolari (xaridordan tashqari) — faqat `purchase_for_object` yuborilgan bo'lsa | bir marta |
+| `purchase_on_your_name` | xaridor | xarid | xaridor (notify_workflow ga qaramaydi, tinch oynada ushlanmaydi) | (xarid, xaridor) bo'yicha bir marta |
+| `inventory_applied` | hisob muallifi | inventarizatsiya | muallif (qo'llagan o'zi bo'lmasa) | bir marta |
+| `alerts_digest` | — | — | direktor, admin | har dayjest |
+
+`request_approved` qabul qiluvchilari: taminotchi + obyektning haydovchi a'zolari. `notify_workflow = false` — ish oqimi turlarida (yangi `transfer_*`, `purchase_deleted`, `inventory_applied` ham) qabul qiluvchi emas.
+
+### `transfer_cancelled`, `transfer_received`
+
+```json
+{ "transfer_id": "uuid", "company_name": "…", "status": "bekor | qabul_qilindi",
+  "from_object_id": "uuid", "from_object_name": "…", "to_object_id": "uuid", "to_object_name": "…",
+  "material_id": "uuid", "material_name": "…", "qty_input": 3, "unit_input": "qop", "qty_base": 150,
+  "received_qty_base": 150, "base_unit": "kg", "note": "… | null", "cancel_reason": "… | null",
+  "sent_by_id": "uuid", "sent_by_name": "… | null", "received_by_name": "… | null",
+  "created_at": "<timestamptz>", "received_at": "<timestamptz> | null" }
+```
+`transfer_cancelled` qo'shimcha: `cancelled_by_id`, `cancelled_by_name`, `cancelled_at`.
+
+### `purchase_deleted`
+
+`purchase_for_object` shakli (`purchase_id, company_name, object_id, object_name, material_id, material_name, qty_input, unit_input, qty_base, base_unit, buyer_id, buyer_name, supplier_name, purchased_at`) + `deleted_at`, `deleted_by_name`, `reason` (`cancel_own_entry` sababi yoki null).
+
+### `purchase_on_your_name`
+
+```json
+{ "purchase_id": "uuid", "alert_id": "uuid", "company_name": "…", "buyer_id": "uuid", "buyer_name": "…",
+  "actor_name": "…", "object_id": "uuid", "object_name": "…", "material_id": "uuid", "material_name": "…",
+  "qty_input": 2, "unit_input": "qop", "qty_base": 100, "base_unit": "kg", "total_amount": 250000,
+  "payment_source": "podotchet | firma", "purchased_at": "<timestamptz>" }
+```
+
+### `inventory_applied`
+
+```json
+{ "count_id": "uuid", "company_name": "…", "object_id": "uuid", "object_name": "…",
+  "counted_at": "<timestamptz>", "submitted_at": "<timestamptz> | null", "applied_at": "<timestamptz>",
+  "applied_by_name": "… | null", "items_count": 12, "adjusted_count": 3 }
+```
+Miqdor va kamomad yo'q (ko'r-ko'rona sanash).
+
+### `alerts_digest`
+
+```json
+{ "company_name": "…", "alert_type": "smetadan_ortiq_sorov", "count": 7, "alert_ids": ["uuid", "…"],
+  "items": [{ "alert_id": "uuid", "request_id": "uuid", "object_id": "uuid", "object_name": "…",
+              "material_id": "uuid", "material_name": "…", "over_qty_base": 120.5, "base_unit": "kg" }],
+  "more_count": 0, "created_at": "<timestamptz>" }
+```
+`items` — birinchi 20 ta (alert yaratilish tartibida), `more_count` — qolgani. Dayjestga kirgan alertlarning alohida `alert` xabari yo'q (eslatma — `alert_reminder` — avvalgidek ishlaydi).
+
+### `login_changed` — o'zgargan
+
++ `first_login` (bool).
+
+## Qilinmaganlar va cheklovlar
+
+- Zanjir (L2) yangi `xarid_qabul_farqi` yaratmaydi — xarid o'chirilib tiklansa yoki orqa sanali xarid qo'shilsa, yangi farq alerti hourly cron'da (≤ 1 soat) paydo bo'ladi.
+- `purchase_deleted` va boshqa bir martalik turlar (kind, ref_id) bo'yicha bir marta — xarid tiklanib qayta o'chirilsa ikkinchi xabar yo'q.
+- `payment_source` ni admin / buxgalter keyin o'zgartirsa — `yozuv_ozgartirildi` (ogohlantirish).
+- GUC'lar (`terron.correct_mode`, `terron.merge_rpc`, ...) PostgREST klienti tomonidan o'rnatilmaydi (`set_config` API'da yo'q) — faqat to'g'ridan-to'g'ri SQL (ishonchli zona) ularni soxtalashtira oladi.

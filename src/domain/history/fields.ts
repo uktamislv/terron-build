@@ -110,7 +110,7 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
   },
   suppliers: {
     primary: ['name', 'phone'],
-    columns: { name: 'text', phone: 'text', note: 'text', tin: 'text' },
+    columns: { name: 'text', phone: 'text', note: 'text', tin: 'text', merged_into: 'ref_supplier' },
   },
   cash_advances: {
     primary: ['recipient_id', 'amount', 'issued_at'],
@@ -142,6 +142,7 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
       purchased_at: 'datetime',
       note: 'text',
       request_id: 'text',
+      payment_source: 'enum',
       receipt_fiscal_sign: 'text',
       receipt_terminal_id: 'text',
       receipt_no: 'text',

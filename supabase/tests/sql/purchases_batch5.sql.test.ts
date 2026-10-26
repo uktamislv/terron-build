@@ -1149,7 +1149,7 @@ describe('check_purchase_price RPC', () => {
       `select p.prorettype::regtype::text as ret, p.proretset, p.prosecdef, p.provolatile, p.proconfig
          from pg_proc p where p.oid = 'public.check_purchase_price(uuid, numeric)'::regprocedure`,
     )
-    expect(f).toEqual({ ret: 'text', proretset: false, prosecdef: true, provolatile: 's', proconfig: ['search_path=""'] })
+    expect(f).toEqual({ ret: 'text', proretset: false, prosecdef: true, provolatile: 'v' /* audit2 S8: chastota cheklovi yozadi */, proconfig: ['search_path=""'] })
     expect(await asAnon(db, (tx) => res(tx, `select public.check_purchase_price($1, 1)`, [A.ids.m1]))).toBe('42501:')
   })
 })
@@ -1532,10 +1532,10 @@ describe('P7: alerts ustun huquqlari', () => {
   it('authenticated faqat status va close_note; details / deleted_at / bog`lanish — 42501; close_note ≤ 500', async () => {
     const r = await asUser(db, A.users.admin.authUid, async (tx) => ({
       status: await res(tx, `update public.alerts set status = 'korildi' where id = $1`, [A.ids.alert1]),
+      long: await res(tx, `update public.alerts set status = 'yopildi', close_note = $2 where id = $1`, [A.ids.alert1, 'z'.repeat(501)]),
       note: await res(tx, `update public.alerts set status = 'yopildi', close_note = 'Tekshirildi' where id = $1`, [
         A.ids.alert1,
       ]),
-      long: await res(tx, `update public.alerts set close_note = $2 where id = $1`, [A.ids.alert1, 'z'.repeat(501)]),
       details: await res(tx, `update public.alerts set details = '{}' where id = $1`, [A.ids.alert1]),
       deleted: await res(tx, `update public.alerts set deleted_at = now() where id = $1`, [A.ids.alert1]),
       purchase: await res(tx, `update public.alerts set purchase_id = null where id = $1`, [A.ids.alert1]),
