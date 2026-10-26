@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { Building2, Check, Package, ShieldCheck, TriangleAlert, X } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { Badge, Button, EmptyState, EntryRow, FilterBar, Modal, Notice, PageHeader, Pager, RetryNotice, Spinner, TextAreaField } from '@/components/ui'

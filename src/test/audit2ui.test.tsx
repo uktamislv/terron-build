@@ -2,7 +2,7 @@
 // sana oralig'i xatosi, material qidiruvi, pul tarixi qatori, Excel tugmasi, bo'limlar belgisi.
 import { useState } from 'react'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { CashHistoryRow } from '@/components/CashHistoryRow'
 import { BottomSheet, Checkbox, FilterBar, SelectField, SheetChromeContext, TextField, ToastProvider } from '@/components/ui'
 import type { CashHistoryEntry } from '@/data/cashRepo'

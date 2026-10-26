@@ -10,6 +10,8 @@ import {
   MAX_RESPONSE_BYTES,
   parseReceiptDateTime,
   parseReceiptDocument,
+  RECEIPT_HOSTS,
+  RECEIPT_PATHS,
   qrDateTime,
   readCapped,
   SlidingWindowLimiter,
@@ -21,6 +23,12 @@ import {
   type ReceiptLookupDeps,
   type ReceiptQrParams,
 } from './logic.ts'
+import {
+  parseReceiptQr,
+  RECEIPT_HOSTS as CLIENT_RECEIPT_HOSTS,
+  RECEIPT_PATHS as CLIENT_RECEIPT_PATHS,
+} from '../../../src/domain/receipt/qr.ts'
+import { QR_VECTORS } from '../../../src/domain/receipt/qrVectors.ts'
 
 const URL_CHECK = 'https://ofd.soliq.uz/check?t=UZ000000000001&r=643&c=20261020143005&s=111122223333'
 const QR = validateReceiptUrl(URL_CHECK) as ReceiptQrParams
@@ -502,5 +510,28 @@ describe('handleReceiptLookup', () => {
   it('fetchPage xato tashlasa → 502 network', async () => {
     const { deps } = fake({ fetchThrows: true })
     expect((await handleReceiptLookup(AUTH, { url: URL_CHECK }, deps)).body).toMatchObject({ reason: 'network' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// QR parity: klient (src/domain/receipt/qr.ts) va server bitta vektor fayli bilan
+// ---------------------------------------------------------------------------
+describe('QR parity — parseReceiptQr (klient) ≡ validateReceiptUrl (server)', () => {
+  const pick = (x: { terminalId: string; receiptNo: string; fiscalSign: string; datetime: string | null; url: string } | null) =>
+    x === null ? null : { t: x.terminalId, r: x.receiptNo, s: x.fiscalSign, c: x.datetime, url: x.url }
+
+  it.each(QR_VECTORS.map((v) => [v.name, v] as const))('%s', (_name, v) => {
+    const client = pick(parseReceiptQr(v.input))
+    expect(client).toEqual(v.expect)
+    // Server to'g'ridan-to'g'ri: https satrlar — aynan bir xil; sxemasiz/http — rad (klient normallashtiradi)
+    const direct = pick(validateReceiptUrl(v.input))
+    expect(direct).toEqual(v.https ? v.expect : null)
+    // Haqiqiy oqim: klient `url` ini serverga yuboradi — server ham qabul qiladi, maydonlar bir xil
+    if (client !== null) expect(pick(validateReceiptUrl(client.url))).toEqual(client)
+  })
+
+  it('xostlar va yo`llar ro`yxati bir xil', () => {
+    expect([...RECEIPT_HOSTS]).toEqual([...CLIENT_RECEIPT_HOSTS])
+    expect([...RECEIPT_PATHS]).toEqual([...CLIENT_RECEIPT_PATHS])
   })
 })

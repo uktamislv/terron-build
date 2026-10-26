@@ -2,7 +2,7 @@
 // va "O'chirilganlar" (deleted_records, tiklash). Filtrlar URL bilan sinxron; hammasi RLS orqali.
 // Taqdimot qismlari — ../history/HistoryView.tsx (ko'rgazma ham shularni ishlatadi).
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { useAuth } from '@/auth/authContext'
 import { Notice, useToast } from '@/components/ui'
 import {

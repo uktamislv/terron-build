@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { AuthContext, type AuthState } from '@/auth/authContext'
 import * as reportsRepo from '@/data/reportsRepo'
 import type { NormOverviewRow } from '@/data/reportsRepo'

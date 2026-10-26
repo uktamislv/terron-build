@@ -1,5 +1,5 @@
 import { lazy, type ComponentType, type ReactNode } from 'react'
-import { Outlet, type RouteObject } from 'react-router-dom'
+import { Outlet, type RouteObject } from 'react-router'
 import { AuthProvider } from '@/auth/AuthProvider'
 import { ComingSoon } from '@/components/ComingSoon'
 import { RouteErrorPage } from '@/components/ErrorBoundary'

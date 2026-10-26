@@ -51,7 +51,7 @@ export interface ObjectRow {
   lat?: Dec | null
   lng?: Dec | null
   /** Ruxsat etilgan masofa, metr (standart 300). */
-  radius_m?: number | null
+  radius_m: number
   created_by: string | null
   created_at: string
   updated_at: string

@@ -1,5 +1,5 @@
 import { useCallback, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router'
 import { BellRing, Bug, CircleHelp, KeyRound, LogOut, Menu, X } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { ChangePasswordForm } from '@/auth/ChangePasswordForm'

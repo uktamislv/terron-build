@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import * as authRepo from '@/data/authRepo'
 import * as inventoryRepo from '@/data/inventoryRepo'
 import * as materialsRepo from '@/data/materialsRepo'

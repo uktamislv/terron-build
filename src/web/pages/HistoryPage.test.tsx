@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router'
 import { AuthContext, type AuthState } from '@/auth/authContext'
 import * as authRepo from '@/data/authRepo'
 import { RepoError } from '@/data/errors'

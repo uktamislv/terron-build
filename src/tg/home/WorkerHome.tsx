@@ -1,6 +1,6 @@
 // Prorab / omborchi bosh ekrani: ikki katta "Kirim" / "Chiqim" plitkasi va bugungi yozuvlar.
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { ArrowDownLeft, ArrowUpRight, ChevronRight } from 'lucide-react'
 import { cx, EntryRow, type EntryKind, RetryNotice, SkeletonRows } from '@/components/ui'
 import { listMyMovements } from '@/data/movementsRepo'

@@ -43,11 +43,18 @@ const NAME_TAKEN: readonly RepoErrorCode[] = ['material_name_taken', 'catalog_na
 const UNIT_TAKEN: readonly RepoErrorCode[] = ['unit_taken', 'catalog_unit_duplicate', 'duplicate']
 const ALIAS_TAKEN: readonly RepoErrorCode[] = ['alias_taken', 'catalog_alias_duplicate', 'catalog_name_alias_conflict', 'duplicate']
 
-async function findMaterialByName(name: string, baseUnit: string): Promise<Material | null> {
+/**
+ * Shu firmadagi (companyId) nom va asosiy birlik bo'yicha material. super_admin uchun listMaterials
+ * barcha firmalar materiallarini qaytaradi — boshqa firmaning materiali olinmasligi shart.
+ */
+async function findMaterialByName(companyId: string, name: string, baseUnit: string): Promise<Material | null> {
   const n = normalizeAlias(name)
   const list = await listMaterials()
   return (
-    list.find((m) => normalizeAlias(m.name) === n && normalizeAlias(m.base_unit) === normalizeAlias(baseUnit)) ?? null
+    list.find(
+      (m) =>
+        m.company_id === companyId && normalizeAlias(m.name) === n && normalizeAlias(m.base_unit) === normalizeAlias(baseUnit),
+    ) ?? null
   )
 }
 
@@ -67,7 +74,7 @@ export async function saveImport(
       material = await createMaterial({ companyId, name: nm.name, baseUnit: nm.baseUnit })
     } catch (err) {
       if (!NAME_TAKEN.includes(errorCodeOf(err))) throw err
-      const existing = await findMaterialByName(nm.name, nm.baseUnit)
+      const existing = await findMaterialByName(companyId, nm.name, nm.baseUnit)
       if (!existing) throw err
       material = existing
     }

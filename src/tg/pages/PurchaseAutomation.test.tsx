@@ -1,7 +1,7 @@
 // Batch 12 — xarid ekrani: chek QR (G), tasdiqlangan so'rovlar (H), takroriy xarid (C),
 // rasm majburiy (E), joylashuv (D).
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import * as authRepo from '@/data/authRepo'
 import * as cashRepo from '@/data/cashRepo'
 import * as companiesRepo from '@/data/companiesRepo'

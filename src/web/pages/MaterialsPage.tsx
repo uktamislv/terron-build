@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { Camera, Layers, Package, Percent, Plus, Ruler, SearchX, Store } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { Badge, Button, EmptyState, FilterBar, PageHeader, RetryNotice, SegmentedControl, SkeletonRows, Tabs } from '@/components/ui'

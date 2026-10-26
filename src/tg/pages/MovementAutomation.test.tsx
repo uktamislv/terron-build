@@ -1,7 +1,7 @@
 // Batch 12 — kirim/chiqim ekranidagi avtomatlashtirish: takroriy yozuv (C), rasm xeshi (C),
 // joylashuv (D), "Shu yerni obyekt joyi qilish" (D), rasm majburiy (E), oxirgi miqdor (L).
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import * as authRepo from '@/data/authRepo'
 import * as functions from '@/data/functions'
 import * as materialsRepo from '@/data/materialsRepo'

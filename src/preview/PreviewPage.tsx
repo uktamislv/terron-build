@@ -1,7 +1,7 @@
 // Ko'rgazma sahifasi — faqat DEV (`import.meta.env.DEV`), production build'ga kirmaydi (src/routes.tsx).
 // /__preview — ro'yxat; ?view=<id> — bitta ekran; ?w=mobile — 390 px ramka (iframe: media so'rovlar telefon bo'yicha).
 import { useMemo, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router'
 import { Monitor, Smartphone } from 'lucide-react'
 import { AuthContext, type AuthState } from '@/auth/authContext'
 import { BrandMark, ToastProvider } from '@/components/ui'

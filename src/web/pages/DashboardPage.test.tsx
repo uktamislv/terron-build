@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import * as authRepo from '@/data/authRepo'
 import * as reportsRepo from '@/data/reportsRepo'
 import type { Role } from '@/domain/roles'

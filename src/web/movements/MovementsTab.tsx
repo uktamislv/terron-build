@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { History, Image as ImageIcon, PencilLine, RotateCcw, Trash2, Warehouse } from 'lucide-react'
 import { CorrectionForm } from '@/components/corrections/CorrectionForm'
 import { MovementPhoto } from '@/components/MovementPhoto'

@@ -2,7 +2,7 @@
 // 4 diagramma (Recharts — lazy chunk), oxirgi ogohlantirishlar, Excel eksport. Hammasi RLS orqali.
 // Taqdimot qismlari — ../dashboard/DashboardView.tsx (ko'rgazma ham shularni ishlatadi).
 import { useCallback, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { ClipboardCheck, LayoutDashboard } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { EmptyState, Notice, PageHeader, Spinner } from '@/components/ui'

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router'
 import { useAuth } from '@/auth/authContext'
 import { Notice, RetryNotice, SkeletonRows } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'

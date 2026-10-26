@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router'
 import { useAuth } from '@/auth/authContext'
 import { ArrowLeftRight, ClipboardList } from 'lucide-react'
 import { Notice, RetryNotice, SegmentedControl, SkeletonRows } from '@/components/ui'

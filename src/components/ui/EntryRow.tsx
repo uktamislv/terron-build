@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, ShoppingCart } from 'lucide-react'
 import { cx } from './cx'
 import { Qty, type QtySize } from './Qty'

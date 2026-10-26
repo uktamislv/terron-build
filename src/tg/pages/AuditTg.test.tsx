@@ -2,7 +2,7 @@
 // xatolik xabarlari, o'tkazmani bekor qilish, ish xabarlari), "Qoldiq", so'rovlarni tasdiqlash,
 // sana chiplari, "Qo'limda" tarixi, obyekt ogohlantirishlari.
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import * as alertsRepo from '@/data/alertsRepo'
 import * as authRepo from '@/data/authRepo'
 import * as bugReportsRepo from '@/data/bugReportsRepo'

@@ -1,7 +1,7 @@
 // Prorab / omborchi bosh ekrani: a'zo obyektlardagi ochiq ogohlantirishlar (docs/audit-fixes.md D3) —
 // normadan oshish, manfiy qoldiq, o'tkazma farqi, smetadan ortiq so'rov, smetasiz chiqim. Faqat ko'rish;
 // bosilsa — `?alert=<id>` (AlertDeepLink kartochkasi).
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { EntryRow, RetryNotice } from '@/components/ui'
 import { listSiteAlerts } from '@/data/alertsRepo'
 import { t } from '@/i18n'

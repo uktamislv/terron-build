@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router'
 import { ChevronRight, History, PencilLine, Plus, Receipt, RotateCcw, ShoppingCart, Trash2 } from 'lucide-react'
 import { CorrectionForm } from '@/components/corrections/CorrectionForm'
 import { useAuth } from '@/auth/authContext'

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router'
 import { useAuth } from '@/auth/authContext'
 import { Eye, EyeOff } from 'lucide-react'
 import { BrandMark, Button, FullPageSpinner, Notice, TextField } from '@/components/ui'

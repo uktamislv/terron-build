@@ -2,7 +2,7 @@
 // 9 yangi alert turi matni, xarid QR belgisi va joylashuv.
 import type { ReactNode } from 'react'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { AuthContext, type AuthState } from '@/auth/authContext'
 import * as cashRepo from '@/data/cashRepo'
 import * as companiesRepo from '@/data/companiesRepo'

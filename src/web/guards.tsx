@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router'
 import { useAuth } from '@/auth/authContext'
 import { ForcePasswordChangeScreen, ProfileErrorScreen } from '@/auth/screens'
 import { Forbidden } from '@/components/Forbidden'

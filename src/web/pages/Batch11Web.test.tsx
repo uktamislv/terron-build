@@ -2,7 +2,7 @@
 // qo'llanma ko'rinishi (lokal fixture bilan).
 import type { ReactNode } from 'react'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { AuthContext, type AuthState } from '@/auth/authContext'
 import { GuideView } from '@/components/help/GuideView'
 import { ToastProvider } from '@/components/ui'

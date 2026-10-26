@@ -2,7 +2,7 @@
 // bo'limlar ("Qoldiq", "So'rovlarni tasdiqlash"). Pastki menyu ≤ 5 band.
 // Kirim/Chiqim plitkalari (yoki direktor kartochkalari) ostida — ixcham 2 ustunli plitkalar.
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { Boxes, ClipboardCheck } from 'lucide-react'
 import { countPendingRequests } from '@/data/requestsRepo'
 import type { Role, TgNavKey } from '@/domain/roles'

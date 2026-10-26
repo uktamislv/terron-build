@@ -1,6 +1,6 @@
 // Tarix sahifasining taqdimot qismlari (ma'lumot props orqali — ko'rgazmada ham ishlatiladi).
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import {
   ArchiveRestore,
   History,

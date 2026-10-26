@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { ShieldX } from 'lucide-react'
 import { Button, EmptyState } from '@/components/ui'
 import { t } from '@/i18n'

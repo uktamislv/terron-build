@@ -1,5 +1,5 @@
 // Boshqa sahifalardagi yozuv tafsilotida "Tarix" havolasi (faqat admin / direktor — `view_audit`).
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { History } from 'lucide-react'
 import { cx } from '@/components/ui'
 import { t } from '@/i18n'

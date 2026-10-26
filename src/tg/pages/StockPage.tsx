@@ -1,7 +1,7 @@
 // Telegram ilovasi "Qoldiq" (prorab, omborchi, admin) — bosh ekrandan ochiladi. Obyekt bo'yicha qoldiq,
 // qidiruv va prognoz (necha kunga yetadi, tugayotganlar ajratilgan). Faqat ko'rish.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { Building2, Hourglass, Package } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { choiceClass, cx, EmptyState, EntryRow, Notice, Qty, RetryNotice, SearchBox, SkeletonRows } from '@/components/ui'

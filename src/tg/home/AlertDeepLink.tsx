@@ -1,7 +1,7 @@
 // Batch 12 (J): Telegram xabaridagi "Ochish" tugmasi → Mini App `?alert=<id>` (yoki start_param
 // `alert_<id>`). Bosh ekran tepasida shu ogohlantirish (faqat ko'rish) — direktor, admin.
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { Building2, Package, X } from 'lucide-react'
 import { Badge, Notice, RetryNotice, SkeletonRows } from '@/components/ui'
 import { getAlertById } from '@/data/alertsRepo'

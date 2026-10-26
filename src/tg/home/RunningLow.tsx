@@ -1,7 +1,7 @@
 // Batch 12 (K): "Tugayotganlar" — `stock_forecast` bo'yicha `days_left ≤ forecast_days_warn`
 // materiallar; "So'rov yuborish" (7 kunlik sarf, smeta qoldig'idan oshmaydi) va boshqa obyektda
 // bo'lsa "O'tkazma so'rash". Tugmalar faqat so'rov yubora oladiganlarga (prorab, admin).
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { ArrowLeftRight, ClipboardList, Hourglass } from 'lucide-react'
 import { cx } from '@/components/ui'
 import { getStockForecast, type StockForecastRow } from '@/data/forecastRepo'

@@ -1,7 +1,7 @@
 // Telegram ilovasi: admin uchun so'rovlarni tasdiqlash / rad etish (bosh ekrandan). Izoh (decision_note) —
 // tasdiqlashda ixtiyoriy, rad etishda majburiy.
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router'
 import { Check, ClipboardList, X } from 'lucide-react'
 import { BottomSheet, Button, DetailRows, EmptyState, EntryRow, LevelBar, Notice, Qty, RetryNotice, SkeletonRows, TextAreaField } from '@/components/ui'
 import { listNormUsage } from '@/data/normsRepo'

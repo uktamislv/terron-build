@@ -1,7 +1,7 @@
 // Resurs smetasi (ЛРВ) importi: aniqlash, ulush, shifr bo'yicha moslash, bitta tugma bilan katalogga
 // qo'shish, saqlash va shifrlarni eslab qolish. Sintetik ma'lumot (src/domain/estimate/__fixtures__).
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import * as XLSX from 'xlsx'
 import * as authRepo from '@/data/authRepo'
 import { toRepoError } from '@/data/errors'

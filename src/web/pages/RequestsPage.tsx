@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { useAuth } from '@/auth/authContext'
 import { REQUEST_TONE } from '@/components/statusTones'
 import { Check, ClipboardList, ShoppingCart, X } from 'lucide-react'

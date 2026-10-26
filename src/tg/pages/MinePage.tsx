@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router'
 import { useAuth } from '@/auth/authContext'
 import type { CorrectionTarget } from '@/components/corrections/CorrectionForm'
 import { MovementPhoto } from '@/components/MovementPhoto'

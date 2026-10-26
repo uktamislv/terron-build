@@ -1,6 +1,6 @@
 // Bosh sahifa taqdimot komponentlari (ma'lumot props orqali) — DashboardPage va ko'rgazma (/__preview) uchun umumiy.
 import { lazy, Suspense, useMemo, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import {
   ArrowDownLeft,
   BellOff,

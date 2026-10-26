@@ -61,8 +61,17 @@ export type BusinessTable = (typeof BUSINESS_TABLES)[number]
 export const SYSTEM_TABLES = ['notification_outbox'] as const
 export type SystemTable = (typeof SYSTEM_TABLES)[number]
 
-/** Biznes jadvallari + audit_log + stock_balances view. */
-export const ALL_RELATIONS = [...BUSINESS_TABLES, 'audit_log', 'stock_balances', 'estimate_totals'] as const
+/**
+ * Biznes jadvallari + audit_log + view'lar (stock_balances, estimate_totals, profile_directory).
+ * Anon / boshqa firma / nofaol profil "hech narsa ko'rmaydi" tekshiruvlari shu ro'yxat bo'yicha.
+ */
+export const ALL_RELATIONS = [
+  ...BUSINESS_TABLES,
+  'audit_log',
+  'stock_balances',
+  'estimate_totals',
+  'profile_directory',
+] as const
 export type Relation = (typeof ALL_RELATIONS)[number]
 
 /** Jadvaldagi firma ustuni (`companies` da — `id`). */

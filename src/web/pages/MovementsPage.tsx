@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { ArrowLeftRight, ClipboardCheck, List, Package, Warehouse } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { Notice, PageHeader, Tabs, type TabItem } from '@/components/ui'

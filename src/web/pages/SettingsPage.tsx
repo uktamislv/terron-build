@@ -1,4 +1,4 @@
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { Bug, Building2, Send, Settings } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { PageHeader, Tabs, type TabItem } from '@/components/ui'

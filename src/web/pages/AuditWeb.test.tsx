@@ -2,7 +2,7 @@
 // alertni yopish sababi, sozlamalar (tinch soatlar, Telegram holati), foydalanuvchilar, tekshiruvchi,
 // ish xabarlari, Excel tugmalari.
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import * as adminUsersRepo from '@/data/adminUsersRepo'
 import * as alertsRepo from '@/data/alertsRepo'
 import * as authRepo from '@/data/authRepo'

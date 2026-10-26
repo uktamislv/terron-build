@@ -2,7 +2,18 @@
 // har jadval × har rol uchun ko'rish / qo'shish / o'zgartirish. Bitta firma (A)
 // ichida; B firma faqat "ortiqcha ko'rmaslik" uchun fonda turadi.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { asUser, createDb, rows, scalar, tryQuery, type Db, type UserRole } from './_harness'
+import { asUser, createDb, insertRow, rows, scalar, tryQuery, type Db, type Tx, type UserRole } from './_harness'
+import { res, switchUid, sys } from './_tx'
+import {
+  GUARDED_ROLES,
+  MATRIX_ROLES,
+  MATRIX_TABLES,
+  RELATION_SELECT_ALL,
+  SITE_ALERT_TYPES_BY_ROLE,
+  TABLE_INSERT,
+  TABLE_UPDATE,
+  type GuardedProbe,
+} from '../../../src/test/roleMatrix'
 import {
   BUSINESS_TABLES,
   buildTwoCompanies,
@@ -23,6 +34,12 @@ beforeAll(async () => {
   db = await createDb()
   F = await buildTwoCompanies(db)
   A = F.A
+  // Sayt alertlari (alerts_select_site): a'zo obyekt (obj1) va a'zo bo'lmagan obyekt (obj2)
+  const alert = async (type: string, obj: string): Promise<string> =>
+    (await insertRow<{ id: string }>(db, 'alerts', { company_id: A.id, type, object_id: obj, material_id: A.ids.m1 })).id
+  A.ids.alert_site_norm = await alert('normadan_oshish', A.ids.obj1!)
+  A.ids.alert_site_req = await alert('smetadan_ortiq_sorov', A.ids.obj1!)
+  A.ids.alert_site_obj2 = await alert('normadan_oshish', A.ids.obj2!)
 })
 afterAll(async () => {
   await db?.close()
@@ -54,7 +71,7 @@ const LABELS: Partial<Record<BusinessTable, string[]>> = {
   estimate_import_templates: ['tpl1'],
   material_requests: ['mr_obj1', 'mr_obj2'],
   movements: ['mv_obj1', 'mv_obj2'],
-  alerts: ['alert1'],
+  alerts: ['alert1', 'alert_site_norm', 'alert_site_req', 'alert_site_obj2'],
 }
 
 type VisRule = (role: UserRole) => string[]
@@ -63,9 +80,6 @@ const byRole =
   (t: BusinessTable, spec: Partial<Record<UserRole, string[]>>, fallback: string[] = all(t)): VisRule =>
   (role) =>
     spec[role] ?? fallback
-
-const NOTHING_FOR = (roles: UserRole[]): Partial<Record<UserRole, string[]>> =>
-  Object.fromEntries(roles.map((r) => [r, []]))
 
 const VISIBILITY: Partial<Record<BusinessTable, VisRule>> = {
   objects: byRole('objects', { prorab: ['obj1'], omborchi: ['obj1'], haydovchi: ['obj1'] }),
@@ -106,7 +120,15 @@ const VISIBILITY: Partial<Record<BusinessTable, VisRule>> = {
   // Batch 7: shablonlarni firma a'zolari ko'radi
   estimate_import_templates: () => all('estimate_import_templates'),
   material_requests: byRole('material_requests', { prorab: ['mr_obj1'], omborchi: [], haydovchi: [], tekshiruvchi: [] }),
-  alerts: byRole('alerts', NOTHING_FOR(['taminotchi', 'tekshiruvchi', 'prorab', 'omborchi', 'haydovchi'])),
+  // To'liq ro'yxat — RELATION_SELECT_ALL.alerts; prorab / omborchi — faqat a'zo obyektdagi sayt turlari
+  alerts: (role) =>
+    RELATION_SELECT_ALL.alerts.includes(role)
+      ? all('alerts')
+      : role === 'prorab'
+        ? ['alert_site_norm', 'alert_site_req']
+        : role === 'omborchi'
+          ? ['alert_site_norm']
+          : [],
 }
 
 const VIS_TABLES = Object.keys(VISIBILITY) as BusinessTable[]
@@ -156,7 +178,7 @@ describe('ko`rish (SELECT) — yorliqli qatorlar', () => {
     const n = await asUser(db, A.users[role].authUid, (tx) =>
       scalar<number>(tx, `select count(*)::int from public.audit_log where company_id = $1`, [A.id]),
     )
-    expect(n > 0).toBe(['super_admin', 'admin', 'direktor'].includes(role))
+    expect(n > 0).toBe(RELATION_SELECT_ALL.audit_log.includes(role))
   })
 })
 
@@ -164,56 +186,16 @@ describe('ko`rish (SELECT) — yorliqli qatorlar', () => {
 // Qo'shish va o'zgartirish
 // ----------------------------------------------------------------------------
 
-const CAN_INSERT: Record<BusinessTable, UserRole[]> = {
-  companies: ['super_admin'],
-  profiles: ADMINS,
-  objects: ADMINS,
-  object_members: ADMINS,
-  materials: ADMINS,
-  material_units: ADMINS,
-  material_aliases: ADMINS,
-  // Batch 5: xarid kiritadigan rollar yangi sotuvchi qo'shadi (o'zgartirish — admin)
-  suppliers: [...ADMINS, 'taminotchi', 'haydovchi', 'prorab'],
-  cash_advances: [...ADMINS, 'buxgalter'],
-  // buyer_id = o'zi, obj1 (prorab a'zo)
-  purchases: [...ADMINS, 'taminotchi', 'haydovchi', 'prorab'],
-  movements: [...ADMINS, 'prorab', 'omborchi'],
-  inventory_counts: [...ADMINS, 'tekshiruvchi'],
-  // ic_obj1 — tekshiruvchi yaratgan, draft
-  inventory_count_items: [...ADMINS, 'tekshiruvchi'],
-  // Batch 7: smeta va qatorlar faqat RPC (import_estimate) orqali — to'g'ridan-to'g'ri INSERT hech kimga
-  estimates: [],
-  estimate_items: [],
-  estimate_import_templates: [...ADMINS, 'buxgalter'],
-  material_requests: [...ADMINS, 'prorab'],
-  // Batch 8: o'tkazma faqat RPC (create_transfer) orqali — to'g'ridan-to'g'ri INSERT hech kimga
-  transfers: [],
-  alerts: [],
-}
+// Yagona matritsa (src/test/roleMatrix.ts) — src/domain/roles.test.ts (UI `can()`) ham shuni ishlatadi.
+const CAN_INSERT: Record<BusinessTable, readonly UserRole[]> = TABLE_INSERT
+const CAN_UPDATE: Record<BusinessTable, readonly UserRole[]> = TABLE_UPDATE
 
-const CAN_UPDATE: Record<BusinessTable, UserRole[]> = {
-  companies: ADMINS,
-  profiles: ADMINS,
-  objects: ADMINS,
-  object_members: ADMINS,
-  materials: ADMINS,
-  material_units: ADMINS,
-  material_aliases: ADMINS,
-  suppliers: ADMINS,
-  cash_advances: [...ADMINS, 'buxgalter'],
-  purchases: ADMINS,
-  movements: ADMINS,
-  // ic_obj1 / ici_obj1 — tekshiruvchi yaratgan, draft
-  inventory_counts: [...ADMINS, 'tekshiruvchi'],
-  inventory_count_items: [...ADMINS, 'tekshiruvchi'],
-  estimates: [...ADMINS, 'buxgalter'],
-  estimate_items: [...ADMINS, 'buxgalter'],
-  estimate_import_templates: [...ADMINS, 'buxgalter'],
-  material_requests: [...ADMINS, 'taminotchi'],
-  // Batch 8: o'tkazma faqat RPC (receive_transfer / cancel_transfer) orqali o'zgaradi
-  transfers: [],
-  alerts: ADMINS,
-}
+describe('yagona rol matritsasi — jadvallar va rollar ro`yxati', () => {
+  it('MATRIX_TABLES === BUSINESS_TABLES, MATRIX_ROLES === ROLES', () => {
+    expect([...MATRIX_TABLES]).toEqual([...BUSINESS_TABLES])
+    expect([...MATRIX_ROLES]).toEqual([...ROLES])
+  })
+})
 
 describe('qo`shish (INSERT) — o`z firmasiga', () => {
   it.each(ALL)('%s', async (role) => {
@@ -408,5 +390,93 @@ describe('alerts — hech kim insert qila olmaydi', () => {
     const c = insertCase('alerts', A, me.profileId)
     const r = await asUser(db, me.authUid, (tx) => tryQuery(tx, c.sql, c.params))
     expect(r.ok ? 'OK' : r.code).toBe('42501')
+  })
+})
+
+// ----------------------------------------------------------------------------
+// Sayt alertlari (alerts_select_site) — har tur × rol
+// ----------------------------------------------------------------------------
+
+describe('alerts_select_site — prorab / omborchi faqat a`zo obyektdagi sayt turlarini ko`radi', () => {
+  it('har bir alert_type: obj1 (a`zo) va obj2 (a`zo emas); o`chirilgani ko`rinmaydi', async () => {
+    const types = (await rows<{ t: string }>(db, `select unnest(enum_range(null::public.alert_type))::text as t`)).map((r) => r.t)
+    const r = await asUser(db, A.users.admin.authUid, async (tx) => {
+      const ids: Record<string, { obj1: string; obj2: string; del: string }> = {}
+      await sys(tx, async () => {
+        for (const t of types) {
+          const ins = (obj: string): Promise<string> =>
+            scalar<string>(
+              tx,
+              `insert into public.alerts (company_id, type, object_id, material_id) values ($1, $2::public.alert_type, $3, $4) returning id`,
+              // m2: fixture sayt alertlari (m1) bilan alerts_open_norm_key to`qnashmasin
+              [A.id, t, obj, A.ids.m2],
+            )
+          // Avval o'chiriladigani (ba'zi turlarda obyekt+material bo'yicha bitta ochiq alert — unique)
+          const del = await ins(A.ids.obj1!)
+          // Alertni o`chirish — tizim amali (triggerlarsiz, faqat deleted_at)
+          await tx.exec(`set local session_replication_role = replica`)
+          await tx.query(`update public.alerts set deleted_at = now() where id = $1`, [del])
+          await tx.exec(`set local session_replication_role = origin`)
+          ids[t] = { obj1: await ins(A.ids.obj1!), obj2: await ins(A.ids.obj2!), del }
+        }
+      })
+      const out: Record<string, { obj1: string[]; obj2: string[]; del: string[] }> = {}
+      for (const role of ['prorab', 'omborchi', 'haydovchi', 'taminotchi', 'tekshiruvchi'] as const) {
+        await switchUid(tx, A.users[role].authUid)
+        const seen = new Set((await rows<{ id: string }>(tx, `select id from public.alerts where company_id = $1`, [A.id])).map((x) => x.id))
+        out[role] = {
+          obj1: types.filter((t) => seen.has(ids[t]!.obj1)),
+          obj2: types.filter((t) => seen.has(ids[t]!.obj2)),
+          del: types.filter((t) => seen.has(ids[t]!.del)),
+        }
+      }
+      return out
+    })
+    const expected = Object.fromEntries(
+      (['prorab', 'omborchi', 'haydovchi', 'taminotchi', 'tekshiruvchi'] as const).map((role) => [
+        role,
+        { obj1: types.filter((t) => (SITE_ALERT_TYPES_BY_ROLE[role] ?? []).includes(t)), obj2: [], del: [] },
+      ]),
+    )
+    expect(r).toEqual(expected)
+    // Matritsadagi turlar haqiqatan enum'da bor (eskirgan nom qolmasin)
+    for (const list of Object.values(SITE_ALERT_TYPES_BY_ROLE)) for (const t of list ?? []) expect(types).toContain(t)
+  })
+
+  it('sayt alertini prorab / omborchi o`zgartira olmaydi (status)', async () => {
+    const out: Record<string, string> = {}
+    for (const role of ['prorab', 'omborchi'] as const) {
+      out[role] = await asUser(db, A.users[role].authUid, (tx) =>
+        res(tx, `update public.alerts set status = 'korildi' where id = $1`, [A.ids.alert_site_norm]),
+      )
+    }
+    expect(out).toEqual({ prorab: 'OK:0', omborchi: 'OK:0' })
+  })
+})
+
+// ----------------------------------------------------------------------------
+// RPC / trigger bilan himoyalangan amallar (yagona matritsa GUARDED_ROLES)
+// ----------------------------------------------------------------------------
+
+/** true — rol ruxsatidan o'tdi (keyingi xato bo'lsa ham 42501 emas). */
+const PROBES: Record<GuardedProbe, (tx: Tx) => Promise<boolean>> = {
+  request_approve: async (tx) => {
+    const r = await tryExec(tx, `update public.material_requests set status = 'tasdiqlandi' where id = $1`, [A.ids.mr_obj1])
+    if (!r.ok && r.code !== '42501') throw new Error(`request_approve: ${r.code} ${r.msg}`)
+    return r.ok && r.affected === 1
+  },
+  cancel_transfer: async (tx) => (await res(tx, `select public.cancel_transfer($1, 'test')`, [A.ids.tr_1to2])).split(':')[0] !== '42501',
+  apply_inventory_adjustments: async (tx) =>
+    (await res(tx, `select public.apply_inventory_adjustments($1)`, [A.ids.ic_obj1])).split(':')[0] !== '42501',
+  restore_record: async (tx) => (await res(tx, `select public.restore_record('suppliers', $1)`, [A.ids.s1])).split(':')[0] !== '42501',
+}
+
+describe('RPC / holat o`tishi — rollar GUARDED_ROLES bilan bir xil', () => {
+  it.each(Object.keys(PROBES) as GuardedProbe[])('%s', async (probe) => {
+    const actual: UserRole[] = []
+    for (const role of ALL) {
+      if (await asUser(db, A.users[role].authUid, (tx) => PROBES[probe](tx))) actual.push(role)
+    }
+    expect(actual).toEqual(ALL.filter((r) => GUARDED_ROLES[probe].includes(r)))
   })
 })

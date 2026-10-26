@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import { AuthProvider } from '@/auth/AuthProvider'
 import * as authRepo from '@/data/authRepo'
 import type { AuthSession } from '@/data/types'

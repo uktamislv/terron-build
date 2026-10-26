@@ -1,6 +1,6 @@
 // Xato chegaralari: lazy chunk yuklanmasa — "Ilova yangilandi", boshqa xato — umumiy matn.
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { useRouteError } from 'react-router-dom'
+import { useRouteError } from 'react-router'
 import { t } from '@/i18n'
 import { isChunkLoadError } from '@/lib/chunkErrors'
 import { RefreshCw } from 'lucide-react'

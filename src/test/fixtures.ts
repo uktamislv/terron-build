@@ -29,6 +29,7 @@ export function makeObject(id: string, name: string): ObjectRow {
     name,
     address: null,
     status: 'faol',
+    radius_m: 300,
     created_by: null,
     created_at: '2026-10-01T05:00:00Z',
     updated_at: '2026-10-01T05:00:00Z',

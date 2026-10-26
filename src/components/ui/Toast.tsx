@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { CircleAlert, CircleCheck, X } from 'lucide-react'
 import { t } from '@/i18n'
 import { cx } from './cx'

@@ -25,7 +25,7 @@ export function previewProfile(role: Role, full_name = 'Aziz Karimov'): Profile 
 }
 
 function obj(id: string, name: string, address: string): ObjectRow {
-  return { id, company_id: PREVIEW_COMPANY, name, address, status: 'faol', created_by: null, created_at: stamp, updated_at: stamp, deleted_at: null }
+  return { id, company_id: PREVIEW_COMPANY, name, address, status: 'faol', radius_m: 300, created_by: null, created_at: stamp, updated_at: stamp, deleted_at: null }
 }
 
 export const previewObjects: ObjectRow[] = [

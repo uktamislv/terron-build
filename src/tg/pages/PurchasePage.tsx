@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { useAuth } from '@/auth/authContext'
 import { BottomSheet, Notice, RetryNotice, SkeletonRows } from '@/components/ui'
 import { getMyBalance } from '@/data/cashRepo'

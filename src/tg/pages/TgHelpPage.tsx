@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router'
 import { useAuth } from '@/auth/authContext'
 import { GuideView } from '@/components/help/GuideView'
 import { guides } from '@/i18n/guides.uz'

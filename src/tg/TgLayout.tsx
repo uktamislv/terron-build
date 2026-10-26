@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Navigate, NavLink, Outlet, useLocation } from 'react-router'
 import { Bug, CircleHelp } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { BugReportForm } from '@/components/bugReport/BugReportForm'

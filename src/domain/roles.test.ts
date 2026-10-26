@@ -15,6 +15,8 @@ import {
   type TgNavKey,
   type WebNavKey,
 } from './roles'
+import { SITE_ALERT_TYPES } from '@/data/alertsRepo'
+import { ACTION_ROLES, ACTION_SOURCE, dbRolesFor, MATRIX_ROLES, SITE_ALERT_TYPES_BY_ROLE, sortRoles } from '@/test/roleMatrix'
 
 // docs/auth-design.md "Rollar va menyu" jadvali — aynan ko'chirma.
 const ALL_WEB: WebNavKey[] = [
@@ -58,26 +60,8 @@ const EXPECTED_TG: Record<Role, TgNavKey[]> = {
   tekshiruvchi: ['inventory', 'mine'],
 }
 
-// docs/db-design.md kirish matritsasi asosida.
-const EXPECTED_CAN: Record<Action, Role[]> = {
-  manage_users: ['super_admin', 'admin'],
-  manage_objects: ['super_admin', 'admin'],
-  manage_catalog: ['super_admin', 'admin'],
-  issue_cash: ['super_admin', 'admin', 'buxgalter'],
-  create_purchase: ['super_admin', 'admin', 'taminotchi', 'prorab', 'haydovchi'],
-  create_movement: ['super_admin', 'admin', 'prorab', 'omborchi'],
-  create_request: ['super_admin', 'admin', 'prorab'],
-  approve_request: ['super_admin', 'admin'],
-  mark_request_purchased: ['super_admin', 'admin', 'taminotchi'],
-  manage_transfers: ['super_admin', 'admin'],
-  apply_inventory: ['super_admin', 'admin'],
-  run_inventory: ['super_admin', 'admin', 'tekshiruvchi'],
-  view_audit: ['super_admin', 'admin', 'direktor'],
-  view_alerts: ['super_admin', 'admin', 'direktor', 'buxgalter'],
-  manage_alerts: ['super_admin', 'admin'],
-  restore_records: ['super_admin', 'admin'],
-  manage_estimates: ['super_admin', 'admin', 'buxgalter'],
-}
+// Yagona matritsa (src/test/roleMatrix.ts) — SQL rol matritsasi testi ham shuni ishlatadi.
+const EXPECTED_CAN: Record<Action, readonly Role[]> = ACTION_ROLES
 
 describe('ROLES / isRole', () => {
   it("bazadagi user_role enum bilan bir xil (tartib bilan)", () => {
@@ -196,5 +180,28 @@ describe('Batch 8: ko‘r-ko‘rona sanash', () => {
     expect(can('taminotchi', 'approve_request')).toBe(false)
     expect(can('taminotchi', 'mark_request_purchased')).toBe(true)
     expect(can('admin', 'approve_request')).toBe(true)
+  })
+})
+
+describe('yagona rol matritsasi (src/test/roleMatrix.ts) — UI va baza bir xil', () => {
+  it('MATRIX_ROLES === ROLES', () => {
+    expect([...MATRIX_ROLES]).toEqual([...ROLES])
+  })
+  it('har bir Action matritsada bor va baza manbasi ko‘rsatilgan', () => {
+    const actions = Object.keys(ACTION_ROLES).sort()
+    expect(Object.keys(ACTION_SOURCE).sort()).toEqual(actions)
+  })
+  it.each(Object.keys(ACTION_ROLES) as Action[])('%s: UI rollari === baza huquqi rollari (ACTION_SOURCE)', (action) => {
+    expect(sortRoles(ACTION_ROLES[action])).toEqual(sortRoles(dbRolesFor(action)))
+  })
+})
+
+describe('sayt alertlari (alerts_select_site) — repo bilan bir xil', () => {
+  it('prorab ko‘radigan turlar === SITE_ALERT_TYPES (listSiteAlerts filtri)', () => {
+    expect([...(SITE_ALERT_TYPES_BY_ROLE.prorab ?? [])].sort()).toEqual([...SITE_ALERT_TYPES].sort())
+  })
+  it('omborchi turlari prorab turlarining qismi; boshqa rollarda sayt alerti yo‘q', () => {
+    for (const t of SITE_ALERT_TYPES_BY_ROLE.omborchi ?? []) expect(SITE_ALERT_TYPES).toContain(t)
+    expect(Object.keys(SITE_ALERT_TYPES_BY_ROLE).sort()).toEqual(['omborchi', 'prorab'])
   })
 })

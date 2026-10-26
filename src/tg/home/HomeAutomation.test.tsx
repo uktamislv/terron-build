@@ -1,7 +1,7 @@
 // Batch 12 — Mini App bosh ekrani: "Tugayotganlar" (K) → so'rov formasi to'ldiriladi;
 // Telegram "Ochish" havolasi `?alert=<id>` (J); so'rov ekranida materiallar tartibi (L).
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import * as alertsRepo from '@/data/alertsRepo'
 import * as authRepo from '@/data/authRepo'
 import * as forecastRepo from '@/data/forecastRepo'

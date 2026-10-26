@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { ChevronRight } from 'lucide-react'
 import { t } from '@/i18n'
 import { cx } from './cx'
