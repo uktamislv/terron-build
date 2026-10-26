@@ -1,6 +1,7 @@
 import { isPkeyConflict, toRepoError } from './errors'
 import { chunkOpts, fetchAll, type ChunkOpts } from './fetchAll'
 import { updateById } from './rowUpdate'
+import { attachNames } from './profileDirectory'
 import { getSupabase } from './supabaseClient'
 import type { MaterialRequest, RequestStatus } from './types'
 
@@ -11,9 +12,7 @@ const REQUEST_COLUMNS =
 const REQUEST_SELECT =
   `${REQUEST_COLUMNS}, ` +
   'object:objects!material_requests_object_fkey(name), ' +
-  'material:materials!material_requests_material_fkey(name, base_unit), ' +
-  'creator:profiles!material_requests_created_by_fkey(full_name), ' +
-  'decider:profiles!material_requests_decided_by_fkey(full_name)'
+  'material:materials!material_requests_material_fkey(name, base_unit)'
 
 export const REQUESTS_PAGE_SIZE = 50
 export const DECISION_NOTE_MAX = 500
@@ -41,20 +40,31 @@ export interface RequestFilters {
 type RawRequest = Omit<MaterialRequest, 'object_name' | 'material_name' | 'base_unit' | 'created_by_name' | 'decided_by_name'> & {
   object: { name: string } | null
   material: { name: string; base_unit: string } | null
-  creator: { full_name: string } | null
-  decider: { full_name: string } | null
 }
 
 function normalize(raw: RawRequest): MaterialRequest {
-  const { object, material, creator, decider, ...rest } = raw
+  const { object, material, ...rest } = raw
   return {
     ...rest,
     object_name: object?.name ?? null,
     material_name: material?.name ?? null,
     base_unit: material?.base_unit ?? null,
-    created_by_name: creator?.full_name ?? null,
-    decided_by_name: decider?.full_name ?? null,
+    created_by_name: null,
+    decided_by_name: null,
   }
+}
+
+/** Kiritgan va hal qilgan ismlari — `profile_directory` dan. */
+function withNames(rows: MaterialRequest[]): Promise<MaterialRequest[]> {
+  return attachNames(rows, [
+    ['created_by', 'created_by_name'],
+    ['decided_by', 'decided_by_name'],
+  ])
+}
+
+async function one(raw: unknown): Promise<MaterialRequest> {
+  const [row] = await withNames([normalize(raw as RawRequest)])
+  return row as MaterialRequest
 }
 
 function clean(value: string | null | undefined, max = 1000): string | null {
@@ -85,13 +95,13 @@ export async function createRequest(input: NewRequest): Promise<MaterialRequest>
     }
     throw toRepoError(error)
   }
-  return normalize(data as unknown as RawRequest)
+  return one(data)
 }
 
 export async function getRequestById(id: string): Promise<MaterialRequest> {
   const { data, error } = await getSupabase().from('material_requests').select(REQUEST_SELECT).eq('id', id).single()
   if (error) throw toRepoError(error)
-  return normalize(data as unknown as RawRequest)
+  return one(data)
 }
 
 /** So'rovlar ro'yxati (veb): filtrlar, yangisi birinchi, 50 tadan sahifa (0 dan). */
@@ -124,7 +134,7 @@ async function loadRequests(
   if (opts.signal) ranged = ranged.abortSignal(opts.signal)
   const { data, error, count } = await ranged
   if (error) throw toRepoError(error)
-  return { rows: ((data ?? []) as unknown as RawRequest[]).map(normalize), total: count ?? null }
+  return { rows: await withNames(((data ?? []) as unknown as RawRequest[]).map(normalize)), total: count ?? null }
 }
 
 /** Mening so'rovlarim (Mini App), yangisi birinchi. */
@@ -137,12 +147,13 @@ export async function listMyRequests(profileId: string, limit = 50): Promise<Mat
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) throw toRepoError(error)
-  return ((data ?? []) as unknown as RawRequest[]).map(normalize)
+  return withNames(((data ?? []) as unknown as RawRequest[]).map(normalize))
 }
 
-/** Admin: tasdiqlash. `decided_by` / `decided_at` ni baza trigger'i yozadi. */
-export function approveRequest(id: string): Promise<void> {
-  return updateById('material_requests', id, { status: 'tasdiqlandi' })
+/** Admin: tasdiqlash (ixtiyoriy izoh). `decided_by` / `decided_at` ni baza trigger'i yozadi. */
+export function approveRequest(id: string, note?: string | null): Promise<void> {
+  const decision = clean(note, DECISION_NOTE_MAX)
+  return updateById('material_requests', id, decision ? { status: 'tasdiqlandi', decision_note: decision } : { status: 'tasdiqlandi' })
 }
 
 /** Admin: rad etish, sabab bilan (`decision_note`). */
@@ -169,5 +180,5 @@ export async function listApprovedRequests(objectId: string, limit = 20): Promis
     .order('created_at', { ascending: true })
     .limit(limit)
   if (error) throw toRepoError(error)
-  return ((data ?? []) as unknown as RawRequest[]).map(normalize)
+  return withNames(((data ?? []) as unknown as RawRequest[]).map(normalize))
 }

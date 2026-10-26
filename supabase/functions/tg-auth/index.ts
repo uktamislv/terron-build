@@ -2,7 +2,7 @@
 // verify_jwt = false (supabase/config.toml): Mini App hali sessiyasiz chaqiradi,
 // ishonch initData HMAC imzosiga tayanadi.
 
-import { handleTgAuth, type TgAuthDeps } from './logic.ts'
+import { handleTgAuth, InitDataReplayGuard, type TgAuthDeps } from './logic.ts'
 import { json, log, preflight, readJson } from '../_shared/http.ts'
 import {
   activeCompanyIds,
@@ -21,6 +21,8 @@ import {
 const deps: TgAuthDeps = {
   env: { botToken: Deno.env.get('TELEGRAM_BOT_TOKEN') ?? undefined },
   now: () => Date.now(),
+  // Izolyat bo'yicha xotirada (cheklov: boshqa izolyat / qayta ishga tushish — ko'rmaydi).
+  replayGuard: new InitDataReplayGuard(),
   findProfileByTelegramId: async (telegramUserId: number) => {
     const p = await profileByTelegramId(telegramUserId)
     if (p === null) return null

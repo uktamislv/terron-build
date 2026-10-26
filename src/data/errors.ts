@@ -28,6 +28,10 @@ export type RepoErrorCode =
   | 'export_too_large'
   | 'receipt_url_invalid'
   | 'receipt_unreadable'
+  // Edge Function kalitlari (docs/audit-fixes.md): admin-users — boshqa firma / himoyalangan profil;
+  // receipt-lookup — so'rovlar chegarasi (429)
+  | 'forbidden_target'
+  | 'rate_limited'
   | ServerHintCode
   | 'unknown'
 
@@ -134,6 +138,25 @@ export const SERVER_HINTS = {
   // Batch 11 (docs/handoff-design.md): xatolik xabarlari — 10 daqiqada ≤ 5 ta
   bug_report_rate_limited: { showServerMessage: false },
   bug_report_invalid: { showServerMessage: false },
+  // Audit tuzatishlari (docs/audit-fixes.md, "Yangi hint'lar")
+  movement_rpc_only: { showServerMessage: false },
+  qty_too_small: { showServerMessage: false },
+  qty_too_large: { showServerMessage: false },
+  price_too_large: { showServerMessage: false },
+  transfer_over_receipt: { showServerMessage: false },
+  alert_close_note_required: { showServerMessage: false },
+  profile_protected: { showServerMessage: false },
+  login_target_not_found: { showServerMessage: false },
+  photo_hash_invalid: { showServerMessage: false },
+  correct_invalid: { showServerMessage: false },
+  correct_not_found: { showServerMessage: false },
+  correct_forbidden: { showServerMessage: false },
+  correct_window_passed: { showServerMessage: false },
+  correct_linked: { showServerMessage: false },
+  supplier_merge_forbidden: { showServerMessage: false },
+  supplier_merge_invalid: { showServerMessage: false },
+  supplier_not_found: { showServerMessage: false },
+  notification_health_forbidden: { showServerMessage: false },
 } as const satisfies Record<string, { showServerMessage: boolean }>
 
 export type ServerHintCode = keyof typeof SERVER_HINTS

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { TextField } from '@/components/ui'
+import { choiceClass, TextField } from '@/components/ui'
 import type { Material } from '@/data/types'
 import { toBaseQty, unitLabel, validateQtyInput } from '@/domain/units'
 import { t } from '@/i18n'
@@ -42,9 +42,7 @@ export function UnitCalculator({ material }: { material: Material }) {
               type="button"
               aria-pressed={u.id === unit.id}
               onClick={() => setUnitId(u.id)}
-              className={`min-h-11 rounded-xl border px-3 text-sm font-medium ${
-                u.id === unit.id ? 'border-brand bg-brand text-white' : 'border-line bg-paper text-ink'
-              }`}
+              className={choiceClass({ selected: u.id === unit.id, shape: 'box' })}
             >
               {unitLabel(u)}
             </button>

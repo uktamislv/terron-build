@@ -1,7 +1,7 @@
 // Xarid: balans kartasi va tanlangan material uchun forma (taqdimot — holat PurchasePage'da).
 import type { ReactNode, Ref } from 'react'
-import { Wallet } from 'lucide-react'
-import { Button, cx, Money, Notice } from '@/components/ui'
+import { ChevronRight, Wallet } from 'lucide-react'
+import { Button, cx, Money, Notice, RetryNotice } from '@/components/ui'
 import type { Material, MaterialUnit, Supplier } from '@/data/types'
 import { isNegative } from '@/domain/decimal'
 import type { PriceCheck } from '@/data/purchasesRepo'
@@ -11,20 +11,34 @@ import { DuplicateWarning } from '../entry/DuplicateWarning'
 import type { LastEntry } from '../entry/lastEntry'
 import { LastQtyChip } from '../entry/LastQtyChip'
 import { PhotoErrorBox, PhotoField, type PickedPhoto } from '../entry/PhotoPicker'
-import { MaterialHeader, NoteField } from '../entry/QtyField'
-import { bigInputClass } from '../entry/styles'
+import { BigNumberInput, MaterialHeader, NoteField } from '../entry/QtyField'
 import { UnitChips } from '../entry/UnitChips'
-import { LoadError } from '../ui'
 import { SupplierPicker, type SupplierChoice } from './SupplierPicker'
 
 const tm = t.tg.movement
 const tp = t.tg.purchase
 
-/** "Qo'limdagi pul": summa katta, manfiy — qizil. `balance` null — yuklanmoqda. */
-export function BalanceCard({ balance }: { balance: { value: string | null; failed: boolean } | null }) {
+/**
+ * "Qo'limdagi pul": summa katta, manfiy — qizil. `balance` null — yuklanmoqda. `onOpen` berilsa — butun
+ * karta tugma (pul tarixi ochiladi).
+ */
+export function BalanceCard({
+  balance,
+  onOpen,
+}: {
+  balance: { value: string | null; failed: boolean } | null
+  onOpen?: () => void
+}) {
   const negative = balance?.value != null && isNegative(balance.value)
+  const Tag = onOpen ? 'button' : 'div'
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3">
+    <Tag
+      {...(onOpen ? { type: 'button' as const, onClick: onOpen, 'aria-label': t.tg.cashHistory.open } : {})}
+      className={cx(
+        'flex w-full items-center gap-3 rounded-2xl border border-line bg-paper px-4 py-3 text-left',
+        onOpen && 'min-h-11 transition-colors hover:border-line-hover active:bg-ice',
+      )}
+    >
       <span aria-hidden className={cx('inline-flex size-11 shrink-0 items-center justify-center rounded-xl', negative ? 'bg-danger-bg text-danger' : 'bg-ice text-navy')}>
         <Wallet className="size-6" strokeWidth={1.75} />
       </span>
@@ -38,7 +52,8 @@ export function BalanceCard({ balance }: { balance: { value: string | null; fail
           <Money value={balance.value} size="lg" />
         </p>
       )}
-    </div>
+      {onOpen && <ChevronRight aria-hidden className="ml-auto size-5 shrink-0 text-muted" strokeWidth={1.75} />}
+    </Tag>
   )
 }
 
@@ -71,6 +86,8 @@ export interface PurchaseDetailsProps {
   showSaveButton: boolean
   /** Batch 12: chek kartasi, so'rov belgisi (material sarlavhasi ostida). */
   top?: ReactNode
+  /** "Bugun / Kecha / Boshqa sana" (chekdagi sana bo'lsa — ko'rsatilmaydi). */
+  dateField?: ReactNode
   lastEntry?: LastEntry | null
   onUseLast?: (qty: string, unitId: string) => void
   /** Batch 12 (E): rasm majburiy bo'lsa — sabab. */
@@ -98,44 +115,34 @@ export function PurchaseDetails({ sumRef, ...p }: PurchaseDetailsProps) {
       <MaterialHeader name={material.name} onChange={p.onChangeMaterial} />
       {p.top}
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="purchase-qty" className="text-sm font-medium text-ink">
-          {tm.qty}
-        </label>
-        <input
-          id="purchase-qty"
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder="0"
-          value={p.qty}
-          aria-invalid={errors.qty ? true : undefined}
-          onChange={(e) => p.onQty(e.target.value)}
-          className={bigInputClass(Boolean(errors.qty))}
-        />
-        {errors.qty && <p className="text-sm text-danger">{tm.errors.qty[errors.qty]}</p>}
-      </div>
+      <BigNumberInput
+        id="purchase-qty"
+        label={tm.qty}
+        value={p.qty}
+        onChange={(v) => p.onQty(v)}
+        suffix={p.unit?.unit ?? null}
+        error={errors.qty ? tm.errors.qty[errors.qty] : null}
+      />
       {p.qty.trim() === '' && p.onUseLast && <LastQtyChip last={p.lastEntry ?? null} units={material.units} onUse={p.onUseLast} />}
 
-      <UnitChips units={material.units} selectedId={p.unitId} onPick={p.onUnit} />
-      {errors.unit && <p className="text-sm text-danger">{tm.errors.unit}</p>}
+      <UnitChips units={material.units} selectedId={p.unitId} onPick={p.onUnit} errorId={errors.unit ? 'purchase-unit-error' : undefined} />
+      {errors.unit && (
+        <p id="purchase-unit-error" role="alert" className="text-sm text-danger">
+          {tm.errors.unit}
+        </p>
+      )}
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="purchase-sum" className="text-sm font-medium text-ink">
-          {tp.sum}
-        </label>
-        <input
-          id="purchase-sum"
-          ref={sumRef}
-          inputMode="numeric"
-          autoComplete="off"
-          placeholder="0"
-          value={p.sum}
-          aria-invalid={errors.sum ? true : undefined}
-          onChange={(e) => p.onSum(e.target.value, e.target.selectionStart)}
-          className={bigInputClass(Boolean(errors.sum))}
-        />
-        {errors.sum && <p className="text-sm text-danger">{tp.errors[errors.sum]}</p>}
-      </div>
+      <BigNumberInput
+        id="purchase-sum"
+        inputRef={sumRef}
+        label={tp.sum}
+        value={p.sum}
+        onChange={p.onSum}
+        inputMode="numeric"
+        autoFocus={false}
+        suffix={t.ui.sum}
+        error={errors.sum ? tp.errors[errors.sum] : null}
+      />
 
       {(p.qtyBase !== null || p.perBaseText !== null) && (
         <BaseQtyBox qtyBase={p.qtyBase} unit={p.unit} baseUnit={material.base_unit}>
@@ -146,6 +153,8 @@ export function PurchaseDetails({ sumRef, ...p }: PurchaseDetailsProps) {
       {p.priceVerdict === 'low' && <Notice tone="warn">{tp.priceLow}</Notice>}
 
       <SupplierPicker suppliers={p.suppliers} value={p.supplier} error={Boolean(errors.supplier)} onChange={p.onSupplier} />
+
+      {p.dateField}
 
       <PhotoField
         label={tp.photo}
@@ -169,7 +178,7 @@ export function PurchaseDetails({ sumRef, ...p }: PurchaseDetailsProps) {
           onCancel={() => p.onCancelDuplicate?.()}
         />
       )}
-      {p.saveError && <LoadError message={p.saveError} onRetry={p.onSave} />}
+      {p.saveError && <RetryNotice message={p.saveError} onRetry={p.onSave} />}
       {p.photo.error && (
         <PhotoErrorBox message={p.photo.error} busy={p.saving} onRetry={p.onSave} onWithoutPhoto={p.photoRequiredReason ? null : p.onSaveWithoutPhoto} />
       )}

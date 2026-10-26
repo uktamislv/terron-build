@@ -132,17 +132,20 @@ export function validateQtyInput(
   return { ok: true, value }
 }
 
-/** O'zbekcha raqam formati: kasr ajratuvchi — vergul, minglik — bo'sh joy ("1 250 000,5"). */
+/**
+ * O'zbekcha raqam formati (ko'rsatish uchun): kasr ajratuvchi — vergul, minglik — tor bo'linmas
+ * bo'shliq U+202F, minus — U+2212 ("1 250 000,5", "−3"). `parseDec` U+202F ni qabul qiladi (\s).
+ */
 export function formatDecUz(value: Dec): string {
   const c = parseDec(value)
   if (c === null) throw new Error(`formatDecUz: noto'g'ri qiymat: ${JSON.stringify(value)}`)
   const neg = c.startsWith('-')
   const [intPart = '0', frac] = (neg ? c.slice(1) : c).split('.')
-  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
-  return `${neg ? '-' : ''}${grouped}${frac ? `,${frac}` : ''}`
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '\u202F')
+  return `${neg ? '\u2212' : ''}${grouped}${frac ? `,${frac}` : ''}`
 }
 
-/** "1 qop = 50 kg", "1 m² devor · bir g'isht · 250 mm = 102 dona", "1 tonna = 0,6667 m³". */
+/** "1 qop = 50 kg", "1 m² devor · bir g'isht · 250 mm = 102 dona", "1 tonna = 0,6667 m³" (raqam va birlik orasida U+00A0). */
 export function conversionHint(u: UnitDef, baseUnit: string): string {
-  return `1 ${unitLabel(u)} = ${formatDecUz(u.factor)} ${baseUnit.trim()}`
+  return `1\u00A0${unitLabel(u)} = ${formatDecUz(u.factor)}\u00A0${baseUnit.trim()}`
 }

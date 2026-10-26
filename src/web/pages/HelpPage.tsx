@@ -1,6 +1,7 @@
 import { CircleHelp, Printer } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { GuideView } from '@/components/help/GuideView'
+import { NotifyWorkflowToggle } from '@/components/NotifyWorkflowToggle'
 import { Button, PageHeader } from '@/components/ui'
 import { t } from '@/i18n'
 import { guides } from '@/i18n/guides.uz'
@@ -21,6 +22,8 @@ export function HelpPage() {
           </Button>
         }
       />
+      {/* Har bir rol: o'z profilida "Ish xabarlari" (notify_workflow) */}
+      <NotifyWorkflowToggle className="print:hidden" />
       <GuideView guides={guides} currentRole={profile.role} />
     </div>
   )

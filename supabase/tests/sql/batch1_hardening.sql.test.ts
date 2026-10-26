@@ -1044,7 +1044,8 @@ describe('alerts yopish', () => {
         [A.ids.alert1, A.users.direktor.profileId],
       )
       const details = await tryQuery(tx, `update public.alerts set details = '{"x":1}' where id = $1`, [A.ids.alert1])
-      const closed = await q(`status = 'yopildi'`)
+      // audit_fixes B2: yopishda close_note majburiy
+      const closed = await q(`status = 'yopildi', close_note = 'Tekshirildi'`)
       const touched = await q(`close_note = 'tekshirildi'`)
       const reopened = await q(`status = 'korildi'`)
       return {

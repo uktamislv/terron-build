@@ -46,12 +46,71 @@ export interface TgAuthDeps extends AuthAdminDeps {
   linkAuthUser: (profileId: string, authUserId: string, kind: LoginKind) => Promise<boolean>
   /** magiclink → hashed_token → verifyOtp → sessiya. Xat yuborilmaydi. */
   createSession: (email: string) => Promise<TgSession>
+  /** initData takroriy ishlatilishidan himoya (index.ts — izolyat bo'yicha bitta nusxa). */
+  replayGuard?: InitDataReplayGuard
   logAuthEvent: LogAuthEventFn
   log: LogFn
 }
 
-/** initData Mini App ochilganda olinadi — 1 soatdan eski bo'lmasin. */
-export const TG_AUTH_MAX_AGE_SEC = 3600
+/** initData Mini App ochilganda olinadi — 15 daqiqadan eski bo'lmasin (audit: 1 soat → 15 daqiqa). */
+export const TG_AUTH_MAX_AGE_SEC = 900
+/**
+ * Bir xil initData (hash) bilan qayta YANGI sessiya so'rash — shu oraliqdan keyin rad etiladi.
+ * Oraliq Mini App ochilishidagi parallel / takroriy chaqiruvlar (React StrictMode, qayta urinish) uchun.
+ */
+export const REPLAY_GRACE_MS = 10_000
+/** Telegram'da faqat veb orqali kiradigan rollar (Mini App sessiyasi berilmaydi). */
+export const WEB_ONLY_ROLES: readonly string[] = ['super_admin']
+
+/**
+ * initData qayta ishlatilishidan himoya (har izolyat xotirasida, LRU). Kalit — initData `hash`,
+ * muddat — `auth_date + maxAge`. CHEKLOV: Edge Function'ning har izolyati (instance) o'z xotirasiga
+ * ega va qayta ishga tushganda tozalanadi — boshqa izolyatga tushgan takroriy so'rovni ushlamaydi.
+ * Asosiy himoya — 15 daqiqalik muddat va HTTPS; bu qo'shimcha to'siq.
+ */
+export class InitDataReplayGuard {
+  private readonly seen = new Map<string, { firstSeenMs: number; expiresAtMs: number }>()
+  constructor(private readonly maxEntries = 10_000) {}
+
+  /**
+   * `true` — ishlatish mumkin (yangi yoki grace oralig'ida takror); `false` — qayta ishlatish.
+   * @param key initData `hash`
+   */
+  use(key: string, nowMs: number, expiresAtMs: number, graceMs = REPLAY_GRACE_MS): boolean {
+    const prev = this.seen.get(key)
+    if (prev !== undefined && prev.expiresAtMs > nowMs) return nowMs - prev.firstSeenMs <= graceMs
+    this.seen.delete(key)
+    this.seen.set(key, { firstSeenMs: nowMs, expiresAtMs })
+    this.evict(nowMs)
+    return true
+  }
+
+  get size(): number {
+    return this.seen.size
+  }
+
+  private evict(nowMs: number): void {
+    if (this.seen.size <= this.maxEntries) return
+    for (const [k, v] of this.seen) {
+      if (v.expiresAtMs <= nowMs) this.seen.delete(k)
+    }
+    // Hali ham ko'p — eng eskilari (Map qo'shilish tartibi)
+    for (const k of this.seen.keys()) {
+      if (this.seen.size <= this.maxEntries) break
+      this.seen.delete(k)
+    }
+  }
+}
+
+/** initData dagi `hash` (kichik harf); yo'q bo'lsa null. */
+function initDataHash(initData: string): string | null {
+  try {
+    const h = new URLSearchParams(initData).get('hash')
+    return h ? h.toLowerCase() : null
+  } catch {
+    return null
+  }
+}
 const MAX_INIT_DATA_LEN = 8192
 const MAX_TOKEN_LEN = 8192
 
@@ -80,9 +139,10 @@ export async function handleTgAuth(body: unknown, deps: TgAuthDeps): Promise<Han
     return respond(500, { error: 'server_misconfigured' })
   }
 
+  const maxAgeSec = deps.env.maxAgeSec ?? TG_AUTH_MAX_AGE_SEC
   const verified = await verifyInitData(initData, botToken, {
     nowSec: Math.floor(deps.now() / 1000),
-    maxAgeSec: deps.env.maxAgeSec ?? TG_AUTH_MAX_AGE_SEC,
+    maxAgeSec,
   })
   if (!verified.ok) {
     deps.log('warn', 'tg-auth: initData rad etildi', { reason: verified.reason })
@@ -96,12 +156,27 @@ export async function handleTgAuth(body: unknown, deps: TgAuthDeps): Promise<Han
     if (!profile.is_active || !profile.company_active) {
       return respond(403, { error: 'inactive' })
     }
+    if (WEB_ONLY_ROLES.includes(profile.role)) {
+      deps.log('warn', 'tg-auth: rol faqat veb orqali kiradi', { profile_id: profile.id, role: profile.role })
+      return respond(403, { error: 'role_web_only' })
+    }
 
     // Klientda shu akkauntning amaldagi sessiyasi bo'lsa — yangisi yaratilmaydi.
     if (accessToken !== null && profile.auth_user_id !== null) {
       const uid = await deps.getAuthUserIdFromJwt(accessToken)
       if (uid !== null && uid === profile.auth_user_id) {
         return respond(200, { status: 'ok', session: null, profile: publicProfile(profile) })
+      }
+    }
+
+    // Yangi sessiya: shu initData bilan avval sessiya berilgan bo'lsa (grace'dan keyin) — rad.
+    const hash = initDataHash(initData)
+    if (deps.replayGuard !== undefined && hash !== null) {
+      const nowMs = deps.now()
+      const expiresAtMs = (verified.authDate + maxAgeSec) * 1000
+      if (!deps.replayGuard.use(hash, nowMs, expiresAtMs)) {
+        deps.log('warn', 'tg-auth: initData qayta ishlatildi', { telegram_user_id: tgUserId })
+        return respond(401, { error: 'init_data_replayed' })
       }
     }
 

@@ -10,6 +10,28 @@ const USAGE_DAYS = 30
  * Statistika bo'lmasa — nom bo'yicha.
  */
 export function useRankedMaterials(materials: Material[] | null): Material[] | null {
+  return useRankedMaterialsWithPins(materials).ranked
+}
+
+/** Material to'rining tepasida ajratib ko'rsatiladigan "ko'p ishlatiladigan" materiallar soni. */
+export const PINNED_LIMIT = 4
+
+/**
+ * Ko'p ishlatiladigan materiallar: tartiblangan ro'yxatning boshidagi, statistikada uchragan (≤ 4 ta).
+ * Tartib `rankMaterials` niki — bu yerda faqat qaysilari ajratib ko'rsatilishi tanlanadi.
+ */
+export function pinnedMaterialIds(ranked: readonly { id: string }[], usage: readonly UsageStat[], limit = PINNED_LIMIT): Set<string> {
+  const used = new Set(usage.filter((u) => u.useCount > 0).map((u) => u.materialId))
+  const out = new Set<string>()
+  for (const m of ranked) {
+    if (out.size >= limit) break
+    if (used.has(m.id)) out.add(m.id)
+  }
+  return out
+}
+
+/** `useRankedMaterials` + ko'p ishlatiladiganlar to'plami (MaterialGrid tepasida ajratiladi). */
+export function useRankedMaterialsWithPins(materials: Material[] | null): { ranked: Material[] | null; pinned: Set<string> } {
   const [usage, setUsage] = useState<UsageStat[]>([])
   const enabled = materials !== null
   useEffect(() => {
@@ -25,5 +47,7 @@ export function useRankedMaterials(materials: Material[] | null): Material[] | n
       alive = false
     }
   }, [enabled])
-  return useMemo(() => (materials ? rankMaterials(materials, usage, new Date().toISOString()) : null), [materials, usage])
+  const ranked = useMemo(() => (materials ? rankMaterials(materials, usage, new Date().toISOString()) : null), [materials, usage])
+  const pinned = useMemo(() => pinnedMaterialIds(ranked ?? [], usage), [ranked, usage])
+  return { ranked, pinned }
 }

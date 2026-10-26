@@ -3,6 +3,8 @@ import { useAuth } from '@/auth/authContext'
 import { can, type Role } from '@/domain/roles'
 import { AlertDeepLink } from '../home/AlertDeepLink'
 import { DirectorHome } from '../home/DirectorHome'
+import { HomeSections } from '../home/HomeSections'
+import { SiteAlerts } from '../home/SiteAlerts'
 import { RunningLow } from '../home/RunningLow'
 import { WorkerHome } from '../home/WorkerHome'
 import { captureLocation } from '../location'
@@ -29,6 +31,10 @@ export function TgHomePage() {
         // Prorab / omborchi: "Kirim" va "Chiqim" plitkalari + bugungi yozuvlar
         <WorkerHome profile={profile} />
       )}
+      {/* Prorab / omborchi: a'zo obyektlardagi ogohlantirishlar (faqat ko'rish) */}
+      {(profile.role === 'prorab' || profile.role === 'omborchi') && <SiteAlerts profileId={profile.id} />}
+      {/* Pastki menyuga sig'magan va qo'shimcha bo'limlar: "Qoldiq", "So'rovlarni tasdiqlash", "Sanash" */}
+      <HomeSections role={profile.role} />
       {/* Batch 12 (K): tugayotgan materiallar (prorab, omborchi, direktor, admin) */}
       <RunningLow companyId={profile.company_id} role={profile.role} />
     </div>

@@ -157,7 +157,6 @@ describe('/tg/movement — bitta obyektli prorab', () => {
       qtyInput: '3',
       note: '',
       photoPath: null,
-      photoSha256: null,
       // jsdom'da joylashuv yo'q — saqlash to'xtamaydi, holat `unavailable`
       geo: { status: 'unavailable' },
     })
@@ -166,7 +165,9 @@ describe('/tg/movement — bitta obyektli prorab', () => {
     expect(arg).not.toHaveProperty('occurredAt')
     expect(photosRepo.uploadPhoto).not.toHaveBeenCalled()
 
-    expect(await screen.findByText(/Kirim saqlandi: 3 qop Sement · Obyekt A/)).toBeInTheDocument()
+    // Tasdiq: asosiy matn va obyekt — alohida qatorlarda (meta "·" bilan ulanmaydi)
+    const banner = (await screen.findByText(/Kirim saqlandi: 3 qop Sement/)).closest('[role="status"]') as HTMLElement
+    expect(within(banner).getByText('Obyekt A')).toBeInTheDocument()
     expect(telegram.haptic.success).toHaveBeenCalled()
     // Forma keyingi yozuv uchun: material tanlash, tur saqlangan
     expect(screen.getByRole('region', { name: tm.chooseMaterial })).toBeInTheDocument()
@@ -240,7 +241,7 @@ describe('/tg/movement — boshqa holatlar', () => {
     await pickMaterial('Sement')
     typeQty('10')
     fireEvent.click(within(screen.getByRole('group', { name: tm.unit })).getByRole('button', { name: 'qop' }))
-    expect(await screen.findByText('Qoldiq: 420 kg → -80 kg')).toBeInTheDocument()
+    expect(await screen.findByText('Qoldiq: 420 kg → \u221280 kg')).toBeInTheDocument()
     expect(screen.getByText(tm.warnings.exceeds_stock)).toBeInTheDocument()
     save()
     await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalled())

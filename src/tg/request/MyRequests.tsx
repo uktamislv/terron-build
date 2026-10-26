@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ClipboardList } from 'lucide-react'
-import { Badge, EntryRow, type EntryKind, Qty, SkeletonRows } from '@/components/ui'
+import { Badge, EntryRow, type EntryKind, Qty, RetryNotice, SkeletonRows } from '@/components/ui'
 import { REQUEST_TONE } from '@/components/statusTones'
 import { listMyRequests } from '@/data/requestsRepo'
 import type { MaterialRequest, RequestStatus } from '@/data/types'
@@ -24,6 +24,7 @@ const STRIPE: Record<RequestStatus, EntryKind> = {
 export function MyRequests({ profileId, reloadKey }: { profileId: string; reloadKey: number }) {
   const [rows, setRows] = useState<MaterialRequest[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -37,17 +38,17 @@ export function MyRequests({ profileId, reloadKey }: { profileId: string; reload
     return () => {
       alive = false
     }
-  }, [profileId, reloadKey])
+  }, [profileId, reloadKey, retryKey])
 
-  return <MyRequestsView rows={rows} error={error} />
+  return <MyRequestsView rows={rows} error={error} onRetry={() => setRetryKey((k) => k + 1)} />
 }
 
 /** So'rovlar ro'yxati (taqdimot). */
-export function MyRequestsView({ rows, error }: { rows: MaterialRequest[] | null; error: string | null }) {
+export function MyRequestsView({ rows, error, onRetry }: { rows: MaterialRequest[] | null; error: string | null; onRetry: () => void }) {
   return (
     <section aria-label={tr.mine} className="flex flex-col gap-2 border-t border-line pt-5">
       <SectionTitle>{tr.mine}</SectionTitle>
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && <RetryNotice message={error} onRetry={onRetry} />}
       {!rows && !error && <SkeletonRows rows={2} />}
       {rows && rows.length === 0 && <p className="text-sm text-muted">{tr.mineEmpty}</p>}
       {rows && rows.length > 0 && (

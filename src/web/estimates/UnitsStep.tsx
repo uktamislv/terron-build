@@ -1,12 +1,12 @@
 // Import ustasining 6-qadami: katalogda topilmagan birliklar — har (material × birlik matni) bir marta.
 import { useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { Button, Notice, TextField } from '@/components/ui'
+import { Button, chipClass, Notice, TextField } from '@/components/ui'
 import { formatQty } from '@/lib/format'
 import { conversionHint, validateFactor } from '@/domain/units'
 import { t } from '@/i18n'
 import { Pager } from '@/components/ui'
-import { chipClass, pageSlice } from './styles'
+import { pageSlice } from './styles'
 import { PAGE_SIZE, type UnitAnswer, type UnitQuestion } from './wizardModel'
 
 const tw = t.estimates.wizard

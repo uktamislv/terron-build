@@ -243,7 +243,7 @@ describe('Qty, Money, LevelBar', () => {
   it('Money: manfiy summa qizil', () => {
     const { container } = render(<Money value="-150000" />)
     expect(container.firstChild).toHaveClass('text-danger')
-    expect(container.firstChild).toHaveTextContent('-150 000 so‘m')
+    expect(container.firstChild).toHaveTextContent('\u2212150 000 so‘m')
   })
 
   it('LevelBar: normadan oshganda foiz qizil, meter qiymati', () => {

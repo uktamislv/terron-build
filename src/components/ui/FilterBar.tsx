@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Calendar, Check, ChevronDown, Search, X } from 'lucide-react'
+import { Calendar, Check, ChevronDown, X } from 'lucide-react'
 import { formatDate } from '@/lib/format'
 import { t } from '@/i18n'
 import { BottomSheet } from './BottomSheet'
@@ -7,7 +7,8 @@ import { Button } from './Button'
 import { Chip } from './Chip'
 import { chipClass } from './chipClass'
 import { cx } from './cx'
-import { DateField } from './fields'
+import { DateField, DateInput } from './fields'
+import { SearchBox } from './SearchBox'
 import { useIsMobile } from './useMediaQuery'
 
 export interface FilterOption {
@@ -119,6 +120,9 @@ export function FilterBar({
   )
 }
 
+/** Ichidagi input/select klaviatura bilan fokuslanganda — chip atrofida halqa (input o'zi halqasiz). */
+const focusWithin = 'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand'
+
 function DesktopBar({ filters, clear, extra }: { filters: FilterDef[]; clear: ReactNode; extra: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -126,11 +130,11 @@ function DesktopBar({ filters, clear, extra }: { filters: FilterDef[]; clear: Re
         const active = isActive(f)
         switch (f.kind) {
           case 'search':
-            return <SearchBox key={f.key} f={f} className="w-full max-w-xs" />
+            return <SearchBox key={f.key} label={f.label} placeholder={f.placeholder} value={f.value} onChange={f.onChange} size="md" className="w-full max-w-xs" />
           case 'select':
             return (
-              <div key={f.key} className={cx(chipClass(active), 'relative pr-2')}>
-                <span aria-hidden className={active ? 'text-brand/80' : 'text-muted'}>
+              <div key={f.key} className={cx(chipClass(active), 'relative pr-2', focusWithin)}>
+                <span aria-hidden className={active ? 'text-brand' : 'text-muted'}>
                   {f.label}:
                 </span>
                 <select
@@ -150,38 +154,36 @@ function DesktopBar({ filters, clear, extra }: { filters: FilterDef[]; clear: Re
             )
           case 'dateRange':
             return (
-              <div key={f.key} role="group" aria-label={f.label} className={cx(chipClass(active), 'gap-1 pr-1.5')}>
-                <Calendar aria-hidden className="size-4 opacity-70" strokeWidth={1.75} />
-                <input
-                  type="date"
+              <div key={f.key} role="group" aria-label={f.label} className={cx(chipClass(active), 'gap-1 pr-1.5', focusWithin)}>
+                <Calendar aria-hidden className="size-4" strokeWidth={1.75} />
+                <DateInput
                   aria-label={f.fromLabel}
                   value={f.from}
                   max={f.to || undefined}
-                  onChange={(e) => f.onFrom(e.target.value)}
-                  className="tabular min-h-9 rounded-md bg-transparent px-1 text-sm outline-none"
+                  onChange={f.onFrom}
+                  className="tabular min-h-11 w-26 bg-transparent px-1 text-sm outline-none placeholder:text-muted"
                 />
                 <span aria-hidden className="text-muted">
                   –
                 </span>
-                <input
-                  type="date"
+                <DateInput
                   aria-label={f.toLabel}
                   value={f.to}
                   min={f.from || undefined}
-                  onChange={(e) => f.onTo(e.target.value)}
-                  className="tabular min-h-9 rounded-md bg-transparent px-1 text-sm outline-none"
+                  onChange={f.onTo}
+                  className="tabular min-h-11 w-26 bg-transparent px-1 text-sm outline-none placeholder:text-muted"
                 />
               </div>
             )
           case 'toggle':
             return (
-              <label key={f.key} className={cx(chipClass(f.checked), 'cursor-pointer has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-brand')}>
+              <label key={f.key} className={cx(chipClass(f.checked), 'cursor-pointer', focusWithin)}>
                 <input type="checkbox" className="peer sr-only" checked={f.checked} onChange={(e) => f.onChange(e.target.checked)} />
                 <span
                   aria-hidden
                   className={cx(
                     'inline-flex size-4 items-center justify-center rounded border',
-                    f.checked ? 'border-brand bg-brand text-white' : 'border-[#b8c4d8] bg-paper',
+                    f.checked ? 'border-brand bg-brand text-white' : 'border-line-strong bg-paper',
                   )}
                 >
                   {f.checked && <Check className="size-3" strokeWidth={3} />}
@@ -197,21 +199,6 @@ function DesktopBar({ filters, clear, extra }: { filters: FilterDef[]; clear: Re
   )
 }
 
-function SearchBox({ f, className }: { f: SearchFilter; className?: string }) {
-  return (
-    <div className={cx('relative', className)}>
-      <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted" strokeWidth={1.75} />
-      <input
-        type="search"
-        aria-label={f.label}
-        placeholder={f.placeholder ?? f.label}
-        value={f.value}
-        onChange={(e) => f.onChange(e.target.value)}
-        className="min-h-11 w-full rounded-full border border-line bg-paper pr-4 pl-10 text-base outline-none placeholder:text-muted/70 focus:border-brand focus:ring-3 focus:ring-brand/15"
-      />
-    </div>
-  )
-}
 
 function MobileBar({ filters, clear, extra }: { filters: FilterDef[]; clear: ReactNode; extra: ReactNode }) {
   const [openKey, setOpenKey] = useState<string | null>(null)
@@ -223,7 +210,7 @@ function MobileBar({ filters, clear, extra }: { filters: FilterDef[]; clear: Rea
   return (
     <div className="flex flex-col gap-2">
       {search.map((f) => (
-        <SearchBox key={f.key} f={f} />
+        <SearchBox key={f.key} label={f.label} placeholder={f.placeholder} value={f.value} onChange={f.onChange} size="md" />
       ))}
       <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5">
         {rest.map((f) => {

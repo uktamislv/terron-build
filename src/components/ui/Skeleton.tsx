@@ -1,5 +1,6 @@
 import { t } from '@/i18n'
 import { cx } from './cx'
+import { colors } from './tokens'
 
 /** Bitta kulrang "suyak" blok. */
 export function Skeleton({ className }: { className?: string }) {
@@ -49,7 +50,7 @@ export function Spinner({ label = t.common.loading }: { label?: string }) {
 /** Butun ekran yuklanmoqda (sessiya tekshiruvi): markazda brend belgisi pulsatsiyasi. */
 export function FullPageSpinner({ label = t.common.loading }: { label?: string }) {
   return (
-    <div role="status" aria-live="polite" className="flex min-h-screen flex-col items-center justify-center gap-4 bg-canvas">
+    <div role="status" aria-live="polite" className="min-h-app flex flex-col items-center justify-center gap-4 bg-canvas">
       <BrandMark className="size-12 animate-pulse" />
       <span className="text-sm text-muted">{label}</span>
     </div>
@@ -60,10 +61,10 @@ export function FullPageSpinner({ label = t.common.loading }: { label?: string }
 export function BrandMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 40 40" aria-hidden className={className}>
-      <rect width="40" height="40" rx="10" fill="#0B2A6B" />
-      <rect x="10" y="11" width="20" height="3.5" rx="1.75" fill="#FFFFFF" />
-      <rect x="10" y="18.25" width="14" height="3.5" rx="1.75" fill="#FFFFFF" fillOpacity="0.6" />
-      <rect x="10" y="25.5" width="20" height="3.5" rx="1.75" fill="#1E5EFF" />
+      <rect width="40" height="40" rx="10" fill={colors.navy} />
+      <rect x="10" y="11" width="20" height="3.5" rx="1.75" fill={colors.paper} />
+      <rect x="10" y="18.25" width="14" height="3.5" rx="1.75" fill={colors.paper} fillOpacity="0.6" />
+      <rect x="10" y="25.5" width="20" height="3.5" rx="1.75" fill={colors.brand} />
     </svg>
   )
 }

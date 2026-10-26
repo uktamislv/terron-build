@@ -1,7 +1,20 @@
 // Jadval sahifalari uchun Excel ustunlari va qatorlari (sof). Fayl yaratish — `src/lib/excelExport.ts`.
 import type { CashHistoryEntry } from '@/data/cashRepo'
 import type { AuditEntry, RefNames } from '@/data/historyRepo'
-import type { Alert, CashBalance, MaterialRequest, Movement, NormUsage, Purchase, StockBalance } from '@/data/types'
+import type {
+  Alert,
+  CashBalance,
+  EstimateItem,
+  InventoryDetailRow,
+  Material,
+  MaterialRequest,
+  Movement,
+  NormUsage,
+  Purchase,
+  StockBalance,
+  Transfer,
+} from '@/data/types'
+import { cmp, sub } from '@/domain/decimal'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import type { ExportColumn, ExportRow, ExportSheetSpec } from '@/lib/excelExport'
@@ -107,6 +120,162 @@ export function purchasesSheet(rows: Purchase[]): ExportSheetSpec {
         supplier: p.supplier_name,
         note: p.note,
         deleted: yesNo(p.deleted_at),
+      }),
+    ),
+  }
+}
+
+/** O'tkazmalar: yuborilgan, qabul qilingan, farq (asosiy birlikda), holat. */
+export function transfersSheet(rows: Transfer[]): ExportSheetSpec {
+  return {
+    sheetName: s.transfers,
+    columns: [
+      { header: c.date, key: 'created_at', type: 'datetime' },
+      { header: c.from, key: 'from', type: 'text' },
+      { header: c.to, key: 'to', type: 'text' },
+      { header: c.material, key: 'material', type: 'text' },
+      { header: c.qtyInput, key: 'qty_input', type: 'qty' },
+      { header: c.unitInput, key: 'unit', type: 'text' },
+      { header: c.sent, key: 'qty_base', type: 'qty' },
+      { header: c.received, key: 'received', type: 'qty' },
+      { header: c.diff, key: 'diff', type: 'qty' },
+      { header: c.baseUnit, key: 'base_unit', type: 'text' },
+      { header: c.status, key: 'status', type: 'text' },
+      { header: c.receivedAt, key: 'received_at', type: 'datetime' },
+      { header: c.user, key: 'user', type: 'text' },
+      { header: c.cancelReason, key: 'cancel_reason', type: 'text' },
+      { header: c.note, key: 'note', type: 'text' },
+    ],
+    rows: rows.map(
+      (r): ExportRow => ({
+        created_at: r.created_at,
+        from: r.from_object_name,
+        to: r.to_object_name,
+        material: r.material_name,
+        qty_input: r.qty_input,
+        unit: unitLabel({ unit: r.unit_input, variant: r.unit_variant }),
+        qty_base: r.qty_base,
+        received: r.received_qty_base,
+        diff: r.received_qty_base !== null ? sub(r.received_qty_base, r.qty_base) : null,
+        base_unit: r.base_unit,
+        status: t.transfers.statuses[r.status],
+        received_at: r.received_at,
+        user: r.created_by_name,
+        cancel_reason: r.cancel_reason,
+        note: r.note,
+      }),
+    ),
+  }
+}
+
+/**
+ * Inventarizatsiya natijasi: kamomadlar birinchi (qiymati bilan), keyin ortiqcha va farqsizlar.
+ * Sanalmagan material — sanalgan bo'sh.
+ */
+export function inventorySheet(rows: InventoryDetailRow[], meta: { objectName: string | null; countedAt: string }): ExportSheetSpec {
+  const shortage = (r: InventoryDetailRow) => r.diff !== null && cmp(r.diff, '0') < 0
+  const ordered = [...rows.filter(shortage), ...rows.filter((r) => !shortage(r))]
+  return {
+    sheetName: s.inventory,
+    columns: [
+      { header: c.date, key: 'counted_at', type: 'datetime' },
+      { header: c.object, key: 'object', type: 'text' },
+      { header: c.material, key: 'material', type: 'text' },
+      { header: c.expected, key: 'expected', type: 'qty' },
+      { header: c.counted, key: 'counted', type: 'qty' },
+      { header: c.diff, key: 'diff', type: 'qty' },
+      { header: c.baseUnit, key: 'base_unit', type: 'text' },
+      { header: c.shortageValue, key: 'shortage_value', type: 'money' },
+    ],
+    rows: ordered.map(
+      (r): ExportRow => ({
+        counted_at: meta.countedAt,
+        object: meta.objectName,
+        material: r.material_name,
+        expected: r.qty_expected,
+        counted: r.qty_counted,
+        diff: r.diff,
+        base_unit: r.base_unit,
+        shortage_value: r.shortage_value,
+      }),
+    ),
+  }
+}
+
+/** Katalog: materiallar va (ikkinchi varaq) birliklar koeffitsientlari bilan. */
+export function materialsSheets(materials: Material[]): ExportSheetSpec[] {
+  return [
+    {
+      sheetName: s.materials,
+      columns: [
+        { header: c.name, key: 'name', type: 'text' },
+        { header: c.baseUnit, key: 'base_unit', type: 'text' },
+        { header: c.category, key: 'category', type: 'text' },
+        { header: c.wastePct, key: 'waste_pct', type: 'qty' },
+        { header: c.active, key: 'active', type: 'text' },
+        { header: c.photoRequired, key: 'photo_required', type: 'text' },
+        { header: c.aliases, key: 'aliases', type: 'text' },
+      ],
+      rows: materials.map(
+        (m): ExportRow => ({
+          name: m.name,
+          base_unit: m.base_unit,
+          category: m.category,
+          waste_pct: m.waste_pct,
+          active: yesNo(m.is_active),
+          photo_required: yesNo(m.photo_required),
+          aliases: m.aliases.map((a) => a.alias).join(', '),
+        }),
+      ),
+    },
+    {
+      sheetName: s.units,
+      columns: [
+        { header: c.material, key: 'material', type: 'text' },
+        { header: c.unit, key: 'unit', type: 'text' },
+        { header: c.variant, key: 'variant', type: 'text' },
+        { header: c.factor, key: 'factor', type: 'qty' },
+        { header: c.baseUnit, key: 'base_unit', type: 'text' },
+      ],
+      rows: materials.flatMap((m) =>
+        m.units.map(
+          (u): ExportRow => ({ material: m.name, unit: u.unit, variant: u.variant, factor: u.factor, base_unit: m.base_unit }),
+        ),
+      ),
+    },
+  ]
+}
+
+/** Smeta qatorlari (joriy versiya): shifr, nom, birlik, miqdor, narx, summa, norma. */
+export function estimateItemsSheet(rows: EstimateItem[]): ExportSheetSpec {
+  return {
+    sheetName: s.estimate,
+    columns: [
+      { header: c.rowNumber, key: 'row_number', type: 'number' },
+      { header: c.code, key: 'code', type: 'text' },
+      { header: c.itemType, key: 'item_type', type: 'text' },
+      { header: c.name, key: 'name', type: 'text' },
+      { header: c.material, key: 'material', type: 'text' },
+      { header: c.unit, key: 'unit', type: 'text' },
+      { header: c.qty, key: 'qty', type: 'qty' },
+      { header: c.price, key: 'unit_price', type: 'money' },
+      { header: c.lineSum, key: 'line_sum', type: 'money' },
+      { header: c.normBase, key: 'norm_qty_base', type: 'qty' },
+      { header: c.baseUnit, key: 'base_unit', type: 'text' },
+    ],
+    rows: rows.map(
+      (r): ExportRow => ({
+        row_number: r.row_number,
+        code: r.code,
+        item_type: t.excel.itemTypes[r.item_type],
+        name: r.name,
+        material: r.material_name,
+        unit: r.unit,
+        qty: r.qty,
+        unit_price: r.unit_price,
+        line_sum: r.line_sum,
+        norm_qty_base: r.norm_qty_base,
+        base_unit: r.base_unit,
       }),
     ),
   }

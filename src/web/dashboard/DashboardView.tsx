@@ -127,7 +127,7 @@ export function ChartCard({ title, wide, actions, children }: { title: string; w
   return (
     <section aria-label={title} className={cx('flex min-w-0 flex-col gap-3 rounded-2xl border border-line bg-paper p-4 md:p-5', wide && 'lg:col-span-2')}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-ink md:text-lg">{title}</h2>
+        <h2 className="text-xl font-semibold text-ink">{title}</h2>
       </div>
       {actions}
       {children}
@@ -304,7 +304,7 @@ export function RecentAlertsCard({ state }: { state: Loaded<Alert[]> }) {
   return (
     <section aria-label={tr.recentAlerts} className="flex flex-col gap-3 rounded-2xl border border-line bg-paper p-4 md:p-5">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-ink md:text-lg">{tr.recentAlerts}</h2>
+        <h2 className="text-xl font-semibold text-ink">{tr.recentAlerts}</h2>
         <Link to="/alerts" className="inline-flex min-h-11 items-center gap-1 rounded-xl px-3 text-sm font-semibold text-brand hover:bg-ice">
           {tr.allAlerts}
           <ChevronRight aria-hidden className="size-4" strokeWidth={1.75} />

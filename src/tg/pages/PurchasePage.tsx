@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { Notice, PageHeader, SkeletonRows } from '@/components/ui'
+import { BottomSheet, Notice, RetryNotice, SkeletonRows } from '@/components/ui'
 import { getMyBalance } from '@/data/cashRepo'
 import { errorCodeOf } from '@/data/errors'
+import { requestPhotoHash } from '@/data/functions'
 import { listMaterials } from '@/data/materialsRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { checkPurchasePrice, createPurchase, listMyPurchases, type PriceCheck, type PurchaseReceiptQr } from '@/data/purchasesRepo'
@@ -22,6 +23,9 @@ import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatQty, formatSum } from '@/lib/format'
 import { uuid } from '@/lib/uuid'
+import { entryDateFor } from '@/domain/entryDate'
+import { DateChips } from '../entry/DateChips'
+import { TODAY_CHOICE, type DateChipsValue } from '../entry/dateChoice'
 import { MaterialGrid } from '../entry/MaterialGrid'
 import { initialUnitId, loadLastEntry, rememberLastEntry } from '../entry/lastEntry'
 import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
@@ -33,11 +37,13 @@ import { ReceiptCard, ScanReceiptButton } from '../purchase/ReceiptCard'
 import { canScanQr, scanQr } from '../qrScan'
 import { loadLastObject, saveLastObject } from '../movement/prefs'
 import { loadRecentSuppliers, rememberSupplier } from '../purchase/prefs'
+import { CashHistory } from '../purchase/CashHistory'
 import { BalanceCard, PurchaseDetails, type PurchaseFieldErrors } from '../purchase/PurchaseDetails'
 import type { SupplierChoice } from '../purchase/SupplierPicker'
 import { getWebApp, haptic } from '../telegram'
-import { LoadError, SavedBanner } from '../ui'
-import { useBackButton, useMainButton } from '../useTelegramButtons'
+import { SavedBanner } from '../ui'
+import { pinnedMaterialIds } from '../entry/useRankedMaterials'
+import { flashMainButtonSaved, useBackButton, useClosingConfirmation, useMainButton } from '../useTelegramButtons'
 
 const tm = t.tg.movement
 const tp = t.tg.purchase
@@ -94,6 +100,8 @@ export function PurchasePage() {
 
   const [balance, setBalance] = useState<{ value: string | null; failed: boolean } | null>(null)
   const [balanceKey, setBalanceKey] = useState(0)
+  // "Qo'limda" kartasi → pul tarixi (berilgan, qaytarilgan, sarflangan)
+  const [cashOpen, setCashOpen] = useState(false)
 
   const [objectId, setObjectId] = useState<string | null>(null)
   const [pickingObject, setPickingObject] = useState(false)
@@ -102,6 +110,10 @@ export function PurchasePage() {
   const [qty, setQty] = useState('')
   const [sum, setSum] = useState('')
   const [note, setNote] = useState('')
+  // Xarid sanasi: standart "Bugun" (server now()); chekdagi sana bo'lsa — o'sha
+  const [entryDate, setEntryDate] = useState<DateChipsValue>(TODAY_CHOICE)
+  const [dateError, setDateError] = useState<string | null>(null)
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
   const [supplier, setSupplier] = useState<SupplierChoice>({ kind: 'none' })
   const [priceCheck, setPriceCheck] = useState<{ key: string; result: PriceCheck } | null>(null)
   const photo = usePhotoDraft()
@@ -116,7 +128,7 @@ export function PurchasePage() {
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [savedText, setSavedText] = useState<string | null>(null)
+  const [savedText, setSavedText] = useState<{ text: string; meta: string } | null>(null)
 
   const sumRef = useRef<HTMLInputElement>(null)
   const caretRef = useRef<number | null>(null)
@@ -198,6 +210,8 @@ export function PurchasePage() {
     () => (materials ? rankMaterials(materials, usage, new Date().toISOString()) : []),
     [materials, usage],
   )
+  // Ko'p ishlatiladiganlar — material to'rining tepasida ajratib ko'rsatiladi
+  const pinned = useMemo(() => pinnedMaterialIds(ranked, usage), [ranked, usage])
   const orderedSuppliers = useMemo(() => orderSuppliers(suppliers, loadRecentSuppliers()), [suppliers])
 
   const material = materials?.find((m) => m.id === materialId) ?? null
@@ -310,6 +324,7 @@ export function PurchasePage() {
     }
     setReceiptBusy(true)
     let lookup: ReceiptLookup | null
+    let rateLimited = false
     try {
       lookup = await receiptLookup(qr.url)
     } catch (err) {
@@ -321,11 +336,14 @@ export function PurchasePage() {
       }
       // Sahifa ochilmadi — QR maydonlari saqlanadi, qolgani qo'lda
       lookup = null
+      // Juda ko'p so'rov (receipt-lookup 429) — QR saqlanadi, sabab ko'rsatiladi
+      rateLimited = errorCodeOf(err) === 'rate_limited'
     }
     setReceiptBusy(false)
     haptic.success()
     const single = lookup !== null && lookup.items.length <= 1
     setReceipt({ qr, lookup, lineIndex: single && lookup && lookup.items.length === 1 ? 0 : null })
+    if (rateLimited) setReceiptNotice(t.errors.rate_limited)
     if (lookup) {
       // Sotuvchi: STIR bo'yicha mavjud, bo'lmasa nom bilan yangi (saqlashda STIR bilan yaratiladi)
       const known = findByTin(suppliers, lookup.sellerTin)
@@ -396,6 +414,8 @@ export function PurchasePage() {
   }
 
   const resetEntry = () => {
+    setEntryDate(TODAY_CHOICE)
+    setDateError(null)
     setMaterialId(null)
     setUnitId(null)
     setQty('')
@@ -445,11 +465,17 @@ export function PurchasePage() {
         if (result.errors.unit) errors.unit = true
         if (result.errors.qty) errors.qty = result.errors.qty as QtyErrorKey
       }
+      // Sana: chekdagi sana ustun; aks holda "Bugun / Kecha / Boshqa sana"
+      const receiptDate = receipt?.lookup?.datetime ?? receipt?.qr.datetime ?? null
+      const chosenDate = receiptDate ? null : entryDateFor(entryDate.choice, entryDate.other, new Date().toISOString(), isAdmin)
+      if (chosenDate === undefined) {
+        setDateError(entryDate.choice === 'other' && !entryDate.other ? t.tg.date.errRequired : tm.errors.occurredAt)
+      }
       const total = parseSumInput(sum)
       if (sum.trim() === '') errors.sum = 'sumRequired'
       else if (total === null || cmp(total, '0') <= 0) errors.sum = 'sumInvalid'
       if (supplier.kind === 'new' && supplier.name.trim() === '') errors.supplier = true
-      if (!result.ok || Object.keys(errors).length > 0 || !objectId || !materialId || !unitId || total === null) {
+      if (!result.ok || Object.keys(errors).length > 0 || chosenDate === undefined || !objectId || !materialId || !unitId || total === null) {
         setFieldErrors(errors)
         haptic.error()
         return
@@ -500,7 +526,7 @@ export function PurchasePage() {
             sellerTin: receipt.lookup?.sellerTin ?? null,
           }
         : null
-      const purchasedAt = receipt?.lookup?.datetime ?? receipt?.qr.datetime ?? null
+      const purchasedAt = receiptDate ?? chosenDate ?? null
       try {
         const supplierId = await resolveSupplier()
         const [receiptPhotoPath, geoFix] = await Promise.all([
@@ -517,7 +543,6 @@ export function PurchasePage() {
           totalAmount: total,
           supplierId,
           receiptPhotoPath,
-          receiptPhotoSha256: receiptPhotoPath ? (photo.photo?.sha256 ?? null) : null,
           note,
           buyerId: profile.id,
           purchasedAt,
@@ -525,20 +550,23 @@ export function PurchasePage() {
           receipt: receiptQr,
           geo: geoFix,
         })
+        // Chek rasmi xeshi — serverda, fonda (xato foydalanuvchiga ta'sir qilmaydi)
+        if (receiptPhotoPath) void requestPhotoHash('purchases', row.id)
         haptic.success()
+        flashMainButtonSaved()
         saveLastObject(objectId)
         rememberLastEntry(profile.id, materialId, unitId, result.qtyInput)
         setRecent((list) => [row, ...list.filter((p) => p.id !== row.id)].slice(0, RECENT_LIMIT))
         if (request) setApproved((a) => (a ? { ...a, rows: a.rows.filter((r) => r.id !== request.id) } : a))
         if (supplierId) rememberSupplier(supplierId)
-        setSavedText(
-          tp.saved(
+        setSavedText({
+          text: tp.saved(
             formatQty(row.qty_input),
             unitLabel({ unit: row.unit_input, variant: row.unit_variant }),
             row.material_name ?? material?.name ?? '',
-            formatSum(row.total_amount),
           ),
-        )
+          meta: formatSum(row.total_amount),
+        })
         setBalanceKey((k) => k + 1)
         resetEntry()
       } catch (err) {
@@ -560,7 +588,7 @@ export function PurchasePage() {
     },
     // resetEntry — faqat setState va photo.reset (photo deps ichida)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [profile, preparingPhoto, objectId, materialId, unitId, qty, sum, supplier, resolveSupplier, photo, draftId, note, material, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, receipt, request, geo],
+    [profile, preparingPhoto, objectId, materialId, unitId, qty, sum, supplier, resolveSupplier, photo, draftId, note, material, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, receipt, request, geo, entryDate, isAdmin],
   )
 
   const onMainButton = useCallback(() => {
@@ -594,6 +622,8 @@ export function PurchasePage() {
     preparingPhoto || photoMissing,
     saving,
   )
+  // Qoralamada ma'lumot bor — Telegram yopishdan oldin so'raydi
+  useClosingConfirmation(Boolean(materialId) || qty.trim() !== '' || sum.trim() !== '' || note.trim() !== '')
   const receiptView = receipt
     ? {
         receiptNo: receipt.qr.receiptNo,
@@ -620,12 +650,22 @@ export function PurchasePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title={tp.title} />
-      <BalanceCard balance={balance} />
+      <BalanceCard
+        balance={balance}
+        onOpen={() => {
+          haptic.tap()
+          setCashOpen(true)
+        }}
+      />
+      {cashOpen && (
+        <BottomSheet title={t.tg.cashHistory.title} onClose={() => setCashOpen(false)}>
+          <CashHistory profileId={profile.id} />
+        </BottomSheet>
+      )}
 
-      {savedText && <SavedBanner>{savedText}</SavedBanner>}
+      {savedText && <SavedBanner meta={savedText.meta}>{savedText.text}</SavedBanner>}
 
-      {loadError && <LoadError message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />}
+      {loadError && <RetryNotice message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />}
       {!loadError && (!objects || !materials) && <SkeletonRows rows={3} />}
       {objects && objects.length === 0 && <Notice tone="warn">{tm.noObjects}</Notice>}
 
@@ -641,7 +681,7 @@ export function PurchasePage() {
             <>
               {receiptBlock}
               <ApprovedRequestChips requests={approvedRows} onPick={pickRequest} />
-              <MaterialGrid materials={ranked} onPick={chooseMaterial} />
+              <MaterialGrid materials={ranked} pinnedIds={pinned} onPick={chooseMaterial} />
             </>
           )}
 
@@ -686,6 +726,19 @@ export function PurchasePage() {
               }}
               onNote={setNote}
               onChangeMaterial={() => setMaterialId(null)}
+              dateField={
+                receipt?.lookup?.datetime || receipt?.qr.datetime ? null : (
+                  <DateChips
+                    value={entryDate}
+                    isAdmin={isAdmin}
+                    error={dateError}
+                    onChange={(next) => {
+                      setEntryDate(next)
+                      setDateError(null)
+                    }}
+                  />
+                )
+              }
               top={
                 <>
                   {request && request.material_id === material.id && (

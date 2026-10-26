@@ -1,4 +1,5 @@
 import { isPkeyConflict, RepoError, toRepoError } from './errors'
+import { softDeleteById, updateById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
 import type { Supplier } from './types'
 
@@ -67,6 +68,70 @@ export async function createSupplier(input: NewSupplier): Promise<Supplier> {
     if (byTin) return byTin
   }
   throw repoError
+}
+
+/** Admin (Sotuvchilar bo'limi): o'chirilganlari ham — tiklash uchun. */
+export async function listAllSuppliers(includeDeleted = false): Promise<Supplier[]> {
+  let q = getSupabase().from('suppliers').select(SUPPLIER_COLUMNS)
+  if (!includeDeleted) q = q.is('deleted_at', null)
+  const { data, error } = await q.order('name')
+  if (error) throw toRepoError(error)
+  return (data ?? []) as Supplier[]
+}
+
+export interface SupplierPatch {
+  name?: string
+  phone?: string | null
+  /** STIR: 9–14 raqam; bo'sh — o'chiriladi. */
+  tin?: string | null
+  note?: string | null
+}
+
+function blankToNull(v: string | null | undefined, max: number): string | null {
+  const s = (v ?? '').trim().slice(0, max)
+  return s ? s : null
+}
+
+/** Admin: sotuvchi nomi, telefoni, STIR va izohini o'zgartirish. Faqat berilgan maydonlar yoziladi. */
+export function supplierPatchToRow(patch: SupplierPatch): Record<string, unknown> {
+  const row: Record<string, unknown> = {}
+  if (patch.name !== undefined) {
+    const name = patch.name.trim().replace(/\s+/g, ' ')
+    if (!name) throw new RepoError('invalid_value')
+    row.name = name
+  }
+  if (patch.phone !== undefined) row.phone = blankToNull(patch.phone, 50)
+  if (patch.tin !== undefined) {
+    const raw = (patch.tin ?? '').trim()
+    const tin = cleanTin(raw)
+    if (raw && !tin) throw new RepoError('invalid_value')
+    row.tin = tin
+  }
+  if (patch.note !== undefined) row.note = blankToNull(patch.note, 1000)
+  return row
+}
+
+export function updateSupplier(id: string, patch: SupplierPatch): Promise<void> {
+  return updateById('suppliers', id, supplierPatchToRow(patch))
+}
+
+/**
+ * Ikki sotuvchini birlashtirish (RPC `merge_suppliers`): `mergeId` ning xaridlari `keepId` ga o'tadi,
+ * `mergeId` o'chiriladi. Natija — ko'chirilgan xaridlar soni.
+ */
+export async function mergeSuppliers(keepId: string, mergeId: string): Promise<number> {
+  const { data, error } = await getSupabase().rpc('merge_suppliers', { p_keep: keepId, p_merge: mergeId })
+  if (error) throw toRepoError(error)
+  return Number(data ?? 0) || 0
+}
+
+export function softDeleteSupplier(id: string): Promise<void> {
+  return softDeleteById('suppliers', id)
+}
+
+/** Tiklash — faqat admin (`restore_admin_only`). */
+export function restoreSupplier(id: string): Promise<void> {
+  return updateById('suppliers', id, { deleted_at: null })
 }
 
 async function findSupplier(id: string, name: string): Promise<Supplier | null> {

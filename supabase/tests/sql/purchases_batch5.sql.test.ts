@@ -276,7 +276,16 @@ describe('cash_balances', () => {
 // 2. cash_advances.issued_at va idempotentlik
 // ============================================================================
 describe('cash_advances.issued_at', () => {
-  it('null → now(); o`tgan sana — ruxsat (buxgalter); UPDATE`da null → eski qiymat', async () => {
+  // audit_fixes A6: buxgalter uchun issued_at oynasi [now − 3 kun, now + 5 daqiqa]; admin — istalgan.
+  it('null → now(); o`tgan sana — buxgalter: rad (ops_occurred_at_range), admin: ruxsat; UPDATE`da null → eski qiymat', async () => {
+    const past = await asUser(db, A.users.admin.authUid, (tx) =>
+      one(
+        tx,
+        `insert into public.cash_advances (company_id, recipient_id, amount, issued_at) values ($1, $2, 1000, '2020-01-15T10:00:00Z')
+         returning issued_at::text as at`,
+        [A.id, A.users.haydovchi.profileId],
+      ),
+    )
     const r = await asUser(db, A.users.buxgalter.authUid, async (tx) => {
       const nowRow = await one(
         tx,
@@ -284,12 +293,12 @@ describe('cash_advances.issued_at', () => {
          returning id, issued_at = now() as is_now`,
         [A.id, A.users.haydovchi.profileId],
       )
-      const past = await one(
+      const pastBux = await res(
         tx,
-        `insert into public.cash_advances (company_id, recipient_id, amount, issued_at) values ($1, $2, 1000, '2020-01-15T10:00:00Z')
-         returning issued_at::text as at`,
+        `insert into public.cash_advances (company_id, recipient_id, amount, issued_at) values ($1, $2, 1000, '2020-01-15T10:00:00Z')`,
         [A.id, A.users.haydovchi.profileId],
       )
+      expect(pastBux).toBe('23514:ops_occurred_at_range')
       const upd = await one(
         tx,
         `update public.cash_advances set issued_at = null, note = 'x' where id = $1 returning issued_at = now() as is_now`,
@@ -691,7 +700,7 @@ describe('qoida 1: xarid ≠ qabul', () => {
       const p = await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-2 days' })
       await kirim(tx, A, p, m, 50)
       await become(tx, A.users.admin)
-      await tx.query(`update public.alerts set status = 'yopildi' where purchase_id = $1`, [p])
+      await tx.query(`update public.alerts set status = 'yopildi', close_note = 'Tekshirildi' where purchase_id = $1`, [p])
       await unbecome(tx)
       const manual = await alertsOf(tx, p, 'xarid_qabul_farqi')
       await evalReceipt(tx, p)
@@ -870,7 +879,7 @@ describe('qoida 2: o`zi qabul qilgan', () => {
       const me = A.users.prorab.profileId
       const p = await purchase(tx, { co: A, material: m, qty: 10, total: 1000, createdBy: me })
       const k = await kirim(tx, A, p, m, 10, { createdBy: me })
-      await tx.query(`update public.alerts set status = 'yopildi' where purchase_id = $1 and type = 'ozi_qabul_qilgan'`, [p])
+      await tx.query(`update public.alerts set status = 'yopildi', close_note = 'Tekshirildi' where purchase_id = $1 and type = 'ozi_qabul_qilgan'`, [p])
       await tx.query(`update public.movements set qty_input = 9 where id = $1`, [k])
       const manual = await alertsOf(tx, p, 'ozi_qabul_qilgan')
 
@@ -1159,7 +1168,7 @@ describe('evaluate_due_purchases (pg_cron)', () => {
       await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-61 days' })
       const manual = await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-30 hours' })
       await kirim(tx, A, manual, m, 50) // eski xarid → darhol alert
-      await tx.query(`update public.alerts set status = 'yopildi' where purchase_id = $1`, [manual])
+      await tx.query(`update public.alerts set status = 'yopildi', close_note = 'Tekshirildi' where purchase_id = $1`, [manual])
       const before = await alertsOf(tx, due, 'xarid_qabul_farqi')
       const n1 = await scalar<number>(tx, `select private.evaluate_due_purchases()`)
       const after = await alertsOf(tx, due, 'xarid_qabul_farqi')
@@ -1300,7 +1309,7 @@ describe('xavfsizlik', () => {
 
   it('admin alertni qo`lda yopsa closed_by = admin (tizim emas)', async () => {
     const r = await asUser(db, A.users.admin.authUid, (tx) =>
-      one(tx, `update public.alerts set status = 'yopildi' where id = $1 returning closed_by`, [A.ids.alert1]),
+      one(tx, `update public.alerts set status = 'yopildi', close_note = 'Tekshirildi' where id = $1 returning closed_by`, [A.ids.alert1]),
     )
     expect(r).toEqual({ closed_by: A.users.admin.profileId })
   })

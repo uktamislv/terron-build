@@ -2,7 +2,6 @@ import { useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
 import { GuideView } from '@/components/help/GuideView'
-import { t } from '@/i18n'
 import { guides } from '@/i18n/guides.uz'
 import { useBackButton } from '../useTelegramButtons'
 
@@ -17,7 +16,6 @@ export function TgHelpPage() {
   if (!profile) return null
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold tracking-tight text-ink print:hidden">{t.help.title}</h1>
       <GuideView guides={guides} currentRole={profile.role} />
     </div>
   )

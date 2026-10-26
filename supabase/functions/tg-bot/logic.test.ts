@@ -4,6 +4,7 @@ import {
   contactPhone,
   DEFAULT_MINI_APP_URL,
   handleTgBot,
+  chatBlockedChange,
   parseSeenCallback,
   seenText,
   withoutSeenButton,
@@ -36,7 +37,9 @@ function fake(opts: {
   seen?: MarkSeenResult | 'throw'
   editThrows?: boolean
   answerThrows?: boolean
+  blockThrows?: boolean
 } = {}) {
+  const blockCalls: { chatId: number; blocked: boolean }[] = []
   const seenCalls: { tg: number; alertId: string }[] = []
   const answers: { id: string; text: string; showAlert: boolean }[] = []
   const edits: {
@@ -70,6 +73,10 @@ function fake(opts: {
       if (opts.seen === 'throw') throw new Error('db down')
       return opts.seen ?? { ok: true, name: 'Ali Valiyev' }
     },
+    markChatBlocked: async (chatId, blocked) => {
+      blockCalls.push({ chatId, blocked })
+      if (opts.blockThrows) throw new Error('rpc down')
+    },
     answerCallbackQuery: async (id, text, showAlert) => {
       answers.push({ id, text, showAlert })
       if (opts.answerThrows) throw new Error('tg down')
@@ -84,7 +91,7 @@ function fake(opts: {
     },
     log: (level, message) => logs.push({ level, message }),
   }
-  return { deps, sent, links, phonesQueried, logs, audit, seenCalls, answers, edits }
+  return { deps, sent, links, phonesQueried, logs, audit, seenCalls, answers, edits, blockCalls }
 }
 
 function msg(message: Record<string, unknown>) {
@@ -437,5 +444,60 @@ describe("tg-bot: \"Ko'rildi\" tugmasi (callback_query)", () => {
     expect(seenText(undefined, 'Ali')).toBeNull()
     expect(seenText('A', '  Ali \n Valiyev ')).toBe("A\n\n✓ Ko'rildi — Ali Valiyev")
     expect(seenText('A', '   ')).toBe("A\n\n✓ Ko'rildi — —")
+  })
+})
+
+describe('tg-bot: my_chat_member (botni bloklash)', () => {
+  const upd = (oldS: string, newS: string, chat: Record<string, unknown> = { id: CHAT, type: 'private' }) => ({
+    update_id: 3,
+    my_chat_member: {
+      chat,
+      from: { id: FROM, is_bot: false, first_name: 'Ali' },
+      date: 1700000000,
+      old_chat_member: { status: oldS, user: { id: 1, is_bot: true } },
+      new_chat_member: { status: newS, user: { id: 1, is_bot: true } },
+    },
+  })
+
+  it('kicked → svc_mark_chat_blocked(chat, true)', async () => {
+    const f = fake()
+    expect((await handleTgBot(SECRET, upd('member', 'kicked'), f.deps)).status).toBe(200)
+    expect(f.blockCalls).toEqual([{ chatId: CHAT, blocked: true }])
+    expect(f.sent).toEqual([])
+  })
+
+  it('member (blokdan chiqdi) → false', async () => {
+    const f = fake()
+    await handleTgBot(SECRET, upd('kicked', 'member'), f.deps)
+    expect(f.blockCalls).toEqual([{ chatId: CHAT, blocked: false }])
+  })
+
+  it("guruh chat / o'zgarishsiz / noma'lum status → chaqirilmaydi", async () => {
+    for (const u of [
+      upd('member', 'kicked', { id: -100, type: 'group' }),
+      upd('member', 'member'),
+      upd('member', 'weird'),
+      { update_id: 4, my_chat_member: { chat: null } },
+    ]) {
+      const f = fake()
+      expect((await handleTgBot(SECRET, u, f.deps)).status).toBe(200)
+      expect(f.blockCalls).toEqual([])
+    }
+  })
+
+  it('RPC xatosi — 200, faqat log', async () => {
+    const f = fake({ blockThrows: true })
+    expect((await handleTgBot(SECRET, upd('member', 'kicked'), f.deps)).status).toBe(200)
+    expect(f.logs.some((l) => l.message.includes('svc_mark_chat_blocked'))).toBe(true)
+  })
+
+  it("sir noto'g'ri → 401, RPC chaqirilmaydi", async () => {
+    const f = fake()
+    expect((await handleTgBot('wrong', upd('member', 'kicked'), f.deps)).status).toBe(401)
+    expect(f.blockCalls).toEqual([])
+  })
+
+  it('chatBlockedChange', () => {
+    expect(chatBlockedChange(upd('member', 'left').my_chat_member)).toEqual({ chatId: CHAT, blocked: true })
   })
 })

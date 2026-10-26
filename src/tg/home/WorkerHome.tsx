@@ -2,13 +2,13 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDownLeft, ArrowUpRight, ChevronRight } from 'lucide-react'
-import { cx, EntryRow, RetryNotice, SkeletonRows } from '@/components/ui'
+import { cx, EntryRow, type EntryKind, RetryNotice, SkeletonRows } from '@/components/ui'
 import { listMyMovements } from '@/data/movementsRepo'
 import type { Movement, Profile } from '@/data/types'
 import type { EntryType } from '@/domain/movements'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
-import { formatDateTime } from '@/lib/format'
+import { formatTime } from '@/lib/format'
 import { useLoad, type Loaded } from '@/lib/useLoad'
 import { saveEntryType } from '../movement/prefs'
 import { haptic } from '../telegram'
@@ -35,14 +35,14 @@ export function WorkerHome({ profile }: { profile: Profile }) {
   )
 }
 
-function ActionTile({ type, onStart }: { type: EntryType; onStart: (type: EntryType) => void }) {
+function ActionTile({ type, onStart, count }: { type: EntryType; onStart: (type: EntryType) => void; count: number | null }) {
   const kirim = type === 'kirim'
   return (
     <Link
       to="/tg/movement"
       onClick={() => onStart(type)}
       className={cx(
-        'flex min-h-24 flex-col justify-between rounded-2xl p-4 text-white transition-[filter] active:brightness-95',
+        'flex min-h-24 flex-col justify-between rounded-2xl p-4 text-white transition-[filter,transform] active:scale-[0.98] active:brightness-95 motion-reduce:active:scale-100',
         kirim ? 'bg-ok' : 'bg-brand',
       )}
     >
@@ -50,19 +50,29 @@ function ActionTile({ type, onStart }: { type: EntryType; onStart: (type: EntryT
         <span aria-hidden className="inline-flex size-10 items-center justify-center rounded-xl bg-white/15">
           {kirim ? <ArrowDownLeft className="size-6" strokeWidth={2} /> : <ArrowUpRight className="size-6" strokeWidth={2} />}
         </span>
-        <ChevronRight aria-hidden className="size-5 opacity-70" strokeWidth={2} />
+        {count !== null ? (
+          <span className="tabular rounded-full bg-white/15 px-2.5 py-1 text-sm font-semibold">{th.todayCount(count)}</span>
+        ) : (
+          <ChevronRight aria-hidden className="size-5" strokeWidth={2} />
+        )}
       </span>
       <span className="mt-3 flex flex-col">
         <span className="text-xl leading-tight font-semibold">{t.movements.types[type]}</span>
-        <span className="text-sm text-white/80">{kirim ? th.kirimHint : th.chiqimHint}</span>
+        <span className="text-sm text-white">{kirim ? th.kirimHint : th.chiqimHint}</span>
       </span>
     </Link>
   )
 }
 
+/** Bugungi shu turdagi (o'chirilmagan) yozuvlar soni; ma'lumot hali yuklanmagan bo'lsa — null. */
+function countOf(rows: Movement[] | null, type: EntryType): number | null {
+  return rows ? rows.filter((m) => m.type === type && !m.deleted_at).length : null
+}
+
 /** Bugungi yozuv qatori. */
 export function MovementEntry({ m }: { m: Movement }): ReactNode {
-  const kind = m.type === 'kirim' || m.type === 'transfer_in' ? 'kirim' : m.type === 'chiqim' || m.type === 'transfer_out' ? 'chiqim' : 'warn'
+  const kind: EntryKind =
+    m.type === 'kirim' ? 'kirim' : m.type === 'chiqim' ? 'chiqim' : m.type === 'transfer_in' || m.type === 'transfer_out' ? 'transfer' : 'neutral'
   return (
     <EntryRow
       as="li"
@@ -72,7 +82,7 @@ export function MovementEntry({ m }: { m: Movement }): ReactNode {
       meta={
         <>
           <span>{m.object_name}</span>
-          <span className="tabular">{formatDateTime(m.created_at).slice(-5)}</span>
+          <span className="tabular">{formatTime(m.created_at)}</span>
         </>
       }
       qty={{ value: m.qty_input, unit: unitLabel({ unit: m.unit_input, variant: m.unit_variant }) }}
@@ -96,8 +106,8 @@ export function WorkerHomeView({
     <div className="flex flex-col gap-5">
       <Greeting name={name} sub={roleLabel} />
       <section aria-label={th.actions} className="grid grid-cols-2 gap-3">
-        <ActionTile type="kirim" onStart={onStart} />
-        <ActionTile type="chiqim" onStart={onStart} />
+        <ActionTile type="kirim" onStart={onStart} count={countOf(today.data, 'kirim')} />
+        <ActionTile type="chiqim" onStart={onStart} count={countOf(today.data, 'chiqim')} />
       </section>
       <section aria-label={th.today} className="flex flex-col gap-2">
         <SectionTitle>{th.today}</SectionTitle>

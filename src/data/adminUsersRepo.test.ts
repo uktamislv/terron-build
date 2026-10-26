@@ -47,6 +47,7 @@ describe('setLogin', () => {
     await expect(setLogin({ profileId: 'p1', email: ' ', password: 'parol-12345' })).resolves.toEqual({
       login: '+998901234567',
       loginKind: 'web',
+      existingLoginReplaced: false,
     })
     expect(fake.invoke).toHaveBeenCalledWith('admin-users', {
       body: { action: 'set_login', profile_id: 'p1', password: 'parol-12345' },
@@ -57,6 +58,20 @@ describe('setLogin', () => {
     fake.invoke.mockResolvedValue(httpError(401, { error: 'unauthorized' }))
     const err = await setLogin({ profileId: 'p1', password: 'parol-12345' }).catch((e: unknown) => e)
     expect(errorText(err)).toBe(t.errors.session_expired)
+  })
+
+  it('existing_login_replaced — natijada belgi (egasiga xabar boradi)', async () => {
+    fake.invoke.mockResolvedValue({ data: { ok: true, login: 'a@b.uz', login_kind: 'web', existing_login_replaced: true }, error: null })
+    await expect(setLogin({ profileId: 'p1', email: 'a@b.uz', password: 'parol-12345' })).resolves.toMatchObject({
+      existingLoginReplaced: true,
+    })
+  })
+
+  it('403 forbidden_target — boshqa firma / himoyalangan profil', async () => {
+    fake.invoke.mockResolvedValue(httpError(403, { error: 'forbidden_target' }))
+    const err = await setLogin({ profileId: 'p1', password: 'parol-12345' }).catch((e: unknown) => e)
+    expect(err).toMatchObject({ code: 'forbidden_target' })
+    expect(errorText(err)).toBe(t.errors.forbidden_target)
   })
 
   it('409 login_taken', async () => {

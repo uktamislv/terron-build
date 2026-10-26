@@ -1,12 +1,19 @@
 import { useSearchParams } from 'react-router-dom'
-import { Bug, Building2, Settings } from 'lucide-react'
+import { Bug, Building2, Send, Settings } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { PageHeader, Tabs, type TabItem } from '@/components/ui'
 import { t } from '@/i18n'
 import { BugReportsList } from '../settings/BugReportsList'
 import { CompanySettingsForm } from '../settings/CompanySettingsForm'
+import { TelegramHealthCard } from '../settings/TelegramHealthCard'
 
-type SettingsTab = 'company' | 'bugs'
+type SettingsTab = 'company' | 'telegram' | 'bugs'
+
+const TABS: readonly SettingsTab[] = ['company', 'telegram', 'bugs']
+
+function isTab(v: string | null): v is SettingsTab {
+  return v !== null && (TABS as readonly string[]).includes(v)
+}
 
 const ts = t.settings
 const icon = { className: 'size-[18px]', strokeWidth: 1.75, 'aria-hidden': true } as const
@@ -20,9 +27,11 @@ export function SettingsPage() {
   const [params, setParams] = useSearchParams()
   if (!profile) return null
   const canEdit = profile.role === 'admin' || profile.role === 'super_admin'
-  const tab: SettingsTab = params.get('tab') === 'bugs' ? 'bugs' : 'company'
+  const raw = params.get('tab')
+  const tab: SettingsTab = isTab(raw) ? raw : 'company'
   const items: TabItem<SettingsTab>[] = [
     { key: 'company', label: ts.tabCompany, icon: <Building2 {...icon} /> },
+    { key: 'telegram', label: ts.tabTelegram, icon: <Send {...icon} /> },
     { key: 'bugs', label: ts.tabBugs, icon: <Bug {...icon} /> },
   ]
   return (
@@ -32,9 +41,11 @@ export function SettingsPage() {
         label={ts.tabsLabel}
         items={items}
         value={tab}
-        onChange={(next) => setParams(next === 'bugs' ? { tab: 'bugs' } : {}, { replace: true })}
+        onChange={(next) => setParams(next === 'company' ? {} : { tab: next }, { replace: true })}
       />
-      {tab === 'company' ? <CompanySettingsForm companyId={profile.company_id} canEdit={canEdit} /> : <BugReportsList />}
+      {tab === 'company' && <CompanySettingsForm companyId={profile.company_id} canEdit={canEdit} />}
+      {tab === 'telegram' && <TelegramHealthCard />}
+      {tab === 'bugs' && <BugReportsList />}
     </div>
   )
 }

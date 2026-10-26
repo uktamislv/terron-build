@@ -1,7 +1,8 @@
 import { isPkeyConflict, toRepoError } from './errors'
 import { chunkOpts, fetchAll, type ChunkOpts } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
-import { cleanSha256, geoColumns, GEO_SELECT } from './geo'
+import { geoColumns, GEO_SELECT } from './geo'
+import { attachNames } from './profileDirectory'
 import { getSupabase } from './supabaseClient'
 import type { GeoFix, Movement, MovementKind } from './types'
 
@@ -13,8 +14,7 @@ const MOVEMENT_COLUMNS =
 const MOVEMENT_SELECT =
   `${MOVEMENT_COLUMNS}, ` +
   'object:objects!movements_object_fkey(name), ' +
-  'material:materials!movements_material_fkey(name, base_unit), ' +
-  'creator:profiles!movements_created_by_fkey(full_name)'
+  'material:materials!movements_material_fkey(name, base_unit)'
 
 export const MOVEMENTS_PAGE_SIZE = 50
 
@@ -34,8 +34,6 @@ export interface NewMovement {
   occurredAt?: string | null
   /** Faqat kirim: bog'langan xarid (`open_purchases` dan tanlangan). */
   purchaseId?: string | null
-  /** Batch 12 (C): rasm SHA-256 (hex) — takroriy rasmni server aniqlaydi. */
-  photoSha256?: string | null
   /** Batch 12 (D): Mini App joylashuvi; veb — berilmaydi. */
   geo?: GeoFix | null
 }
@@ -63,18 +61,27 @@ export interface MovementPage {
 type RawMovement = Omit<Movement, 'object_name' | 'material_name' | 'base_unit' | 'created_by_name'> & {
   object: { name: string } | null
   material: { name: string; base_unit: string } | null
-  creator: { full_name: string } | null
 }
 
 function normalize(raw: RawMovement): Movement {
-  const { object, material, creator, ...rest } = raw
+  const { object, material, ...rest } = raw
   return {
     ...rest,
     object_name: object?.name ?? null,
     material_name: material?.name ?? null,
     base_unit: material?.base_unit ?? null,
-    created_by_name: creator?.full_name ?? null,
+    created_by_name: null,
   }
+}
+
+/** Kiritgan ismi — `profile_directory` dan (admin bo'lmaganlar `profiles` dan faqat o'zini ko'radi). */
+function withNames(rows: Movement[]): Promise<Movement[]> {
+  return attachNames(rows, [['created_by', 'created_by_name']])
+}
+
+async function one(raw: unknown): Promise<Movement> {
+  const [row] = await withNames([normalize(raw as RawMovement)])
+  return row as Movement
 }
 
 function clean(value: string | null | undefined): string | null {
@@ -100,8 +107,8 @@ export async function createMovement(input: NewMovement): Promise<Movement> {
     photo_path: clean(input.photoPath),
     ...geoColumns(input.geo),
   }
-  const sha = input.photoPath ? cleanSha256(input.photoSha256) : null
-  if (sha) row.photo_sha256 = sha
+  // Rasm xeshi klientdan yuborilmaydi (server e'tiborsiz qoldiradi) — saqlangandan keyin
+  // `photo-hash` Edge Function hisoblaydi (functions.ts → requestPhotoHash)
   if (input.occurredAt) row.occurred_at = input.occurredAt
   // Xarid bilan bog'lash faqat kirimda (bazadagi trigger material va obyekt mosligini tekshiradi)
   if (input.purchaseId && input.type === 'kirim') row.purchase_id = input.purchaseId
@@ -113,13 +120,13 @@ export async function createMovement(input: NewMovement): Promise<Movement> {
     }
     throw toRepoError(error)
   }
-  return normalize(data as unknown as RawMovement)
+  return one(data)
 }
 
 export async function getMovementById(id: string): Promise<Movement> {
   const { data, error } = await getSupabase().from('movements').select(MOVEMENT_SELECT).eq('id', id).single()
   if (error) throw toRepoError(error)
-  return normalize(data as unknown as RawMovement)
+  return one(data)
 }
 
 /** Harakatlar jadvali: filtrlar, `occurred_at` bo'yicha yangisi birinchi, 50 tadan sahifa (0 dan). */
@@ -158,7 +165,7 @@ async function loadMovements(
   if (opts.signal) ranged = ranged.abortSignal(opts.signal)
   const { data, error, count } = await ranged
   if (error) throw toRepoError(error)
-  return { rows: ((data ?? []) as unknown as RawMovement[]).map(normalize), total: count ?? null }
+  return { rows: await withNames(((data ?? []) as unknown as RawMovement[]).map(normalize)), total: count ?? null }
 }
 
 /**
@@ -173,7 +180,7 @@ export async function listMyMovements(profileId: string, limit = 50): Promise<Mo
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) throw toRepoError(error)
-  return ((data ?? []) as unknown as RawMovement[]).map(normalize)
+  return withNames(((data ?? []) as unknown as RawMovement[]).map(normalize))
 }
 
 export function softDeleteMovement(id: string): Promise<void> {

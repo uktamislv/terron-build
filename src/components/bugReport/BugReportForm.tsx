@@ -1,7 +1,7 @@
 import { useId, useState, type FormEvent } from 'react'
 import { CircleCheck } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
-import { Button, Notice } from '@/components/ui'
+import { Button, Notice, TextAreaField } from '@/components/ui'
 import { BUG_MESSAGE_MAX, BUG_SCREEN_MAX, createBugReport } from '@/data/bugReportsRepo'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
@@ -106,33 +106,20 @@ export function BugReportForm({
   return (
     <form noValidate onSubmit={submit} aria-label={tb.title} className="flex flex-col gap-4 p-2">
       <p className="text-sm text-muted">{tb.intro}</p>
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor={messageId} className="text-sm font-medium text-ink">
-          {tb.message}
-        </label>
-        <textarea
-          id={messageId}
-          rows={4}
-          required
-          maxLength={BUG_MESSAGE_MAX}
-          value={message}
-          placeholder={tb.messagePlaceholder}
-          aria-invalid={messageError ? true : undefined}
-          aria-describedby={messageError ? `${messageId}-err` : undefined}
-          onChange={(e) => {
-            setMessage(e.target.value)
-            setMessageError(null)
-          }}
-          className={`min-h-24 rounded-xl border bg-paper px-3 py-2 text-base text-ink outline-none placeholder:text-muted/70 focus:border-brand focus:ring-3 focus:ring-brand/15 ${
-            messageError ? 'border-danger' : 'border-line'
-          }`}
-        />
-        {messageError && (
-          <p id={`${messageId}-err`} className="text-xs text-danger">
-            {messageError}
-          </p>
-        )}
-      </div>
+      <TextAreaField
+        id={messageId}
+        label={tb.message}
+        rows={4}
+        required
+        maxLength={BUG_MESSAGE_MAX}
+        value={message}
+        placeholder={tb.messagePlaceholder}
+        error={messageError}
+        onChange={(e) => {
+          setMessage(e.target.value)
+          setMessageError(null)
+        }}
+      />
       <PhotoField
         label={tb.photo}
         photo={photo.photo}

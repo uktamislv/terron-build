@@ -93,18 +93,19 @@ const VISIBILITY: Partial<Record<BusinessTable, VisRule>> = {
     tekshiruvchi: [],
   }),
   movements: byRole('movements', { prorab: ['mv_obj1'], omborchi: ['mv_obj1'], haydovchi: [], tekshiruvchi: [] }),
-  transfers: byRole('transfers', { prorab: ['tr_1to2'], omborchi: ['tr_1to2'], haydovchi: [] }),
+  // audit_fixes B13: tekshiruvchi o'tkazma, so'rov va smetani ko'rmaydi (ko'r-ko'rona sanash)
+  transfers: byRole('transfers', { prorab: ['tr_1to2'], omborchi: ['tr_1to2'], haydovchi: [], tekshiruvchi: [] }),
   inventory_counts: byRole('inventory_counts', { prorab: ['ic_obj1'], omborchi: ['ic_obj1'], haydovchi: [] }),
   inventory_count_items: byRole('inventory_count_items', {
     prorab: ['ici_obj1'],
     omborchi: ['ici_obj1'],
     haydovchi: [],
   }),
-  estimates: byRole('estimates', { prorab: ['est_obj1'], omborchi: [], haydovchi: [] }),
-  estimate_items: byRole('estimate_items', { prorab: ['ei_obj1'], omborchi: [], haydovchi: [] }),
+  estimates: byRole('estimates', { prorab: ['est_obj1'], omborchi: [], haydovchi: [], tekshiruvchi: [] }),
+  estimate_items: byRole('estimate_items', { prorab: ['ei_obj1'], omborchi: [], haydovchi: [], tekshiruvchi: [] }),
   // Batch 7: shablonlarni firma a'zolari ko'radi
   estimate_import_templates: () => all('estimate_import_templates'),
-  material_requests: byRole('material_requests', { prorab: ['mr_obj1'], omborchi: [], haydovchi: [] }),
+  material_requests: byRole('material_requests', { prorab: ['mr_obj1'], omborchi: [], haydovchi: [], tekshiruvchi: [] }),
   alerts: byRole('alerts', NOTHING_FOR(['taminotchi', 'tekshiruvchi', 'prorab', 'omborchi', 'haydovchi'])),
 }
 
@@ -129,12 +130,15 @@ describe('ko`rish (SELECT) — yorliqli qatorlar', () => {
     expect(actual).toEqual(expected)
   })
 
-  it.each(ALL)('%s: companies — o`z firmasi; profiles — barcha firma a`zolari', async (role) => {
+  // audit_fixes: profiles — admin/super_admin firma a'zolarini to'liq ko'radi, boshqalar faqat o'zini;
+  // boshqalarning id/ism/rol/faolligi — profile_directory (hamma firma a'zolari).
+  it.each(ALL)('%s: companies — o`z firmasi; profiles — admin hammasi, boshqalar o`zi; profile_directory — hammasi', async (role) => {
     const r = await asUser(db, A.users[role].authUid, async (tx) => ({
       company: await scalar<number>(tx, `select count(*)::int from public.companies where id = $1`, [A.id]),
       profiles: await scalar<number>(tx, `select count(*)::int from public.profiles where company_id = $1`, [A.id]),
+      directory: await scalar<number>(tx, `select count(*)::int from public.profile_directory where company_id = $1`, [A.id]),
     }))
-    expect(r).toEqual({ company: 1, profiles: ROLES.length })
+    expect(r).toEqual({ company: 1, profiles: ADMINS.includes(role) ? ROLES.length : 1, directory: ROLES.length })
   })
 
   it.each(ALL)('%s: stock_balances — faqat ko`ra oladigan obyektlar', async (role) => {

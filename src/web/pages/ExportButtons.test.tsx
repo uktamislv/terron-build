@@ -30,12 +30,19 @@ vi.mock('@/data/authRepo', () => ({
 }))
 vi.mock('@/data/objectsRepo', () => ({ listObjects: vi.fn(async () => [makeObject('3f2b8c1e-1d2a-4b5c-9d8e-0f1a2b3c4d5e', 'Obyekt A')]) }))
 vi.mock('@/data/materialsRepo', () => ({ listMaterials: vi.fn(async () => []) }))
-vi.mock('@/data/profilesRepo', () => ({
-  listProfiles: vi.fn(async () => [
+// Admin bo'lmaganlar boshqa xodimlar ismini profile_directory dan oladi (docs/audit-fixes.md)
+vi.mock('@/data/profileDirectory', async (orig) => {
+  // Funksiya — fixtures import qilingandan keyin chaqiriladi (vi.mock yuqoriga ko'tariladi)
+  const people = () => [
     { ...makeProfile('haydovchi'), id: 'p1', full_name: 'Ali' },
     { ...makeProfile('taminotchi'), id: 'p2', full_name: 'Vali' },
-  ]),
-}))
+  ]
+  return {
+    ...(await orig<typeof import('@/data/profileDirectory')>()),
+    listDirectory: vi.fn(async () => people()),
+    listActiveDirectory: vi.fn(async () => people()),
+  }
+})
 vi.mock('@/data/cashRepo', async (orig) => ({
   ...(await orig<typeof import('@/data/cashRepo')>()),
   listBalances: vi.fn(async () =>

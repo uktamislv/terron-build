@@ -18,6 +18,8 @@ const PHONE_EMAIL = 'p998901234567@phone.terron-build.invalid'
 
 const admin: CallerProfile = { id: 'admin-a', company_id: 'company-a', role: 'admin' }
 const superAdmin: CallerProfile = { id: 'sa', company_id: 'company-x', role: 'super_admin' }
+/** Shu firmaning web yetim auth user'i (o'chirish mumkin). */
+const WEB_META = { kind: 'web', company_id: 'company-a' }
 
 function target(over: Partial<TargetProfile> = {}): TargetProfile {
   return {
@@ -40,6 +42,8 @@ function fake(
     existingByEmail?: AuthUserInfo | null
     linkedProfileOf?: Record<string, string>
     linkResult?: boolean
+    lastCompanyOf?: Record<string, string>
+    alertThrows?: boolean
   } = {},
 ) {
   const calls = {
@@ -49,6 +53,7 @@ function fake(
     link: [] as { profileId: string; authUserId: string; kind: LoginKind }[],
     loginKind: [] as { profileId: string; kind: LoginKind }[],
     deleted: [] as string[],
+    loginAlerts: [] as { target: string; actor: string }[],
     audit: [] as AuthEvent[],
     logs: [] as unknown[],
   }
@@ -71,6 +76,11 @@ function fake(
     },
     findAuthUserByEmail: async () => opts.existingByEmail ?? null,
     findProfileIdByAuthUserId: async (id) => opts.linkedProfileOf?.[id] ?? null,
+    lastProfileCompanyByAuthUserId: async (id) => opts.lastCompanyOf?.[id] ?? null,
+    alertLoginSet: async (target, actor) => {
+      calls.loginAlerts.push({ target, actor })
+      if (opts.alertThrows) throw new Error('rpc down')
+    },
     deleteAuthUser: async (id) => {
       calls.deleted.push(id)
     },
@@ -195,12 +205,12 @@ describe('admin-users: set_login', () => {
   it('auth user yo\'q, email yo\'q → telefondan sintetik email, must_change_password, login_kind web, audit', async () => {
     const f = fake()
     const r = await handleAdminUsers(AUTH, body(), f.deps)
-    expect(r).toEqual({ status: 200, body: { ok: true, login: '+998901234567', login_kind: 'web' } })
+    expect(r).toEqual({ status: 200, body: { ok: true, login: '+998901234567', login_kind: 'web', existing_login_replaced: false } })
     expect(f.calls.create).toEqual([
       {
         email: PHONE_EMAIL,
         password: PASSWORD,
-        appMetadata: { kind: 'web' },
+        appMetadata: { kind: 'web', company_id: 'company-a' },
         userMetadata: { must_change_password: true },
       },
     ])
@@ -211,7 +221,7 @@ describe('admin-users: set_login', () => {
         actor_profile_id: 'admin-a',
         target_profile_id: TARGET_ID,
         action: 'SET_LOGIN',
-        details: { login: '+998901234567', login_type: 'phone', created: true },
+        details: { login: '+998901234567', login_type: 'phone', created: true, existing_login_replaced: false },
       },
     ])
   })
@@ -219,7 +229,7 @@ describe('admin-users: set_login', () => {
   it('email berilsa → shu email (kichik harf), login = email', async () => {
     const f = fake()
     const r = await handleAdminUsers(AUTH, body({ email: '  Ali@Example.COM ' }), f.deps)
-    expect(r).toEqual({ status: 200, body: { ok: true, login: 'ali@example.com', login_kind: 'web' } })
+    expect(r).toEqual({ status: 200, body: { ok: true, login: 'ali@example.com', login_kind: 'web', existing_login_replaced: false } })
     expect(f.calls.create[0]?.email).toBe('ali@example.com')
   })
 
@@ -248,7 +258,7 @@ describe('admin-users: set_login', () => {
   it('email band, egasi yetim (hech kimga bog\'lanmagan) → o\'chiriladi va qayta yaratiladi', async () => {
     const f = fake({
       createResults: [exists],
-      existingByEmail: { id: 'auth-orphan', email: PHONE_EMAIL, app_metadata: {} },
+      existingByEmail: { id: 'auth-orphan', email: PHONE_EMAIL, app_metadata: WEB_META },
     })
     const r = await handleAdminUsers(AUTH, body(), f.deps)
     expect(r.status).toBe(200)
@@ -272,7 +282,7 @@ describe('admin-users: set_login', () => {
     const f = fake({
       target: target({ auth_user_id: 'auth-me' }),
       updateResults: [exists],
-      existingByEmail: { id: 'auth-orphan', email: 'x@example.com', app_metadata: {} },
+      existingByEmail: { id: 'auth-orphan', email: 'x@example.com', app_metadata: WEB_META },
     })
     const r = await handleAdminUsers(AUTH, body({ email: 'x@example.com' }), f.deps)
     expect(r.status).toBe(200)
@@ -296,7 +306,7 @@ describe('admin-users: set_login', () => {
   it('qayta yaratish ham band (poyga) → 409 conflict', async () => {
     const f = fake({
       createResults: [exists, exists],
-      existingByEmail: { id: 'auth-orphan', email: PHONE_EMAIL, app_metadata: {} },
+      existingByEmail: { id: 'auth-orphan', email: PHONE_EMAIL, app_metadata: WEB_META },
     })
     expect(await handleAdminUsers(AUTH, body(), f.deps)).toEqual({ status: 409, body: { error: 'conflict' } })
   })
@@ -325,7 +335,7 @@ describe('admin-users: set_login', () => {
     const scenarios = [
       fake(),
       fake({ target: target({ auth_user_id: 'a' }) }),
-      fake({ createResults: [exists], existingByEmail: { id: 'o', email: PHONE_EMAIL, app_metadata: {} } }),
+      fake({ createResults: [exists], existingByEmail: { id: 'o', email: PHONE_EMAIL, app_metadata: WEB_META } }),
       fake({ createResults: [exists], existingByEmail: { id: 'b', email: PHONE_EMAIL, app_metadata: {} }, linkedProfileOf: { b: 'x' } }),
       fake({ linkResult: false }),
       fake({ target: target({ company_id: 'other' }) }),
@@ -338,5 +348,84 @@ describe('admin-users: set_login', () => {
     }
     const short = await handleAdminUsers(AUTH, body({ password: 'abc1234' }), fake().deps)
     expect(JSON.stringify(short)).not.toContain('abc1234')
+  })
+})
+
+describe('admin-users: audit — direktor, mavjud login, yetim auth user', () => {
+  it("login bor direktor: admin → 403 forbidden_target, hech narsa o'zgarmaydi", async () => {
+    const f = fake({ target: target({ role: 'direktor', auth_user_id: 'auth-dir' }) })
+    expect(await handleAdminUsers(AUTH, body(), f.deps)).toEqual({ status: 403, body: { error: 'forbidden_target' } })
+    expect(f.calls.update).toHaveLength(0)
+    expect(f.calls.create).toHaveLength(0)
+  })
+  it('login yo’q direktor: admin — ruxsat (birinchi login)', async () => {
+    const f = fake({ target: target({ role: 'direktor', auth_user_id: null }) })
+    const r = await handleAdminUsers(AUTH, body(), f.deps)
+    expect(r.status).toBe(200)
+    expect((r.body as { existing_login_replaced: boolean }).existing_login_replaced).toBe(false)
+  })
+  it('login bor direktor: super_admin — ruxsat, existing_login_replaced = true', async () => {
+    const f = fake({ caller: superAdmin, target: target({ role: 'direktor', auth_user_id: 'auth-dir' }) })
+    const r = await handleAdminUsers(AUTH, body(), f.deps)
+    expect(r.status).toBe(200)
+    expect((r.body as { existing_login_replaced: boolean }).existing_login_replaced).toBe(true)
+  })
+  it('login bor prorab: admin — ruxsat, existing_login_replaced = true (UI ogohlantiradi), auditda ham', async () => {
+    const f = fake({ target: target({ auth_user_id: 'auth-me' }) })
+    const r = await handleAdminUsers(AUTH, body(), f.deps)
+    expect(r).toEqual({ status: 200, body: { ok: true, login: '+998901234567', login_kind: 'web', existing_login_replaced: true } })
+    expect(f.calls.audit[0]?.details).toMatchObject({ existing_login_replaced: true })
+  })
+  it.each([
+    ['kind yo’q', {}],
+    ['tg sintetik', { kind: 'tg', tg_user_id: 1 }],
+    ['boshqa firma (metadata)', { kind: 'web', company_id: 'company-b' }],
+    ['firma noma’lum (metadata ham, oxirgi profil ham yo’q)', { kind: 'web' }],
+  ])("yetim auth user o'chirilmaydi → 409 login_taken: %s", async (_n, meta) => {
+    const f = fake({ createResults: [exists], existingByEmail: { id: 'auth-orphan', email: PHONE_EMAIL, app_metadata: meta } })
+    expect(await handleAdminUsers(AUTH, body(), f.deps)).toEqual({ status: 409, body: { error: 'login_taken' } })
+    expect(f.calls.deleted).toEqual([])
+  })
+  it("metadata'da firma yo'q, lekin oxirgi profil shu firmaniki → o'chiriladi", async () => {
+    const f = fake({
+      createResults: [exists],
+      existingByEmail: { id: 'auth-orphan', email: PHONE_EMAIL, app_metadata: { kind: 'web' } },
+      lastCompanyOf: { 'auth-orphan': 'company-a' },
+    })
+    expect((await handleAdminUsers(AUTH, body(), f.deps)).status).toBe(200)
+    expect(f.calls.deleted).toEqual(['auth-orphan'])
+  })
+  it("oxirgi profil boshqa firmaniki → o'chirilmaydi", async () => {
+    const f = fake({
+      createResults: [exists],
+      existingByEmail: { id: 'auth-orphan', email: PHONE_EMAIL, app_metadata: { kind: 'web' } },
+      lastCompanyOf: { 'auth-orphan': 'company-b' },
+    })
+    expect((await handleAdminUsers(AUTH, body(), f.deps)).status).toBe(409)
+    expect(f.calls.deleted).toEqual([])
+  })
+})
+
+describe('admin-users: login_ozgardi alerti (svc_alert_login_set)', () => {
+  it('mavjud login almashtirilsa — chaqiriladi (maqsad, aktyor)', async () => {
+    const f = fake({ target: target({ auth_user_id: 'auth-me' }) })
+    expect((await handleAdminUsers(AUTH, body(), f.deps)).status).toBe(200)
+    expect(f.calls.loginAlerts).toEqual([{ target: TARGET_ID, actor: 'admin-a' }])
+  })
+  it('birinchi login — chaqirilmaydi', async () => {
+    const f = fake()
+    expect((await handleAdminUsers(AUTH, body(), f.deps)).status).toBe(200)
+    expect(f.calls.loginAlerts).toEqual([])
+  })
+  it('xato bo‘lsa ham 200 (parol o‘rnatilgan), log', async () => {
+    const f = fake({ target: target({ auth_user_id: 'auth-me' }), alertThrows: true })
+    const r = await handleAdminUsers(AUTH, body(), f.deps)
+    expect(r.status).toBe(200)
+    expect(JSON.stringify(f.calls.logs)).toContain('login_ozgardi')
+  })
+  it('xato javoblarda (403, 409) — chaqirilmaydi', async () => {
+    const f = fake({ target: target({ role: 'direktor', auth_user_id: 'auth-dir' }) })
+    await handleAdminUsers(AUTH, body(), f.deps)
+    expect(f.calls.loginAlerts).toEqual([])
   })
 })

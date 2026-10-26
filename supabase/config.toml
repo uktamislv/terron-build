@@ -21,3 +21,7 @@ verify_jwt = false
 [functions.receipt-lookup]
 # Funksiya chaqiruvchini o'zi auth.getUser(jwt) bilan tekshiradi (admin-users kabi); anon → 401.
 verify_jwt = false
+
+[functions.photo-hash]
+# Funksiya chaqiruvchini o'zi auth.getUser(jwt) bilan tekshiradi (admin-users kabi); anon → 401.
+verify_jwt = false

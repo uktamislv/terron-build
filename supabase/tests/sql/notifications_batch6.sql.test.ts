@@ -207,7 +207,7 @@ describe('alerts INSERT → outbox', () => {
       )
     })
     expect(r).toHaveLength(1)
-    expect(r[0]).toMatchObject({ method: 'POST', url: DISPATCH_URL, body: {}, timeout_milliseconds: 5000 })
+    expect(r[0]).toMatchObject({ method: 'POST', url: DISPATCH_URL, body: {}, timeout_milliseconds: 60000 })
     expect(r[0]?.headers).toEqual({ 'Content-Type': 'application/json', 'x-dispatch-secret': await vaultSecret() })
   })
 
@@ -355,6 +355,13 @@ describe('daily_report_stats', () => {
       low_stock_count: expect.any(Number),
       geo_denied_count: 0,
       geo_unavailable_count: 0,
+      // audit_fixes: A9, B2, C, A10
+      backdated_count: 0,
+      manual_closed_count: 0,
+      stuck_pending_count: 0,
+      failed_7d_count: 0,
+      cash_outstanding_sum: '0.00',
+      cash_owed_to_staff_sum: '10000.50',
     })
   })
 

@@ -159,7 +159,9 @@ describe('/users — login_kind va login tugmasi', () => {
     fireEvent.click(card('Admin Adminov').getByRole('button', { name: t.common.edit }))
     const dialog = within(await screen.findByRole('dialog'))
     expect(dialog.getByLabelText(t.users.phone)).toBeDisabled()
-    expect(dialog.getByText(t.users.ownPhoneLocked)).toBeInTheDocument()
+    // Admin profili himoyalangan (profile_protected) — telefon va rol faqat tizim egasida
+    expect(dialog.getByText(t.users.protectedHint)).toBeInTheDocument()
+    expect(dialog.getByTestId('role-locked')).toHaveTextContent(t.roles.admin)
     fireEvent.change(dialog.getByLabelText(t.users.fullName), { target: { value: 'Admin Yangi' } })
     fireEvent.click(dialog.getByRole('button', { name: t.common.save }))
     await waitFor(() => expect(profilesRepo.updateProfile).toHaveBeenCalledWith(admin.id, { fullName: 'Admin Yangi' }))

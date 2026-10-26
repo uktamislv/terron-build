@@ -120,7 +120,7 @@ describe('/tg/movement — kelayotgan o‘tkazmalar', () => {
     expect(within(list).getByText(new RegExp(ti.otherObject))).toBeInTheDocument()
     fireEvent.click(within(list).getByRole('button'))
 
-    const input = screen.getByLabelText(`${ti.receivedQty}, qop`)
+    const input = screen.getByLabelText(ti.receivedQty)
     // Bo'sh boshlanadi — bo'sh holda yuborilmaydi
     expect(input).toHaveValue('')
     fireEvent.click(screen.getByRole('button', { name: ti.receive }))
@@ -139,7 +139,7 @@ describe('/tg/movement — kelayotgan o‘tkazmalar', () => {
     open('/tg/movement')
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(ti.banner(1).replace(/[()]/g, '\\$&')) }))
     fireEvent.click(within(await screen.findByRole('list', { name: ti.title })).getByRole('button'))
-    fireEvent.change(screen.getByLabelText(`${ti.receivedQty}, qop`), { target: { value: '9,5' } })
+    fireEvent.change(screen.getByLabelText(ti.receivedQty), { target: { value: '9,5' } })
     expect(screen.getByText(ti.diffWarn)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: ti.receive }))
     await waitFor(() => expect(transfersRepo.receiveTransfer).toHaveBeenCalledWith('tr1', '9.5', ''))

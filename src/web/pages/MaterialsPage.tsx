@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Camera, Layers, Package, Percent, Plus, Ruler, SearchX } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Camera, Layers, Package, Percent, Plus, Ruler, SearchX, Store } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
-import { Badge, Button, EmptyState, FilterBar, PageHeader, RetryNotice, SegmentedControl, SkeletonRows } from '@/components/ui'
+import { Badge, Button, EmptyState, FilterBar, PageHeader, RetryNotice, SegmentedControl, SkeletonRows, Tabs } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
 import type { Material } from '@/data/types'
 import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
+import { exportFileName, exportWorkbook } from '@/lib/excelExport'
 import { formatQty } from '@/lib/format'
+import { ExportButton } from '../ExportButton'
+import { materialsSheets } from '../exports'
 import { MaterialDetailDialog } from '../materials/MaterialDetailDialog'
 import { MaterialFormDialog } from '../materials/MaterialFormDialog'
+import { SuppliersTab } from '../materials/SuppliersTab'
 import {
   ACTIVE_FILTERS,
   categoriesOf,
@@ -31,6 +36,8 @@ export function MaterialsPage() {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
   const [active, setActive] = useState<ActiveFilter>('active')
+  // Admin: "Sotuvchilar" bo'limi (?tab=suppliers)
+  const [params, setParams] = useSearchParams()
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
   const closeDialog = useCallback(() => setDialog(null), [])
@@ -60,6 +67,26 @@ export function MaterialsPage() {
   if (!me) return null
   const canManage = can(me.role, 'manage_catalog')
   const current = dialog && dialog.kind !== 'create' ? materials?.find((m) => m.id === dialog.id) : undefined
+  const tab: 'materials' | 'suppliers' = canManage && params.get('tab') === 'suppliers' ? 'suppliers' : 'materials'
+  const tabIcon = { className: 'size-[18px]', strokeWidth: 1.75, 'aria-hidden': true } as const
+
+  if (tab === 'suppliers') {
+    return (
+      <div className="flex flex-col gap-5">
+        <PageHeader title={tm.title} icon={<Package strokeWidth={1.75} />} />
+        <Tabs
+          label={t.suppliers.tabsLabel}
+          items={[
+            { key: 'materials', label: t.suppliers.tabMaterials, icon: <Package {...tabIcon} /> },
+            { key: 'suppliers', label: t.suppliers.title, icon: <Store {...tabIcon} /> },
+          ]}
+          value={tab}
+          onChange={(next) => setParams(next === 'suppliers' ? { tab: 'suppliers' } : {}, { replace: true })}
+        />
+        <SuppliersTab />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -67,13 +94,34 @@ export function MaterialsPage() {
         title={tm.title}
         icon={<Package strokeWidth={1.75} />}
         actions={
-          canManage && (
-            <Button icon={<Plus aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => setDialog({ kind: 'create' })}>
-              {tm.add}
-            </Button>
-          )
+          <>
+            {materials && materials.length > 0 && (
+              <ExportButton
+                run={async (signal) => {
+                  await exportWorkbook({ fileName: exportFileName(t.excel.sections.materials), sheets: materialsSheets(visible), signal })
+                }}
+              />
+            )}
+            {canManage && (
+              <Button icon={<Plus aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => setDialog({ kind: 'create' })}>
+                {tm.add}
+              </Button>
+            )}
+          </>
         }
       />
+
+      {canManage && (
+        <Tabs
+          label={t.suppliers.tabsLabel}
+          items={[
+            { key: 'materials', label: t.suppliers.tabMaterials, icon: <Package {...tabIcon} /> },
+            { key: 'suppliers', label: t.suppliers.title, icon: <Store {...tabIcon} /> },
+          ]}
+          value={tab}
+          onChange={(next) => setParams(next === 'suppliers' ? { tab: 'suppliers' } : {}, { replace: true })}
+        />
+      )}
 
       <FilterBar
         filters={[

@@ -7,6 +7,7 @@ import {
   type BugReportPayload,
   bugReportKeyboard,
   formatBugReport,
+  safeSlice,
   webBugsUrl,
   type CashStatementPayload,
   type DailyReportPayload,
@@ -367,6 +368,29 @@ describe('tugmalar', () => {
   it('alertOpenUrl mavjud query bilan; noto\'g\'ri URL — o\'zgarmaydi', () => {
     expect(alertOpenUrl('https://a.uz/tg?x=1', ID)).toBe(`https://a.uz/tg?x=1&alert=${ID}`)
     expect(alertOpenUrl('not a url', ID)).toBe('not a url')
+  })
+})
+
+describe('safeSlice (fitLines zaxira kesishi)', () => {
+  it('teglar olib tashlanadi — yarim teg qolmaydi', () => {
+    const out = safeSlice('<b>' + 'a'.repeat(50) + '</b>', 10)
+    expect(out).toBe('a'.repeat(10))
+    expect(out).not.toMatch(/[<>]/)
+  })
+  it("yarim entity oxirida qolmaydi; to'liq entity saqlanadi", () => {
+    expect(safeSlice('abc &amp; def', 7)).toBe('abc ')
+    expect(safeSlice('abc &amp; def', 9)).toBe('abc &amp;')
+  })
+  it("surrogat juftlik bo'linmaydi, UTF-16 uzunligi ≤ max", () => {
+    const out = safeSlice('😀😀😀', 5)
+    expect(out).toBe('😀😀')
+    expect(out.length).toBeLessThanOrEqual(5)
+  })
+  it('bitta juda uzun qatorli xabar — HTML buzilmaydi', () => {
+    const p = alert('takroriy_yozuv', {}, { material_name: null, object_name: null })
+    // sarlavha + juda uzun yagona qator (fitLines oxirgi zaxira yo'li)
+    const t = formatAlertMessage({ ...p, type: 'boshqa', object_name: null })
+    expect(t.length).toBeLessThanOrEqual(TELEGRAM_MAX_LENGTH)
   })
 })
 

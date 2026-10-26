@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react'
-import { Button, Modal, Notice, TextField } from '@/components/ui'
+import { Button, choiceClass, Modal, Notice, TextField } from '@/components/ui'
 import { listObjectMembers, syncProfileObjects } from '@/data/objectMembersRepo'
 import { createProfile, updateProfile, type ProfilePatch } from '@/data/profilesRepo'
 import type { ObjectMember, ObjectRow, Profile } from '@/data/types'
-import type { Role } from '@/domain/roles'
+import { isProtectedProfile, type Role } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatPhoneDisplay, normalizePhone } from '@shared/phone'
@@ -59,6 +59,8 @@ export function UserFormDialog({
   /** Profil yaratildi, lekin obyektlar biriktirilmadi — qayta saqlashda faqat sinxronlanadi */
   const [createdId, setCreatedId] = useState<string | null>(null)
 
+  // Himoyalangan profil (admin/direktor, aktyor super_admin emas): rol va telefon o'zgarmaydi
+  const locked = profile ? isProtectedProfile(actorRole, profile.role) : false
   // Tahrirlashda mavjud rol (masalan super_admin ni super_admin tahrirlasa) ro'yxatda qoladi
   const roles = assignableRoles(actorRole)
   const showObjects = values.role !== '' && isObjectScoped(values.role)
@@ -89,8 +91,8 @@ export function UserFormDialog({
       } else if (profile) {
         const patch: ProfilePatch = {}
         if (v.fullName !== profile.full_name) patch.fullName = v.fullName
-        if (!isMe && v.phone !== profile.phone) patch.phone = v.phone
-        if (v.role !== profile.role) patch.role = v.role
+        if (!isMe && !locked && v.phone !== profile.phone) patch.phone = v.phone
+        if (!locked && v.role !== profile.role) patch.role = v.role
         if (Object.keys(patch).length > 0) await updateProfile(profile.id, patch)
         await syncProfileObjects(companyId, profile.id, v.objectIds, members)
       } else {
@@ -129,41 +131,48 @@ export function UserFormDialog({
           placeholder="+998 90 123 45 67"
           value={values.phone}
           onChange={(e) => setValues({ ...values, phone: e.target.value })}
-          disabled={isMe || createdId !== null}
+          disabled={isMe || locked || createdId !== null}
           hint={
-            isMe
-              ? t.users.ownPhoneLocked
-              : profile && normalizePhone(values.phone) !== profile.phone
-                ? t.users.phoneChangeWarning
-                : t.users.phoneHint
+            locked
+              ? t.users.protectedHint
+              : isMe
+                ? t.users.ownPhoneLocked
+                : profile && normalizePhone(values.phone) !== profile.phone
+                  ? t.users.phoneChangeWarning
+                  : t.users.phoneHint
           }
           error={errors.phone ? fieldErrors.phone[errors.phone] : null}
         />
 
-        <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1.5 text-sm font-medium text-muted">{t.users.role}</legend>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {roles.map((role) => (
-              <label
-                key={role}
-                className={`flex min-h-11 cursor-pointer items-center justify-center rounded-xl border px-2 text-center text-sm font-medium ${
-                  values.role === role ? 'border-brand bg-brand text-white' : 'border-line bg-paper text-ink'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="role"
-                  value={role}
-                  className="sr-only"
-                  checked={values.role === role}
-                  onChange={() => setValues({ ...values, role })}
-                />
-                {t.roles[role]}
-              </label>
-            ))}
+        {locked && profile ? (
+          <div className="flex flex-col gap-1.5" data-testid="role-locked">
+            <span className="text-sm font-medium text-muted">{t.users.role}</span>
+            <span className="text-base font-semibold text-ink">{t.roles[profile.role]}</span>
           </div>
-          {errors.role && <p className="text-xs text-danger">{fieldErrors.role[errors.role]}</p>}
-        </fieldset>
+        ) : (
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1.5 text-sm font-medium text-muted">{t.users.role}</legend>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {roles.map((role) => (
+                <label
+                  key={role}
+                  className={choiceClass({ selected: values.role === role, shape: 'box', label: true })}
+                >
+                  <input
+                    type="radio"
+                    name="role"
+                    value={role}
+                    className="sr-only"
+                    checked={values.role === role}
+                    onChange={() => setValues({ ...values, role })}
+                  />
+                  {t.roles[role]}
+                </label>
+              ))}
+            </div>
+            {errors.role && <p className="text-xs text-danger">{fieldErrors.role[errors.role]}</p>}
+          </fieldset>
+        )}
 
         {showObjects && (
           <fieldset className="flex flex-col gap-2">
@@ -176,11 +185,16 @@ export function UserFormDialog({
                 {objects.map((o) => (
                   <label
                     key={o.id}
-                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-line px-3"
+                    className={choiceClass({
+                      selected: values.objectIds.includes(o.id),
+                      shape: 'row',
+                      label: true,
+                      emphasis: false,
+                    })}
                   >
                     <input
                       type="checkbox"
-                      className="size-5 accent-brand"
+                      className="size-5 border-line-strong accent-brand"
                       checked={values.objectIds.includes(o.id)}
                       onChange={() => toggleObject(o.id)}
                     />

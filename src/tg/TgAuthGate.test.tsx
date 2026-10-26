@@ -38,6 +38,7 @@ vi.mock('./telegram', () => ({
   botLink: vi.fn(() => 'https://t.me/terron_test_bot'),
   initTelegram: vi.fn(),
   stripLaunchParamsFromUrl: vi.fn(),
+  closeApp: vi.fn(),
   haptic: { tap: vi.fn(), success: vi.fn(), error: vi.fn(), select: vi.fn() },
 }))
 
@@ -70,6 +71,26 @@ beforeEach(() => {
   tg.isInsideTelegram.mockReturnValue(true)
   tg.requestContact.mockResolvedValue(true)
   repo.getMyProfile.mockResolvedValue(makeProfile('prorab'))
+})
+
+describe('TgAuthGate — eskirgan / takroriy initData, faqat veb rol', () => {
+  it('reopen (invalid_init_data, init_data_replayed) — "Ilovani qayta oching" va yopish tugmasi', async () => {
+    repo.telegramSignIn.mockResolvedValue('reopen')
+    renderGate()
+    expect(await screen.findByText(t.tg.gate.reopenTitle)).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(t.tg.gate.reopenText)
+    fireEvent.click(screen.getByRole('button', { name: t.tg.gate.closeApp }))
+    expect(tg.closeApp).toHaveBeenCalled()
+    expect(repo.clearLocalSession).toHaveBeenCalled()
+    expect(screen.queryByText('ILOVA')).not.toBeInTheDocument()
+  })
+
+  it('web_only (role_web_only) — veb panel haqida xabar', async () => {
+    repo.telegramSignIn.mockResolvedValue('web_only')
+    renderGate()
+    expect(await screen.findByText(t.tg.gate.webOnlyTitle)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t.tg.gate.closeApp })).toBeInTheDocument()
+  })
 })
 
 describe('TgAuthGate', () => {

@@ -17,8 +17,12 @@ import {
   Qty,
   RetryNotice,
   Spinner,
+  TextAreaField,
 } from '@/components/ui'
-import { CANCEL_REASON_MAX, TRANSFERS_PAGE_SIZE, cancelTransfer, listTransfers } from '@/data/transfersRepo'
+import { CANCEL_REASON_MAX, TRANSFERS_PAGE_SIZE, cancelTransfer, listAllTransfers, listTransfers } from '@/data/transfersRepo'
+import { exportFileName, exportWorkbook } from '@/lib/excelExport'
+import { ExportButton } from '../ExportButton'
+import { transfersSheet } from '../exports'
 import { TRANSFER_STATUSES, type ObjectRow, type Transfer, type TransferStatus } from '@/data/types'
 import { cmp, isZero, sub } from '@/domain/decimal'
 import { unitLabel } from '@/domain/units'
@@ -97,26 +101,18 @@ function CancelDialog({
           trailing={<Qty value={transfer.qty_input} unit={inputUnit(transfer)} size="lg" />}
         />
         <p className="text-sm text-muted">{tt.cancelText}</p>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={id} className="text-sm font-medium text-ink">
-            {tt.cancelReason}
-          </label>
-          <textarea
-            id={id}
-            rows={3}
-            maxLength={CANCEL_REASON_MAX}
-            value={reason}
-            aria-invalid={missing || undefined}
-            onChange={(e) => {
-              setReason(e.target.value)
-              setMissing(false)
-            }}
-            className={`min-h-11 rounded-xl border bg-paper px-3 py-2 text-base outline-none focus:border-brand focus:ring-3 focus:ring-brand/15 ${
-              missing ? 'border-danger' : 'border-line'
-            }`}
-          />
-          {missing && <p className="text-xs text-danger">{tt.cancelReasonRequired}</p>}
-        </div>
+        <TextAreaField
+          id={id}
+          label={tt.cancelReason}
+          rows={3}
+          maxLength={CANCEL_REASON_MAX}
+          value={reason}
+          error={missing ? tt.cancelReasonRequired : null}
+          onChange={(e) => {
+            setReason(e.target.value)
+            setMissing(false)
+          }}
+        />
         {error && <Notice>{error}</Notice>}
       </div>
     </Modal>
@@ -243,6 +239,16 @@ export function TransfersTab({ objects, canManage }: { objects: ObjectRow[]; can
             options: [{ value: '', label: t.ombor.all }, ...objects.map((o) => ({ value: o.id, label: o.name }))],
           },
         ]}
+        extra={
+          <div className="md:ml-auto">
+            <ExportButton
+              run={async (signal) => {
+                const rows = await listAllTransfers({ status: status || undefined, objectId: objectId || undefined }, signal)
+                await exportWorkbook({ fileName: exportFileName(t.excel.sections.transfers), sheets: [transfersSheet(rows)], signal })
+              }}
+            />
+          </div>
+        }
       />
 
       {error && <RetryNotice message={error} onRetry={reload} />}

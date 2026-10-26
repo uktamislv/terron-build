@@ -21,6 +21,7 @@ vi.mock('@/data/reportsRepo', async (orig) => {
 })
 
 vi.mock('@/data/alertsRepo', () => ({
+  listSiteAlerts: vi.fn(async () => []),
   listRecentAlerts: vi.fn(async () =>
     Array.from({ length: 10 }, (_, i) => ({
       id: `a${i}`,

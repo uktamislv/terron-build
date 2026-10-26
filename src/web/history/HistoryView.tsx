@@ -35,7 +35,7 @@ import {
   type TabItem,
 } from '@/components/ui'
 import { AUDIT_ACTIONS, AUDIT_DEVICES, type AuditDevice, type AuditEntry, type DeletedRecord, type RefNames } from '@/data/historyRepo'
-import type { Profile } from '@/data/types'
+import type { PersonRef } from '@/data/types'
 import { actionKind, type ActionKind } from '@/domain/history'
 import { t } from '@/i18n'
 import { formatDate, formatDateTime } from '@/lib/format'
@@ -140,7 +140,7 @@ export function HistoryFilters({
 }: {
   query: HistoryQuery
   todayIso: string
-  profiles: readonly Profile[]
+  profiles: readonly PersonRef[]
   onQuery: (patch: HistoryPatch) => void
   /** Tarix tabi: amal, kim, qurilma; O'chirilganlar — faqat davr va jadval. */
   withFeedFilters: boolean
@@ -210,7 +210,7 @@ export function RecordChip({ label, onClear }: { label: string; onClear: () => v
         aria-label={th.recordFilterClear}
         title={th.recordFilterClear}
         onClick={onClear}
-        className="inline-flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-brand/10"
+        className="inline-flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-brand/10"
       >
         <X className="size-4" strokeWidth={2} aria-hidden />
       </button>

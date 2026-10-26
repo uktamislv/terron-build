@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { parseDec } from './decimal'
 import {
   MONEY_SCALE,
   PRICE_PER_BASE_SCALE,
@@ -222,20 +223,24 @@ describe('validateQtyInput', () => {
 })
 
 describe('formatDecUz / conversionHint', () => {
-  it('raqam formati', () => {
-    expect(formatDecUz('1250000.5')).toBe('1 250 000,5')
-    expect(formatDecUz('-1000')).toBe('-1 000')
+  it('raqam formati: minglik — U+202F, minus — U+2212', () => {
+    expect(formatDecUz('1250000.5')).toBe('1\u202F250\u202F000,5')
+    expect(formatDecUz('-1000')).toBe('\u22121\u202F000')
     expect(formatDecUz('999')).toBe('999')
     expect(formatDecUz('0.6667')).toBe('0,6667')
     expect(formatDecUz('50.0000000000')).toBe('50')
   })
 
-  it('maslahat matni', () => {
-    expect(conversionHint(QOP, 'kg')).toBe('1 qop = 50 kg')
-    expect(conversionHint(QUM_TONNA, 'm³')).toBe('1 tonna = 0,6667 m³')
-    expect(conversionHint(GISHT[1]!, 'dona')).toBe('1 poddon = 300 dona')
-    expect(conversionHint(GISHT[3]!, 'dona')).toBe("1 m² devor · bir g'isht · 250 mm = 102 dona")
-    expect(conversionHint(ARMATURA[4]!, 'kg')).toBe('1 metr · Ø12 = 0,888 kg')
-    expect(conversionHint(u('t', 'arm', 'tonna', '1000.0000000000'), 'kg')).toBe('1 tonna = 1 000 kg')
+  it('formatlangan qiymat qayta o‘qiladi (U+202F — bo‘shliq)', () => {
+    expect(parseDec(formatDecUz('1250000.5').replace(',', '.'))).toBe('1250000.5')
+  })
+
+  it('maslahat matni (raqam va birlik orasida U+00A0)', () => {
+    expect(conversionHint(QOP, 'kg')).toBe('1\u00A0qop = 50\u00A0kg')
+    expect(conversionHint(QUM_TONNA, 'm³')).toBe('1\u00A0tonna = 0,6667\u00A0m³')
+    expect(conversionHint(GISHT[1]!, 'dona')).toBe('1\u00A0poddon = 300\u00A0dona')
+    expect(conversionHint(GISHT[3]!, 'dona')).toBe("1\u00A0m² devor · bir g'isht · 250 mm = 102\u00A0dona")
+    expect(conversionHint(ARMATURA[4]!, 'kg')).toBe('1\u00A0metr · Ø12 = 0,888\u00A0kg')
+    expect(conversionHint(u('t', 'arm', 'tonna', '1000.0000000000'), 'kg')).toBe('1\u00A0tonna = 1\u202F000\u00A0kg')
   })
 })

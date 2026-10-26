@@ -1,9 +1,9 @@
 // Batch 12 (J): Telegram xabaridagi "Ochish" tugmasi → Mini App `?alert=<id>` (yoki start_param
 // `alert_<id>`). Bosh ekran tepasida shu ogohlantirish (faqat ko'rish) — direktor, admin.
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Building2, Package, X } from 'lucide-react'
-import { Badge, Notice, SkeletonRows } from '@/components/ui'
+import { Badge, Notice, RetryNotice, SkeletonRows } from '@/components/ui'
 import { getAlertById } from '@/data/alertsRepo'
 import type { Role } from '@/domain/roles'
 import { t } from '@/i18n'
@@ -13,7 +13,7 @@ import { alertDetailText } from '@/web/alerts/alertDetails'
 import { SEVERITY_TONE, STATUS_TONE } from '@/web/alerts/alertTones'
 import { AlertTypeIcon } from '@/web/alerts/AlertTypeIcon'
 import { getWebApp } from '../telegram'
-import { ALERT_LINK_ROLES, alertIdFrom } from './alertLink'
+import { alertIdFrom, alertLinkMode } from './alertLink'
 
 const ta = t.tg.auto
 const tx = t.alertTexts
@@ -26,13 +26,23 @@ function startParam(): string | null {
 
 export function AlertDeepLink({ role }: { role: Role }) {
   const [params, setParams] = useSearchParams()
-  const [dismissed, setDismissed] = useState(false)
-  const id = ALERT_LINK_ROLES.includes(role) && !dismissed ? alertIdFrom(params, startParam()) : null
+  // Yopilgan ogohlantirish id'si — boshqa ogohlantirish ochilsa yana ko'rinadi
+  const [dismissedId, setDismissedId] = useState<string | null>(null)
+  const mode = alertLinkMode(role)
+  const linked = mode ? alertIdFrom(params, startParam()) : null
+  const id = linked !== dismissedId ? linked : null
   const alert = useLoad(() => getAlertById(id ?? ''), id ?? '', id !== null)
+  const ref = useRef<HTMLElement>(null)
+  // Ro'yxatdan bosilganda — kartochka ko'rinadigan joyga (ekran tepasi)
+  useEffect(() => {
+    if (id) ref.current?.scrollIntoView?.({ block: 'start' })
+  }, [id])
   if (!id) return null
+  // Obyekt a'zosi: RLS ko'rsatmagan yoki xato — jimgina (oddiy bosh ekran)
+  if (mode === 'site' && (alert.loading || alert.error || !alert.data)) return null
 
   const close = () => {
-    setDismissed(true)
+    setDismissedId(id)
     if (params.has('alert')) {
       const next = new URLSearchParams(params)
       next.delete('alert')
@@ -42,7 +52,7 @@ export function AlertDeepLink({ role }: { role: Role }) {
 
   const a = alert.data
   return (
-    <section aria-label={ta.alertTitle} data-testid="alert-deeplink" className="flex flex-col gap-3 rounded-2xl border border-line bg-paper p-4">
+    <section ref={ref} aria-label={ta.alertTitle} data-testid="alert-deeplink" className="flex flex-col gap-3 rounded-2xl border border-line bg-paper p-4">
       <div className="flex items-start gap-3">
         {a && (
           <span aria-hidden className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-ice text-navy">
@@ -63,7 +73,7 @@ export function AlertDeepLink({ role }: { role: Role }) {
         </button>
       </div>
       {alert.loading && <SkeletonRows rows={1} />}
-      {alert.error && <Notice>{alert.error}</Notice>}
+      {alert.error && <RetryNotice message={alert.error} onRetry={alert.reload} />}
       {!alert.loading && !alert.error && !a && <Notice tone="warn">{ta.alertNotFound}</Notice>}
       {a && (
         <>

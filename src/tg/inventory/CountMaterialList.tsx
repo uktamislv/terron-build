@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import type { Material } from '@/data/types'
 import { normalizeAlias } from '@/domain/aliases'
 import { t } from '@/i18n'
-import { MaterialTile, SearchBox } from '../ui'
+import { SearchBox } from '@/components/ui'
+import { MaterialTile } from '../ui'
 
 const tm = t.tg.movement
 const ti = t.tg.inventory

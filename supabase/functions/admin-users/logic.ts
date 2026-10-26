@@ -36,6 +36,16 @@ export interface AdminUsersDeps extends AuthAdminDeps {
   updateAuthUser: (authUserId: string, input: UpdateAuthUserInput) => Promise<UpdateAuthUserResult>
   /** `profiles.auth_user_id = authUserId, login_kind = kind` — faqat hozir auth_user_id null bo'lsa. */
   linkAuthUser: (profileId: string, authUserId: string, kind: LoginKind) => Promise<boolean>
+  /**
+   * Shu auth user'ga oxirgi marta bog'langan profil firmasi (o'chirilganlar ham, `updated_at` bo'yicha
+   * eng oxirgisi). Yo'q bo'lsa null. Yetim auth user'ni o'chirishdan oldin tekshiriladi.
+   */
+  lastProfileCompanyByAuthUserId: (authUserId: string) => Promise<string | null>
+  /**
+   * Mavjud login almashtirildi: `svc_alert_login_set(p_target_profile, p_actor)` — `login_ozgardi`
+   * alerti va egasiga `login_changed` xabari. Xato tashlasa — faqat log (parol allaqachon o'rnatilgan).
+   */
+  alertLoginSet: (targetProfileId: string, actorProfileId: string) => Promise<void>
   /** `profiles.login_kind` ni yozadi (auth_user_id bor profil). */
   setLoginKind: (profileId: string, kind: LoginKind) => Promise<void>
   logAuthEvent: LogAuthEventFn
@@ -108,7 +118,14 @@ export async function handleAdminUsers(
       if ((target.role === 'admin' || target.role === 'super_admin') && target.id !== caller.id) {
         return err(403, 'forbidden')
       }
+      // Login bor direktor: admin parol o'rnata olmaydi (akkauntni egallash xavfi) — faqat tizim egasi.
+      if (target.role === 'direktor' && target.auth_user_id !== null) {
+        deps.log('warn', 'admin-users: direktor loginini almashtirish rad etildi', { profile_id: target.id, by: caller.id })
+        return err(403, 'forbidden_target')
+      }
     }
+    /** Maqsadda login bor edi — parol almashtiriladi (UI ogohlantiradi; DB maqsadga alert yozadi). */
+    const existingLoginReplaced = target.auth_user_id !== null
 
     const loginEmail = email ?? loginEmailFromPhone(target.phone)
     const login = email ?? target.phone
@@ -121,7 +138,7 @@ export async function handleAdminUsers(
       const update = () => deps.updateAuthUser(authUserId, { email: loginEmail, password, userMetadata })
       let res = await update()
       if (!res.ok && res.reason === 'email_exists') {
-        const freed = await freeEmail(deps, loginEmail, authUserId)
+        const freed = await freeEmail(deps, loginEmail, authUserId, target.company_id)
         if (freed !== 'freed') return err(409, freed)
         res = await update()
       }
@@ -134,10 +151,15 @@ export async function handleAdminUsers(
       created = false
     } else {
       const create = () =>
-        deps.createAuthUser({ email: loginEmail, password, appMetadata: { kind: 'web' }, userMetadata })
+        deps.createAuthUser({
+          email: loginEmail,
+          password,
+          appMetadata: { kind: 'web', company_id: target.company_id },
+          userMetadata,
+        })
       let res = await create()
       if (!res.ok && res.reason === 'email_exists') {
-        const freed = await freeEmail(deps, loginEmail, null)
+        const freed = await freeEmail(deps, loginEmail, null, target.company_id)
         if (freed !== 'freed') return err(409, freed)
         res = await create()
       }
@@ -160,13 +182,20 @@ export async function handleAdminUsers(
         actor_profile_id: caller.id,
         target_profile_id: target.id,
         action: 'SET_LOGIN',
-        details: { login, login_type: email === null ? 'phone' : 'email', created },
+        details: { login, login_type: email === null ? 'phone' : 'email', created, existing_login_replaced: existingLoginReplaced },
       })
     } catch (e) {
       deps.log('error', 'admin-users: audit yozilmadi', { error: errMessage(e), profile_id: target.id })
     }
+    if (existingLoginReplaced) {
+      try {
+        await deps.alertLoginSet(target.id, caller.id)
+      } catch (e) {
+        deps.log('error', 'admin-users: login_ozgardi alerti yozilmadi', { error: errMessage(e), profile_id: target.id })
+      }
+    }
     deps.log('info', 'admin-users: set_login', { profile_id: target.id, by: caller.id, created })
-    return respond(200, { ok: true, login, login_kind: 'web' })
+    return respond(200, { ok: true, login, login_kind: 'web', existing_login_replaced: existingLoginReplaced })
   } catch (e) {
     deps.log('error', 'admin-users: ichki xato', { error: errMessage(e) })
     return err(500, 'internal')
@@ -179,19 +208,33 @@ function weak(deps: AdminUsersDeps, profileId: string): HandlerResult {
 }
 
 /**
- * Email band: egasini topadi. Hech bir o'chirilmagan profilga bog'lanmagan (yetim) bo'lsa —
- * o'chiradi ('freed'); boshqa profilga bog'langan bo'lsa — 'login_taken'.
+ * Email band: egasini topadi. Faqat quyidagi yetim auth user o'chiriladi ('freed'):
+ *  - hech bir o'chirilmagan profilga bog'lanmagan;
+ *  - `app_metadata.kind = 'web'` (tg sintetik yoki begona akkaunt emas);
+ *  - firmasi shu firma: `app_metadata.company_id` yoki oxirgi bog'langan profil firmasi.
+ * Aks holda 'login_taken' (409) — boshqa firmaning / noma'lum akkaunt o'chirilmaydi.
  */
 async function freeEmail(
   deps: AdminUsersDeps,
   email: string,
   selfAuthUserId: string | null,
+  companyId: string,
 ): Promise<'freed' | 'login_taken' | 'conflict'> {
   const owner = await deps.findAuthUserByEmail(email)
   if (owner === null) return 'freed' // poyga: allaqachon bo'shagan — qayta urinib ko'ramiz
   if (owner.id === selfAuthUserId) return 'conflict'
   const linkedProfile = await deps.findProfileIdByAuthUserId(owner.id)
   if (linkedProfile !== null) return 'login_taken'
+  if (owner.app_metadata.kind !== 'web') {
+    deps.log('warn', "admin-users: yetim auth user web emas — o'chirilmadi", { auth_user_id: owner.id })
+    return 'login_taken'
+  }
+  const metaCompany = typeof owner.app_metadata.company_id === 'string' ? owner.app_metadata.company_id : null
+  const ownCompany = metaCompany === companyId || (await deps.lastProfileCompanyByAuthUserId(owner.id)) === companyId
+  if (!ownCompany) {
+    deps.log('warn', "admin-users: yetim auth user boshqa / noma'lum firmaniki — o'chirilmadi", { auth_user_id: owner.id })
+    return 'login_taken'
+  }
   await deps.deleteAuthUser(owner.id)
   deps.log('warn', 'admin-users: yetim auth user o\'chirildi', { auth_user_id: owner.id })
   return 'freed'

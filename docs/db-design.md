@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, audit tuzatishlari)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -63,14 +63,14 @@ Migratsiya egasi (`postgres`) `BYPASSRLS` bo'lishi shart (Supabase'da shunday): 
 | Jadval | Ko'rish | Qo'shish | O'zgartirish / soft delete |
 |---|---|---|---|
 | `companies` | o'z firmasi | super_admin | admin (o'z firmasi sozlamalari), super_admin |
-| `profiles` | firma a'zolari | admin | admin |
+| `profiles` | admin, super_admin: firma a'zolari; boshqalar: faqat o'zi (audit_fixes; ism/rol — `profile_directory`) | admin | admin (admin/direktor profilining rol/telefon/holati — super_admin); o'zi — faqat `notify_workflow` |
 | `objects` | firma rollari: hammasi; boshqalar: a'zo bo'lganlari | admin | admin |
 | `object_members` | firma rollari: hammasi; boshqalar: o'z qatorlari | admin | admin |
 | `materials`, `material_units`, `material_aliases` | firma a'zolari | admin | admin |
 | `suppliers` | firma a'zolari | admin; taminotchi, haydovchi, prorab — faqat nom (Batch 5) | admin |
 | `cash_advances` | admin, direktor, buxgalter: hammasi; boshqalar: o'ziga berilgani | admin, buxgalter | admin, buxgalter |
 | `purchases` | admin, direktor, buxgalter, taminotchi, tekshiruvchi: hammasi; prorab: a'zo obyektlar + o'zi xarid qilgani; haydovchi: faqat o'zi xarid qilgani | admin, taminotchi; haydovchi, prorab (a'zo obyekt); `buyer_id = my_profile_id()` (admin'dan tashqari) | admin |
-| `movements` | firma rollari: hammasi; prorab, omborchi: a'zo obyektlar | admin; prorab, omborchi (a'zo obyekt) | admin |
+| `movements` | firma rollari: hammasi; prorab, omborchi: a'zo obyektlar | admin; prorab, omborchi (a'zo obyekt) — faqat kirim/chiqim (audit_fixes: transfer_* / inventory_adjust — faqat RPC) | admin (o'tkazma / inventarizatsiya harakatlari — faqat izoh) |
 | `inventory_counts`, `inventory_count_items` | firma rollari; prorab, omborchi: a'zo obyektlar | admin, tekshiruvchi | admin, tekshiruvchi (o'zi yaratgan, `status = 'draft'`) |
 | `estimates`, `estimate_items` | firma rollari; prorab: a'zo obyektlar | admin, buxgalter | admin, buxgalter |
 | `estimate_import_templates` (Batch 7) | firma a'zolari | admin, buxgalter | admin, buxgalter |
@@ -100,7 +100,7 @@ Bu Batch 1 asosi; keyingi batch'larda (masalan creator o'z yozuvini tuzatishi) k
 - **TRUNCATE:** har biznes jadval va `audit_log` da `a_block_truncate` (`before truncate for each statement`, 42501) — superuser uchun ham.
 - **purchases qo'shish:** `taminotchi` (firma bo'yicha rol) — istalgan obyektga; `prorab` va `haydovchi` — faqat a'zo obyektga (`can_access_object`); hamma admin bo'lmaganlar — `buyer_id = my_profile_id()`.
 - **material_requests:** admin/super_admin bo'lmagan (taminotchi) faqat `status` va `note` ni o'zgartiradi (`b_material_requests_guard`). O'tishlar: `kutilmoqda → tasdiqlandi | rad`, `tasdiqlandi → xarid_qilindi`; admin — istalgan. `decided_by`/`decided_at` — faqat trigger: status o'zgarganda `my_profile_id()`/`now()`, aks holda eski qiymat; INSERT'da `kutilmoqda` bo'lsa null. Natija: taminotchi so'rovni soft delete qila olmaydi (faqat admin).
-- **inventory:** `inventory_counts_insert` — `status = 'draft'`. `draft → submitted` faqat `public.submit_inventory_count(p_count_id uuid)` orqali (security definer; admin/super_admin yoki shu hisobni yaratgan tekshiruvchi; har qator `qty_expected` = `stock_balances` dagi joriy qoldiq yoki 0; status draft bo'lmasa — `55000`, topilmasa — `P0002`). `authenticated` statusni to'g'ridan-to'g'ri o'zgartirsa — 42501 (`b_inventory_counts_guard`); `qty_expected` ni yoza olmaydi (`b_inventory_items_guard`: insert'da null, update'da eski qiymat). Trigger `current_user = 'authenticated'` ga qaraydi — definer funksiya ichida `current_user` = egasi.
+- **inventory:** `inventory_counts_insert` — `status = 'draft'`. `draft → submitted` faqat `public.submit_inventory_count(p_count_id uuid)` orqali (security definer; admin/super_admin yoki shu hisobni yaratgan tekshiruvchi; har qator `qty_expected` = qator sanalgan vaqtdagi (`counted_at`, audit_fixes A3) qoldiq yoki 0; status draft bo'lmasa — `55000`, topilmasa — `P0002`). `authenticated` statusni to'g'ridan-to'g'ri o'zgartirsa — 42501 (`b_inventory_counts_guard`); `qty_expected` ni yoza olmaydi (`b_inventory_items_guard`: insert'da null, update'da eski qiymat). Trigger `current_user = 'authenticated'` ga qaraydi — definer funksiya ichida `current_user` = egasi.
 - **alerts:** `closed_by`/`closed_at` — faqat trigger (`b_alerts_close`): status `yopildi` ga o'tganda `my_profile_id()`/`now()`, `yopildi` dan chiqsa null. Batch 5: `closed_by` faqat `current_user = 'authenticated'` bo'lsa (foydalanuvchi yopdi); tizim (security definer qoida funksiyasi, service_role, cron) yopsa — null.
 - **`created_by`** — oddiy FK `profiles(id)` (kompozit emas): `super_admin` o'z firmasida turib boshqa firmalarda yozuv yaratadi; kompozit FK buni buzardi. INSERT siyosati `created_by = my_profile_id()` ni talab qiladi, UPDATE trigger uni o'zgartirishni taqiqlaydi.
 - `decided_by`, `closed_by`, `buyer_id`, `recipient_id` — kompozit FK (shu firma profili). Natija: super_admin boshqa firmada so'rovni hal qilsa yoki alertni yopsa, o'zini `decided_by`/`closed_by` qilib yoza olmaydi (null qoldiradi) — sinov versiyasi uchun maqbul.
@@ -280,6 +280,27 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `bug_report_rate_limited` | 23514 | `b_bug_reports_guard` (Batch 11) | Bir foydalanuvchi 10 daqiqada 5 tadan ko'p xabar |
 | `estimate_aliases_invalid` | 22023 | `remember_estimate_aliases(p_estimate_id, p_items)` (20261105000001) | Smeta chaqiruvchi yuklamagan (buxgalter; admin/super_admin — istalgani) yoki 24 soatdan eski; `p_items` massiv emas / > 5000; qator xatosi (material yo'q / o'chirilgan / boshqa firmaniki / smetada yo'q, `code` yoki `name` smetadagi shu material qatoriga mos emas); qator xatosida `message` = `Qator <n>: <sabab>`, `detail` = n |
 
+| `movement_rpc_only` | 42501 | `a_rpc_guard` (audit_fixes) | O'tkazma / inventarizatsiya harakatini RPC'siz yaratish yoki o'zgartirish (admin ham; izoh — ruxsat) |
+| `qty_too_small` | 23514 | `b_check_qty` (audit_fixes) | Miqdor asosiy birlikda 0 ga teng bo'lib qoladi |
+| `qty_too_large` | 22003 | `b_check_qty` (audit_fixes) | `|qty_base| ≥ 1e14` |
+| `price_too_large` | 22003 | `b_check_qty` (audit_fixes) | Xarid birlik / asosiy birlik narxi sig'maydi |
+| `transfer_over_receipt` | 22023 | `receive_transfer` (audit_fixes) | Yuborilgandan ko'p qabul — faqat admin, izoh bilan |
+| `alert_close_note_required` | 23514 | `b_alerts_close_note` (audit_fixes) | Alertni yopishda izoh yo'q |
+| `profile_protected` | 42501 | `b_profiles_protect` (audit_fixes) | Admin admin/direktor profilining rol / telefon / holatini o'zgartiradi (faqat super_admin) |
+| `login_target_not_found` | P0002 | `svc_alert_login_set` (audit_fixes) | Profil topilmadi |
+| `photo_hash_invalid` | 22023 | `svc_set_photo_hash` (audit_fixes) | Jadval oq ro'yxatda emas yoki id yo'q |
+| `correct_invalid` | 22023 | `correct_entry` (audit_fixes) | Jadval / miqdor / summa / izoh noto'g'ri |
+| `correct_not_found` | P0002 | `correct_entry` (audit_fixes) | Yozuv yo'q, o'chirilgan yoki boshqa firmaniki |
+| `correct_forbidden` | 42501 | `correct_entry` (audit_fixes) | Muallif emas yoki rol / obyekt huquqi yo'q |
+| `correct_window_passed` | 55000 | `correct_entry` (audit_fixes) | Muallif uchun 30 daqiqa o'tgan |
+| `correct_linked` | 55000 | `correct_entry` (audit_fixes) | Bog'langan yozuv (xarid, o'tkazma, inventarizatsiya; kirimli xarid) |
+| `supplier_merge_forbidden` | 42501 | `merge_suppliers` (audit_fixes) | Admin emas |
+| `supplier_merge_invalid` | 22023 | `merge_suppliers` (audit_fixes) | Id yo'q yoki bir xil |
+| `supplier_not_found` | P0002 | `merge_suppliers` (audit_fixes) | Sotuvchi yo'q / o'chirilgan / boshqa firma |
+| `notification_health_forbidden` | 42501 | `notification_health` (audit_fixes) | Admin emas |
+
+audit_fixes qayta ishlatadi: `restore_transfer_movement` (endi trigger ham — tizim uchun ham), `cash_amount_locked` (`issued_at` ham, foydalanuvchi sessiyasida), `ops_occurred_at_range` (`cash_advances` INSERT, admin emas), `photo_sha256_invalid` (`svc_set_photo_hash`), `estimate_direct_edit` (`estimate_alert` firma tekshiruvi), `estimate_not_found` (`set_current_estimate` qulfdan keyin).
+
 `remember_estimate_aliases` qayta ishlatadi: `auth_required`, `estimate_import_forbidden` (rol admin / buxgalter / super_admin emas), `estimate_not_found` (P0002 — smeta yo'q, o'chirilgan yoki boshqa firmaniki). `estimate_create_materials` — `auth_required`. `import_estimate` ning `line_sum` xatolari — `estimate_item_invalid`. 20261104000001 dagi 1-argumentli `remember_estimate_aliases(jsonb)` 20261105000001 da o'chirilgan.
 
 `material_aliases.lang` (20261104000001): `'ru' | 'uz' | 'code'` — `'code'` smetadagi resurs/narx to'plami shifri; unikallik o'zgarmagan (firma bo'yicha `norm_name(alias)`, barcha `lang` birga).
@@ -316,7 +337,7 @@ Shartnoma: `docs/ops-design.md`.
 - `movements.occurred_at`, `purchases.purchased_at`, `inventory_counts.counted_at`.
 - INSERT: `null` → `now()`. UPDATE: `null` → eski qiymat.
 - `auth.uid()` bor (foydalanuvchi sessiyasi) va rol `admin`/`super_admin` emas: INSERT yoki sana o'zgarganda `now() − 3 kun ≤ sana ≤ now() + 5 daqiqa` (chegaralar kiradi), aks holda `ops_occurred_at_range` (23514). `now()` — tranzaksiya boshlangan vaqt. service_role / cron / migratsiya — cheklovsiz. Domain `occurredAtAllowed` bilan bir xil qoida.
-- `cash_advances.issued_at` cheklanmagan (buxgalter/admin yozadi). Batch 5: `null` → `now()` (`b_issued_at`).
+- `cash_advances.issued_at` — audit_fixes: INSERT'da admin bo'lmaganlar uchun shu oyna (`b_op_date`), keyin foydalanuvchi o'zgartira olmaydi (`cash_amount_locked`). Batch 5: `null` → `now()` (`b_issued_at`).
 
 ### `public.my_material_usage(p_days integer default 30)`
 
@@ -343,7 +364,7 @@ Shartnoma: `docs/purchase-design.md`.
 
 ### `cash_advances`
 
-- `b_issued_at`: INSERT'da `issued_at = null` → `now()`, UPDATE'da `null` → eski qiymat. Sana cheklanmaydi.
+- `b_issued_at`: INSERT'da `issued_at = null` → `now()`, UPDATE'da `null` → eski qiymat. audit_fixes: INSERT oynasi (admin emas) va foydalanuvchi sessiyasida o'zgarmas — `docs/audit-fixes.md` A6.
 - `b_cash_advances_guard` (security definer): `amount`, `recipient_id` UPDATE'da o'zgarmaydi — hamma uchun (service_role ham) — P0001 `cash_amount_locked`. INSERT va tiklashda oluvchi shu firmaning o'chirilmagan, `is_active` profili, roli `haydovchi/taminotchi/prorab/admin` — P0001 `cash_recipient_role`. Ruxsatsiz foydalanuvchi (admin/buxgalter/super_admin emas) uchun tekshiruv o'tkazib yuboriladi — RLS 42501 beradi; boshqa firma profili — kompozit FK 23503.
 
 ### `suppliers`
@@ -641,7 +662,7 @@ Shartnoma: `docs/automation-design.md`; outbox payloadlari va alert `details` sh
 **Enum.** `alert_type` ga 9 qiymat: `kirim_manbasiz`, `manfiy_qoldiq`, `takroriy_yozuv`, `joylashuv_farqi`, `smetasiz_chiqim`, `chek_farqi`, `sorovdan_ortiq_xarid`, `podotchet_muddati`, `podotchet_manfiy`. `ADD VALUE` bilan bir tranzaksiyada qo'shilgani uchun yangi qiymatlar indeks predikatlarida ishlatilmaydi — "bitta ochiq alert" kafolati `private.alert_lock(key)` (advisory xact lock) + tekshiruv bilan.
 
 **Yangi ustunlar.**
-- `companies`: `photo_required_amount numeric(18,2) null (> 0)`, `cash_max_days int 14 (1..365)`, `duplicate_window_minutes int 10 (0..1440; 0 — o'chiq)`, `request_overbuy_pct numeric(6,2) 20 (0..1000)`, `alert_remind_hours int 48 (1..720)`, `forecast_days_warn int 3 (1..60)`. Admin o'zgartiradi (`companies_update`, ustun grant cheklovi yo'q).
+- `companies`: `photo_required_amount numeric(18,2) null (> 0)`, `cash_max_days int 14 (1..365)`, `duplicate_window_minutes int 10 (0..1440; 0 — o'chiq)`, `request_overbuy_pct numeric(6,2) 20 (0..1000)`, `alert_remind_hours int 48 (1..720)`, `forecast_days_warn int 3 (1..60)`. Admin o'zgartiradi (`companies_update`, ustun grant cheklovi yo'q). **audit_fixes:** `duplicate_window_minutes 1..1440` (0 — endi yo'q), `request_overbuy_pct 0..200`, `alert_remind_hours 1..168`; har o'zgarish — `sozlama_ozgardi` alerti.
 - `objects`: `lat numeric(9,6)`, `lng numeric(9,6)` (ikkalasi yoki hech biri), `radius_m int not null default 300 (10..50000)`.
 - `materials.photo_required boolean not null default false`.
 - `movements`: `photo_sha256 text (^[0-9a-f]{64}$)`, `geo_lat`, `geo_lng numeric(9,6)`, `geo_accuracy_m int (0..100000)`, `geo_status text ('ok','denied','unavailable')`; `*_geo_check`: koordinatalar faqat `ok` da va juft.
@@ -688,6 +709,19 @@ Shartnoma: `docs/handoff-design.md` (1-bo'lim — ustunlar, RLS, payload).
 - Storage: `photos_insert` / `photos_select` qayta yaratildi (siyosatlar soni o'zgarmagan). `bug/` yo'li: yuklash — istalgan faol rol (o'z firmasi papkasi); ko'rish — yuklagan, firma admini, super_admin. Operatsiya rasmlari uchun shartlar Batch 4 dagi bilan bir xil.
 - `notification_outbox`: `kind` ∪ `bug_report`, ustun `bug_report_id` (FK `(company_id, bug_report_id) → bug_reports`, unique `where kind = 'bug_report'`, `(kind = 'bug_report') = (bug_report_id is not null)`). Trigger `bug_reports.zz_notify` → `private.tg_bug_reports_notify()`. `svc_outbox_recipients` (create or replace): `bug_report` → xabar firmasi `admin` lari + barcha faol `super_admin` lar (o'z firmasi faol); qolgan kind'lar o'zgarmagan.
 - Demo ma'lumot — `supabase/seed/demo.sql` (`docs/handoff-design.md` 3-bo'lim, `docs/deploy-supabase.md`).
+
+## Audit tuzatishlari (`20261108000001_audit_fixes.sql`)
+
+Shartnoma va to'liq tafsilot: `docs/audit-fixes.md` (bandlar A1–A14, B1–B14, C, D1–D6; payloadlar — "Bildirishnoma payloadlari").
+
+- **Enum** `alert_type` ∪ `yozuv_ozgartirildi` (ogohlantirish ✉), `yozuv_tuzatildi` (belgi), `sozlama_ozgardi` (ogohlantirish ✉), `login_ozgardi` (ogohlantirish ✉), `podotchet_belgisi` (belgi), `sotuvchi_stir_farqi` (belgi).
+- **Ustunlar:** `companies.quiet_hours_start`, `quiet_hours_end` (`time`, 22:00 / 07:00, null — o'chiq); `profiles.telegram_blocked_at`, `profiles.notify_workflow boolean default true`; `inventory_count_items.counted_at` (server); `notification_outbox.ref_id`.
+- **Chegaralar:** `price_deviation_pct ≤ 50`, `receipt_mismatch_pct ≤ 50`, `request_overbuy_pct 0..200`, `duplicate_window_minutes 1..1440`, `alert_remind_hours 1..168`.
+- **Outbox `kind`:** `alert` | `daily_report` | `alert_reminder` | `request_overdue` | `cash_statement` | `bug_report` | `request_created` | `request_decided` | `request_approved` | `transfer_sent` | `purchase_for_object` | `login_changed`. `request_decided`, `login_changed` — `profile_id` bilan; ish oqimi turlari — `ref_id` bilan. Bloklangan chatlar (`telegram_blocked_at`) hech qachon qabul qiluvchi emas; ish oqimi turlarida `notify_workflow = true`.
+- **RLS:** `movements_insert` — hamma rol uchun faqat `kirim`/`chiqim`; `transfers_select`, `material_requests_select`, `estimates_select` — `is_company_wide_ops()` (tekshiruvchisiz); `alerts_select_site` — prorab/omborchi a'zo obyektlarining sayt alertlari (o'qish); `profiles_select` — admin/super_admin to'liq, boshqalar faqat o'zi (boshqalarning id/ism/rol/faolligi — view `public.profile_directory`); `profiles_update_self` — faqat `notify_workflow`.
+- **Yangi RPC:** `correct_entry(p_table, p_id, p_qty_input, p_unit_id, p_total_amount, p_note)`, `merge_suppliers(p_keep, p_merge)`, `notification_health()` — authenticated; `svc_set_photo_hash(p_table, p_id, p_sha256)`, `svc_alert_login_set(p_target_profile, p_actor)`, `svc_mark_chat_blocked(p_chat_id, p_blocked)` — service_role. `svc_complete_notification` — oxirida `p_blocked_chat_ids bigint[] default null`.
+- **Kunlik hisobot** ∪ `backdated_count`, `manual_closed_count`, `stuck_pending_count`, `failed_7d_count`, `cash_outstanding_sum`, `cash_owed_to_staff_sum`; **dashboard_summary** ∪ `cash_outstanding_sum`, `cash_owed_to_staff_sum`; "yangi alert" ta'rifi — `private.alerts_new_count` (ikkalasida).
+- **Cron:** `terron-cron-purge` (03:30 UTC) — `cron.job_run_details` 7 kundan eskilari. pg_net timeout — 60 s.
 
 ## Qoldiq
 

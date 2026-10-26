@@ -19,3 +19,12 @@ export function textOf(expected: string): MatcherFunction {
     return !Array.from(element.children).some((child) => text(child) === want)
   }
 }
+
+/**
+ * Tipografik bo'shliqlarni (U+202F minglik, U+00A0 raqam–birlik) oddiy bo'shliqqa aylantiradi —
+ * matnni solishtiruvchi testlar o'qilishi oson bo'lsin. Minus (U+2212) o'zgarmaydi: u ko'rinadigan belgi.
+ * Aniq belgilar `src/lib/format.test.ts` da tekshiriladi.
+ */
+export function plain(s: string): string {
+  return s.replace(/[\u202F\u00A0]/g, ' ')
+}

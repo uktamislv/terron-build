@@ -45,7 +45,7 @@ export function SetLoginDialog({ profile, onClose, onSaved }: Props) {
   const [errors, setErrors] = useState<{ email?: 'invalid'; password?: 'invalid' }>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [done, setDone] = useState<{ login: string; password: string } | null>(null)
+  const [done, setDone] = useState<{ login: string; password: string; replaced: boolean } | null>(null)
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -57,7 +57,7 @@ export function SetLoginDialog({ profile, onClose, onSaved }: Props) {
     try {
       const result = await setLogin({ profileId: profile.id, email: email.trim() || undefined, password })
       // Parol faqat shu oynada, bir marta ko'rsatiladi — hech qayerda saqlanmaydi
-      setDone({ login: result.login, password })
+      setDone({ login: result.login, password, replaced: result.existingLoginReplaced })
       setPassword('')
       onSaved()
     } catch (err) {
@@ -73,6 +73,9 @@ export function SetLoginDialog({ profile, onClose, onSaved }: Props) {
       <Modal title={t.login.doneTitle} onClose={onClose}>
         <div className="flex flex-col gap-4">
           <Notice tone="warn">{t.login.doneWarning}</Notice>
+          {done.replaced && (
+            <Notice tone="warn">{t.login.replacedWarning}</Notice>
+          )}
           <CopyRow label={t.login.doneLogin} value={login} />
           <CopyRow label={t.login.donePassword} value={done.password} />
           <Button onClick={onClose}>{t.common.close}</Button>

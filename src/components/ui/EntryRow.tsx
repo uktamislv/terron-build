@@ -110,7 +110,7 @@ export function EntryRow({
       )}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className={cx('min-w-0 truncate text-[15px] font-semibold', deleted ? 'text-muted line-through' : 'text-ink')}>{title}</span>
+          <span className={cx('min-w-0 truncate text-base font-semibold', deleted ? 'text-muted line-through' : 'text-ink')}>{title}</span>
           {badge}
         </span>
         {meta && <span className="flex flex-col gap-0.5 text-xs text-muted [&>*]:flex [&>*]:items-center [&>*]:gap-1">{meta}</span>}

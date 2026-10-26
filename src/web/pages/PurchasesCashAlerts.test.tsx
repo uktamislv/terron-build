@@ -29,13 +29,20 @@ vi.mock('@/data/authRepo', () => ({
 }))
 vi.mock('@/data/objectsRepo', () => ({ listObjects: vi.fn(async () => [makeObject('o-a', 'Obyekt A')]) }))
 vi.mock('@/data/materialsRepo', () => ({ listMaterials: vi.fn(async () => []) }))
-vi.mock('@/data/profilesRepo', () => ({
-  listProfiles: vi.fn(async () => [
+// Admin bo'lmaganlar boshqa xodimlar ismini profile_directory dan oladi (docs/audit-fixes.md)
+vi.mock('@/data/profileDirectory', async (orig) => {
+  // Funksiya — fixtures import qilingandan keyin chaqiriladi (vi.mock yuqoriga ko'tariladi)
+  const people = () => [
     makeProfile('haydovchi', { full_name: 'Ali haydovchi' }),
     makeProfile('taminotchi', { full_name: 'Vali taminotchi' }),
     makeProfile('omborchi', { full_name: 'Omborchi' }),
-  ]),
-}))
+  ]
+  return {
+    ...(await orig<typeof import('@/data/profileDirectory')>()),
+    listDirectory: vi.fn(async () => people()),
+    listActiveDirectory: vi.fn(async () => people()),
+  }
+})
 vi.mock('@/data/cashRepo', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/data/cashRepo')>()),
   listBalances: vi.fn(),
@@ -143,7 +150,7 @@ describe('/cash', () => {
     open('/cash')
     const rows = await screen.findAllByTestId('balance-row')
     const byName = (name: string) => rows.find((r) => r.textContent?.includes(name)) as HTMLElement
-    const ali = within(byName('Ali haydovchi')).getByText(textOf('-150 000 so‘m'))
+    const ali = within(byName('Ali haydovchi')).getByText(textOf('−150 000 so‘m'))
     expect(ali.closest('[data-tone]')).toHaveAttribute('data-tone', 'negative')
     expect(ali.className).toContain('text-danger')
     const vali = within(byName('Vali taminotchi')).getByText(textOf('400 000 so‘m'))
@@ -237,7 +244,9 @@ describe('/purchases', () => {
       'pending',
     ])
     expect([0, 1, 2, 3, 4, 5].map(tone)).toEqual(['ok', 'ok', 'warn', 'danger', 'danger', 'danger'])
-    expect(badge(0)).toHaveTextContent('To‘liq · 150 / 150 kg')
+    // Holat belgisi va miqdor — alohida qatorlarda (meta "·" bilan ulanmaydi)
+    expect(within(badge(0)).getByText('To‘liq')).toBeInTheDocument()
+    expect(badge(0)).toHaveTextContent('150 / 150 kg')
     expect(badge(1)).toHaveTextContent('≈ to‘liq')
     expect(badge(5)).toHaveTextContent('Qabul qilinmagan')
   })

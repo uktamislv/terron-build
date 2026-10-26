@@ -1,6 +1,7 @@
 // Telegram WebApp SDK ustidan yupqa qatlam. SDK index.html da yuklanadi.
 // DIQQAT: initDataUnsafe faqat ko'rsatish uchun. Autentifikatsiya faqat tg-auth Edge Function'da
 // initData (xom satr) HMAC orqali tekshirilgandan keyin.
+import { colors } from '@/components/ui/tokens'
 
 interface TgButton {
   setText(text: string): TgButton
@@ -32,6 +33,14 @@ interface TgWebApp {
   close(): void
   setHeaderColor(color: string): void
   setBackgroundColor(color: string): void
+  /** Bot API 7.10+. */
+  setBottomBarColor?(color: string): void
+  /** Bot API 7.7+. Pastga surib yopishni o'chiradi (uzun formalar aylantirilganda yopilib qolmasin). */
+  disableVerticalSwipes?(): void
+  /** Bot API 6.2+. Yopishdan oldin tasdiq so'rash (to'ldirilgan qoralama yo'qolmasin). */
+  enableClosingConfirmation?(): void
+  disableClosingConfirmation?(): void
+  isVersionAtLeast?(version: string): boolean
   /** Bot API 6.9+. Kontakt bot'ga xabar sifatida yuboriladi — callback raqamni bermaydi. */
   requestContact?(callback?: (shared: boolean) => void): void
   MainButton: TgButton
@@ -59,15 +68,37 @@ export function isInsideTelegram(): boolean {
   return getWebApp() !== null
 }
 
-/** Mini App ochilganda bir marta: to'liq ekran va bizning ranglarimiz. */
+/** Telegram klienti shu Bot API versiyasini qo'llaydimi (eski klientlarda metod chaqirilsa xato chiqadi). */
+export function supportsVersion(app: Pick<TgWebApp, 'isVersionAtLeast'>, version: string): boolean {
+  try {
+    return app.isVersionAtLeast?.(version) ?? false
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Mini App ochilganda bir marta: to'liq ekran va bizning ranglarimiz (Telegram mavzusiga emas).
+ * Har bir metod versiya bo'yicha tekshiriladi — eski klientda chaqirilsa SDK ogohlantiradi yoki xato beradi.
+ */
 export function initTelegram(): void {
   const app = getWebApp()
   if (!app) return
   app.ready()
   app.expand()
-  app.setHeaderColor('#1E5EFF')
-  app.setBackgroundColor('#F4F6FA') // canvas tokeni (index.css)
-  app.MainButton.setParams({ color: '#1E5EFF', text_color: '#FFFFFF' })
+  if (supportsVersion(app, '6.1')) {
+    // Sarlavha paneli — sahifa foni bilan bir xil (ilova ichidagi sarlavha shu fonda turadi)
+    app.setHeaderColor(colors.canvas)
+    app.setBackgroundColor(colors.canvas)
+  }
+  if (supportsVersion(app, '7.10')) app.setBottomBarColor?.(colors.paper)
+  if (supportsVersion(app, '7.7')) app.disableVerticalSwipes?.()
+  app.MainButton.setParams({ color: colors.brand, text_color: colors.paper })
+}
+
+/** Mini App'ni yopish (Telegram tashqarisida — hech narsa qilmaydi). */
+export function closeApp(): void {
+  getWebApp()?.close()
 }
 
 /** Xom initData — serverga (tg-auth) yuborish uchun. */

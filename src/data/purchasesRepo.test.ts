@@ -6,7 +6,12 @@ import { createSupplier } from './suppliersRepo'
 
 type Call = [string, ...unknown[]]
 
-const fake = vi.hoisted(() => ({ calls: [] as [string, ...unknown[]][], results: [] as unknown[] }))
+const fake = vi.hoisted(() => ({
+  calls: [] as [string, ...unknown[]][],
+  results: [] as unknown[],
+  /** `profile_directory` qatorlari (ismlar ikkinchi so'rovda). */
+  people: [] as { id: string; company_id?: string; full_name: string; role: string; is_active?: boolean }[],
+}))
 
 function fakeQuery(calls: Call[], result: () => unknown): unknown {
   const q: unknown = new Proxy(
@@ -32,6 +37,7 @@ vi.mock('./supabaseClient', () => ({
   getSupabase: () => ({
     from: (table: string) => {
       fake.calls.push(['from', table])
+      if (table === 'profile_directory') return fakeQuery(fake.calls, () => ({ data: fake.people, error: null }))
       return fakeQuery(fake.calls, () => fake.results.shift())
     },
     rpc: (fn: string, args: unknown) => {
@@ -44,6 +50,7 @@ vi.mock('./supabaseClient', () => ({
 beforeEach(() => {
   fake.calls.length = 0
   fake.results.length = 0
+  fake.people.length = 0
 })
 
 const arg = (method: string) => fake.calls.find((c) => c[0] === method)?.[1]
@@ -55,7 +62,7 @@ const raw = {
   total_amount: '1250000',
   object: { name: 'Obyekt A' },
   material: { name: 'Sement', base_unit: 'kg' },
-  buyer: { full_name: 'Ali' },
+  buyer_id: 'p1',
   supplier: null,
 }
 
@@ -73,6 +80,7 @@ const input = {
 describe('purchasesRepo', () => {
   it('createPurchase: summa va miqdor satr; narxlar yuborilmaydi', async () => {
     fake.results.push({ data: raw, error: null })
+    fake.people.push({ id: 'p1', full_name: 'Ali', role: 'haydovchi' })
     const saved = await createPurchase({ ...input, note: ' ', receiptPhotoPath: '' })
     expect(arg('insert')).toEqual({
       id: 'd1',
@@ -131,7 +139,8 @@ describe('boshqa repo idempotentligi', () => {
 
   it('issueAdvance: cash_advances_pkey 23505 — saqlangan qator', async () => {
     fake.results.push({ data: null, error: { code: '23505', message: 'violates "cash_advances_pkey"', hint: null } })
-    fake.results.push({ data: { id: 'ca1', amount: '500000', recipient: { full_name: 'Ali' }, creator: null }, error: null })
+    fake.results.push({ data: { id: 'ca1', amount: '500000', recipient_id: 'p1', created_by: null }, error: null })
+    fake.people.push({ id: 'p1', full_name: 'Ali', role: 'haydovchi' })
     const saved = await issueAdvance({ id: 'ca1', companyId: 'c', recipientId: 'p1', amount: '500000' })
     expect(saved).toMatchObject({ id: 'ca1', recipient_name: 'Ali' })
   })
@@ -184,7 +193,7 @@ describe('sharh tuzatishlari (repo)', () => {
     ])
   })
 
-  it('closeAlert: sabab qirqiladi (500), bo‘sh — null; closed_by yuborilmaydi', async () => {
+  it('closeAlert: sabab qirqiladi (500); bo‘sh — so‘rovsiz alert_close_note_required; closed_by yuborilmaydi', async () => {
     fake.results.push({ data: { id: 'a1' }, error: null })
     await closeAlert('a1', '  ' + 'x'.repeat(600))
     const row = arg('update') as Record<string, unknown>
@@ -192,9 +201,9 @@ describe('sharh tuzatishlari (repo)', () => {
     expect(String(row.close_note)).toHaveLength(500)
     expect(row).not.toHaveProperty('closed_by')
     fake.calls.length = 0
-    fake.results.push({ data: { id: 'a1' }, error: null })
-    await closeAlert('a1', '   ')
-    expect((arg('update') as Record<string, unknown>).close_note).toBeNull()
+    const err = await closeAlert('a1', '   ').catch((e: unknown) => e)
+    expect((err as { code?: string }).code).toBe('alert_close_note_required')
+    expect(fake.calls).toEqual([])
   })
 })
 

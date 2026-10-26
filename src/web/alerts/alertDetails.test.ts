@@ -1,4 +1,8 @@
-import { alertDetailText } from './alertDetails'
+import { alertDetailText as rawAlertDetailText } from './alertDetails'
+import { plain } from '@/test/text'
+
+/** Tipografik bo'shliqlar (U+202F, U+00A0) oddiy bo'shliq — kutilgan matnlar o'qilishi uchun. */
+const alertDetailText = (a: Parameters<typeof rawAlertDetailText>[0]) => plain(rawAlertDetailText(a))
 
 const base = { type: 'smeta_ozgarishi' as const, base_unit: null }
 
@@ -28,7 +32,7 @@ describe('alertDetailText — smeta_ozgarishi', () => {
       },
     })
     expect(text).toBe(
-      'Smeta v2 → v3: 6 ta material normasi oshdi — Sement 1 000 → 1 250 kg (+25%) ⚠️ chiqim eski normadan oshgan, ' +
+      'Smeta v2 → v3: 6 ta material normasi oshdi — Sement 1 000 → 1 250 kg (+25%) — chiqim eski normadan oshgan, ' +
         'Qum 100 → 110,5 kg (+10,5%), G‘isht 10 → 11 kg (+10%) va yana 3 ta',
     )
   })
@@ -106,7 +110,7 @@ describe('alertDetailText — Batch 8 turlari', () => {
           to_object_name: 'Obyekt B',
         },
       }),
-    ).toBe('Obyekt A → Obyekt B: yuborildi 100 kg, qabul qilindi 90 kg (farq -10 kg)')
+    ).toBe('Obyekt A → Obyekt B: yuborildi 100 kg, qabul qilindi 90 kg (farq −10 kg)')
   })
 })
 

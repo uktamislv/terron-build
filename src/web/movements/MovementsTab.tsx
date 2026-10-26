@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { History, Image as ImageIcon, RotateCcw, Trash2, Warehouse } from 'lucide-react'
+import { History, Image as ImageIcon, PencilLine, RotateCcw, Trash2, Warehouse } from 'lucide-react'
+import { CorrectionForm } from '@/components/corrections/CorrectionForm'
 import { MovementPhoto } from '@/components/MovementPhoto'
 import {
   ActionMenu,
@@ -23,7 +24,8 @@ import {
   type FilterDef,
 } from '@/components/ui'
 import { listAllMovements, listMovements, MOVEMENTS_PAGE_SIZE, restoreMovement, softDeleteMovement } from '@/data/movementsRepo'
-import { MOVEMENT_KINDS, type Material, type Movement, type MovementKind, type ObjectRow, type Profile } from '@/data/types'
+import { MOVEMENT_KINDS, type Material, type Movement, type MovementKind, type ObjectRow, type PersonRef } from '@/data/types'
+import { adminCorrection } from '@/domain/corrections'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
@@ -59,7 +61,7 @@ export interface MovementsTabViewProps {
   onFilter: (patch: Partial<MovementFilterForm>) => void
   objects: ObjectRow[]
   materials: Material[]
-  profiles: Profile[]
+  profiles: PersonRef[]
   isAdmin: boolean
   canSeeDeleted: boolean
   busy?: boolean
@@ -68,6 +70,8 @@ export interface MovementsTabViewProps {
   onRetry?: () => void
   onShowPhoto?: (m: Movement) => void
   onDelete?: (m: Movement) => void
+  /** Admin: tuzatish (correct_entry). */
+  onCorrect?: (m: Movement) => void
   onRestore?: (m: Movement) => void
   /** Excel tugmasi (container beradi; ko'rgazmada yo'q). */
   exportSlot?: ReactNode
@@ -92,6 +96,7 @@ export function MovementsTabView({
   onRetry,
   onShowPhoto,
   onDelete,
+  onCorrect,
   onRestore,
   exportSlot,
 }: MovementsTabViewProps) {
@@ -159,6 +164,20 @@ export function MovementsTabView({
     const items: ActionItem[] = []
     if (m.photo_path && onShowPhoto)
       items.push({ key: 'photo', label: to.showPhoto, icon: <ImageIcon {...ic} />, onSelect: () => onShowPhoto(m) })
+    // Admin tuzatishi (correct_entry): istalgan vaqtda, bog'lanmagan kirim/chiqim
+    if (
+      isAdmin &&
+      onCorrect &&
+      adminCorrection({
+        table: 'movements',
+        createdBy: m.created_by,
+        createdAt: m.created_at,
+        deletedAt: m.deleted_at,
+        movementType: m.type,
+        purchaseId: m.purchase_id,
+      })
+    )
+      items.push({ key: 'correct', label: t.correction.action, icon: <PencilLine {...ic} />, disabled: busy, onSelect: () => onCorrect(m) })
     if (isAdmin && m.deleted_at && onRestore)
       items.push({ key: 'restore', label: to.restore, icon: <RotateCcw {...ic} />, disabled: busy, onSelect: () => onRestore(m) })
     const href = historyHref('movements', m.id)
@@ -302,7 +321,11 @@ export function MovementsTabView({
   )
 }
 
-type Dialog = { kind: 'photo'; movement: Movement } | { kind: 'delete'; movement: Movement } | null
+type Dialog =
+  | { kind: 'photo'; movement: Movement }
+  | { kind: 'delete'; movement: Movement }
+  | { kind: 'correct'; movement: Movement }
+  | null
 
 export function MovementsTab({
   objects,
@@ -314,7 +337,7 @@ export function MovementsTab({
 }: {
   objects: ObjectRow[]
   materials: Material[]
-  profiles: Profile[]
+  profiles: PersonRef[]
   isAdmin: boolean
   /** admin va direktor — o'chirilganlarni ko'radi (direktor faqat ko'radi) */
   canSeeDeleted: boolean
@@ -390,6 +413,7 @@ export function MovementsTab({
         onRetry={reload}
         onShowPhoto={(m) => setDialog({ kind: 'photo', movement: m })}
         onDelete={(m) => setDialog({ kind: 'delete', movement: m })}
+        onCorrect={(m) => setDialog({ kind: 'correct', movement: m })}
         onRestore={(m) => void run(() => restoreMovement(m.id))}
         exportSlot={
           <ExportButton
@@ -405,6 +429,29 @@ export function MovementsTab({
         }
       />
 
+      {dialog?.kind === 'correct' && (
+        <Modal title={t.correction.title} onClose={closeDialog}>
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-muted">{t.correction.adminHint}</p>
+            <CorrectionForm
+              target={{
+                table: 'movements',
+                id: dialog.movement.id,
+                materialId: dialog.movement.material_id,
+                materialName: dialog.movement.material_name,
+                qtyInput: dialog.movement.qty_input,
+                unitId: dialog.movement.unit_id,
+                note: dialog.movement.note,
+              }}
+              onCancel={closeDialog}
+              onDone={() => {
+                setDialog(null)
+                reload()
+              }}
+            />
+          </div>
+        </Modal>
+      )}
       {dialog?.kind === 'photo' && dialog.movement.photo_path && (
         <Modal title={t.movements.photo} onClose={closeDialog}>
           <MovementPhoto path={dialog.movement.photo_path} alt={t.movements.photo} />

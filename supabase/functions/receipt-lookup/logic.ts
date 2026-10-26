@@ -67,7 +67,49 @@ export interface Caller {
   companyId: string
 }
 
+/** Profil bo'yicha chegara: 10 daqiqada ko'pi bilan 20 ta so'rov. */
+export const RATE_LIMIT_MAX = 20
+export const RATE_LIMIT_WINDOW_MS = 10 * 60_000
+
+/**
+ * Sirpanuvchi oyna bo'yicha chegara (izolyat xotirasida). CHEKLOV: har Edge Function izolyati
+ * o'z hisobiga ega — bir nechta izolyat bo'lsa umumiy chegara biroz yuqori bo'lishi mumkin.
+ */
+export class SlidingWindowLimiter {
+  private readonly hits = new Map<string, number[]>()
+  constructor(
+    private readonly max = RATE_LIMIT_MAX,
+    private readonly windowMs = RATE_LIMIT_WINDOW_MS,
+    private readonly maxKeys = 10_000,
+  ) {}
+
+  /** Ruxsat bo'lsa hisoblaydi va `{ ok: true }`; aks holda keyingi ruxsatgacha soniyalar. */
+  hit(key: string, nowMs: number): { ok: true } | { ok: false; retryAfterSec: number } {
+    const from = nowMs - this.windowMs
+    const list = (this.hits.get(key) ?? []).filter((t) => t > from)
+    if (list.length >= this.max) {
+      this.hits.set(key, list)
+      const oldest = list[0] as number
+      return { ok: false, retryAfterSec: Math.max(1, Math.ceil((oldest + this.windowMs - nowMs) / 1000)) }
+    }
+    list.push(nowMs)
+    this.hits.delete(key) // LRU tartibi: oxirgi ishlatilgan — oxirida
+    this.hits.set(key, list)
+    if (this.hits.size > this.maxKeys) {
+      for (const k of this.hits.keys()) {
+        if (this.hits.size <= this.maxKeys) break
+        this.hits.delete(k)
+      }
+    }
+    return { ok: true }
+  }
+}
+
 export interface ReceiptLookupDeps {
+  /** Profil bo'yicha chegara (index.ts — izolyat bo'yicha bitta nusxa). Yo'q bo'lsa — chegarasiz. */
+  limiter?: SlidingWindowLimiter
+  /** ms (Date.now) — chegara uchun. */
+  now?: () => number
   /** JWT → auth user id; anon kalit / yaroqsiz → null. */
   getAuthUserIdFromJwt: (jwt: string) => Promise<string | null>
   /** Faol profil (faol firma) yoki null. */
@@ -728,6 +770,7 @@ const err = (status: number, error: string, extra: Record<string, unknown> = {})
  * - 401 `unauthorized` (JWT yo'q, yaroqsiz, anon); 403 `forbidden` (faol profil yo'q)
  * - 422 `receipt_unparseable` + `qr` — sahifa ochildi, lekin chek ma'lumoti topilmadi
  * - 502 `receipt_fetch_failed` + `qr` + `reason` — timeout, redirect, status, > 1 MB, tarmoq
+ * - 429 `rate_limited` + `retry_after_sec` — profil 10 daqiqada 20 tadan ko'p so'radi
  * - 500 `internal`
  */
 export async function handleReceiptLookup(
@@ -751,6 +794,14 @@ export async function handleReceiptLookup(
     return err(500, 'internal')
   }
   if (caller === null) return err(403, 'forbidden')
+
+  if (deps.limiter !== undefined) {
+    const lim = deps.limiter.hit(caller.profileId, (deps.now ?? Date.now)())
+    if (!lim.ok) {
+      deps.log('warn', 'receipt-lookup: chegara oshdi', { profile_id: caller.profileId })
+      return err(429, 'rate_limited', { retry_after_sec: lim.retryAfterSec })
+    }
+  }
 
   try {
     const hit = await deps.cacheGet(jwt, caller, qr)

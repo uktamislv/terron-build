@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '@/auth/authContext'
 import { ProfileErrorScreen } from '@/auth/screens'
-import { Clock, LoaderCircle, Phone, Send, ShieldX, WifiOff } from 'lucide-react'
+import { Clock, LoaderCircle, Monitor, Phone, RefreshCw, Send, ShieldX, WifiOff } from 'lucide-react'
 import { BrandMark, Button, cx, FullPageSpinner, Notice } from '@/components/ui'
 import { clearLocalSession, telegramSignIn, type TelegramSignInStatus } from '@/data/authRepo'
 import { t } from '@/i18n'
-import { botLink, getInitData, haptic, isInsideTelegram, requestContact, stripLaunchParamsFromUrl } from './telegram'
+import { botLink, closeApp, getInitData, haptic, isInsideTelegram, requestContact, stripLaunchParamsFromUrl } from './telegram'
 
 type GateState =
   | 'outside'
@@ -16,6 +16,8 @@ type GateState =
   | 'timeout'
   | 'inactive'
   | 'invalid'
+  | 'reopen'
+  | 'web_only'
   | 'error'
   | 'ok'
 
@@ -47,7 +49,7 @@ async function signInOnce(refreshSession: () => Promise<void>): Promise<Telegram
 /** Kirish holati ekrani: tepada brend, markazda belgi (ice/xato doira), sarlavha, matn va amallar. */
 function Screen({ children, icon, tone = 'default' }: { children: ReactNode; icon?: ReactNode; tone?: 'default' | 'danger' }) {
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col bg-canvas px-5 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+    <div className="min-h-app mx-auto flex max-w-md flex-col bg-canvas px-5 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <div className="flex items-center gap-2.5">
         <BrandMark className="size-9" />
         <span className="text-base font-semibold text-ink">{t.app.name}</span>
@@ -126,7 +128,7 @@ export function TgAuthGate({ children, pollIntervalMs = 2000, pollTimeoutMs = 30
 
   useEffect(() => {
     if (state === 'ok') haptic.success()
-    if (state === 'inactive' || state === 'invalid' || state === 'timeout') haptic.error()
+    if (state === 'inactive' || state === 'invalid' || state === 'reopen' || state === 'web_only' || state === 'timeout') haptic.error()
   }, [state])
 
   async function shareContact() {
@@ -194,6 +196,31 @@ export function TgAuthGate({ children, pollIntervalMs = 2000, pollTimeoutMs = 30
       return (
         <Screen icon={<ShieldX strokeWidth={1.5} />} tone="danger">
           <p role="alert" className={text}>{t.tg.gate.invalid}</p>
+        </Screen>
+      )
+    case 'reopen':
+      // initData eskirgan yoki takroriy (invalid_init_data, init_data_replayed): faqat qayta ochish yordam beradi
+      return (
+        <Screen icon={<RefreshCw strokeWidth={1.5} />}>
+          <h1 className={title}>{t.tg.gate.reopenTitle}</h1>
+          <p role="alert" className={text}>
+            {t.tg.gate.reopenText}
+          </p>
+          <Button size="lg" className="mt-2" onClick={closeApp}>
+            {t.tg.gate.closeApp}
+          </Button>
+        </Screen>
+      )
+    case 'web_only':
+      return (
+        <Screen icon={<Monitor strokeWidth={1.5} />}>
+          <h1 className={title}>{t.tg.gate.webOnlyTitle}</h1>
+          <p role="alert" className={text}>
+            {t.tg.gate.webOnlyText}
+          </p>
+          <Button size="lg" variant="secondary" className="mt-2" onClick={closeApp}>
+            {t.tg.gate.closeApp}
+          </Button>
         </Screen>
       )
     case 'error':

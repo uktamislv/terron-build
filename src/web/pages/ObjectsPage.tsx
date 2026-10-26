@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react'
 import { useAuth } from '@/auth/authContext'
 import { Building2, CalendarDays, LocateFixed, MapPin, Pencil, Plus, UserPlus, Users } from 'lucide-react'
-import { Badge, Button, EmptyState, Modal, Notice, PageHeader, RetryNotice, SkeletonRows, TextField } from '@/components/ui'
+import { Badge, Button, choiceClass, EmptyState, inputClass, Modal, Notice, PageHeader, RetryNotice, SkeletonRows, TextField } from '@/components/ui'
 import { addObjectMember, listObjectMembers, removeObjectMember } from '@/data/objectMembersRepo'
 import { createObject, listObjects, updateObject } from '@/data/objectsRepo'
 import { listProfiles } from '@/data/profilesRepo'
@@ -133,9 +133,7 @@ function ObjectFormDialog({
             {OBJECT_STATUSES.map((s) => (
               <label
                 key={s}
-                className={`flex min-h-11 cursor-pointer items-center justify-center rounded-xl border px-2 text-center text-sm font-medium ${
-                  status === s ? 'border-brand bg-brand text-white' : 'border-line bg-paper text-ink'
-                }`}
+                className={choiceClass({ selected: status === s, shape: 'box', label: true })}
               >
                 <input
                   type="radio"
@@ -233,7 +231,7 @@ function MembersDialog({
                 id={selectId}
                 value={selected}
                 onChange={(e) => setSelected(e.target.value)}
-                className="min-h-11 rounded-xl border border-line bg-paper px-3 text-base"
+                className={inputClass()}
               >
                 <option value="">—</option>
                 {candidates.map((p) => (

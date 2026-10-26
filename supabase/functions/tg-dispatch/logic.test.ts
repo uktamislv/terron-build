@@ -5,6 +5,10 @@ import {
   CLAIM_LIMIT,
   DEFAULT_RETRY_AFTER_SEC,
   DIGEST_THRESHOLD,
+  TOKEN_RETRY_SEC,
+  COMPLETE_SENDS_BLOCKED_CHAT_IDS,
+  authorizeDispatch,
+  runDispatch,
   SAME_CHAT_GAP_MS,
   TIME_BUDGET_MS,
   classifyTelegramResponse,
@@ -292,13 +296,14 @@ describe('handleDispatch — yuborish', () => {
       send: (chat) => (chat === 1 ? BLOCKED : { ok: true }),
     })
     expect((await handleDispatch(SECRET, f.deps)).body).toEqual({ processed: 1, sent: 1, failed: 0 })
-    expect(f.completed).toEqual([done('a1', [2])])
+    // yetib bo'lmaydigan chat — blocked ro'yxatida (index.ts p_blocked_chat_ids sifatida yuboradi)
+    expect(f.completed).toEqual([{ ...done('a1', [2]), blocked: [1] }])
   })
 
   it('hamma qabul qiluvchi bloklagan → sent (0)', async () => {
     const f = fake({ rows: [row('alert', { id: 'a1' })], recipients: { c1: [R(1), R(2)] }, send: () => BLOCKED })
     await handleDispatch(SECRET, f.deps)
-    expect(f.completed).toEqual([done('a1', [])])
+    expect(f.completed).toEqual([{ ...done('a1', []), blocked: [1, 2] }])
   })
 
   it('hammasi xato → qayta urinish; keyingi qatorlar davom etadi', async () => {
@@ -315,7 +320,7 @@ describe('handleDispatch — yuborish', () => {
     expect(f.completed[1]).toMatchObject(done('d1', [3]))
   })
 
-  it('401 (bot tokeni noto`g`ri) → darhol failed (final), qolgan qatorlar ham, yuborish to`xtaydi', async () => {
+  it('401 (bot tokeni bekor qilingan) → failed EMAS: hamma qatorlar TOKEN_RETRY_SEC bilan keyinga, yuborish to`xtaydi', async () => {
     const f = fake({
       rows: [row('alert', { id: 'a1' }), row('daily_report', { id: 'd1' })],
       recipients: { c1: [R(1), R(2)] },
@@ -325,9 +330,11 @@ describe('handleDispatch — yuborish', () => {
     expect(r.body).toEqual({ processed: 2, sent: 0, failed: 2 })
     expect(f.sent).toHaveLength(1)
     expect(f.completed).toEqual([
-      { id: 'a1', ok: false, delivered: [], error: 'p1: telegram 401 Unauthorized', final: true },
-      { id: 'd1', ok: false, delivered: [], error: 'telegram 401 Unauthorized', final: true },
+      { id: 'a1', ok: false, delivered: [], error: 'p1: telegram 401 Unauthorized', retryAfterSec: TOKEN_RETRY_SEC },
+      { id: 'd1', ok: false, delivered: [], error: 'telegram 401 Unauthorized', retryAfterSec: TOKEN_RETRY_SEC },
     ])
+    expect(f.completed.every((c) => c.final === undefined)).toBe(true)
+    expect(TOKEN_RETRY_SEC).toBe(600)
   })
 
   it('yaroqsiz payload / noma`lum kind → darhol failed (final), Telegram chaqirilmaydi', async () => {
@@ -452,12 +459,18 @@ describe('classifyTelegramResponse', () => {
     expect(classifyTelegramResponse(403, { description: 'Forbidden: user is deactivated' })).toMatchObject({ kind: 'unreachable' })
     expect(classifyTelegramResponse(400, { description: 'Bad Request: chat not found' })).toMatchObject({ kind: 'unreachable' })
   })
-  it('401, 404 → fatal', () => {
-    expect(classifyTelegramResponse(401, { description: 'Unauthorized' })).toMatchObject({ kind: 'fatal' })
-    expect(classifyTelegramResponse(404, { description: 'Not Found' })).toMatchObject({ kind: 'fatal' })
+  it('401, 404 → token_invalid', () => {
+    expect(classifyTelegramResponse(401, { description: 'Unauthorized' })).toMatchObject({ kind: 'token_invalid' })
+    expect(classifyTelegramResponse(404, { description: 'Not Found' })).toMatchObject({ kind: 'token_invalid' })
   })
-  it('400 (boshqa), 500, 200 ok=false → error', () => {
-    expect(classifyTelegramResponse(400, { description: "Bad Request: can't parse entities" })).toMatchObject({ kind: 'error' })
+  it("400 — chatga bog'liq → unreachable; boshqasi → invalid_message", () => {
+    expect(classifyTelegramResponse(400, { description: 'Bad Request: PEER_ID_INVALID' })).toMatchObject({ kind: 'unreachable' })
+    expect(classifyTelegramResponse(400, { description: "Bad Request: can't parse entities: Unsupported start tag" })).toMatchObject({
+      kind: 'invalid_message',
+    })
+    expect(classifyTelegramResponse(400, { description: 'Bad Request: message is too long' })).toMatchObject({ kind: 'invalid_message' })
+  })
+  it('500, 200 ok=false → error', () => {
     expect(classifyTelegramResponse(502, null)).toEqual({ ok: false, kind: 'error', error: 'telegram 502' })
     expect(classifyTelegramResponse(200, { ok: false })).toMatchObject({ kind: 'error' })
   })
@@ -612,5 +625,89 @@ describe('Batch 11 — bug_report', () => {
     expect(f.sent).toHaveLength(rows.length)
     expect(f.sent.every((s) => s.text.startsWith('🐞'))).toBe(true)
     expect(f.completed.every((c) => c.ok)).toBe(true)
+  })
+})
+
+describe('audit tuzatishlari — 400, avtorizatsiya ajratilgan', () => {
+  it('400 yaroqsiz xabar → shu qator darhol failed (final), boshqa qabul qiluvchilarga yuborilmaydi; keyingi qatorlar davom', async () => {
+    const f = fake({
+      rows: [row('alert', { id: 'a1', company: 'c1' }), row('daily_report', { id: 'd1', company: 'c2' })],
+      recipients: { c1: [R(1), R(2)], c2: [R(3)] },
+      send: (chat) =>
+        chat === 1 ? classifyTelegramResponse(400, { description: "Bad Request: can't parse entities" }) : { ok: true },
+    })
+    const r = await handleDispatch(SECRET, f.deps)
+    expect(r.body).toEqual({ processed: 2, sent: 1, failed: 1 })
+    expect(f.sent.map((x) => x.chatId)).toEqual([1, 3])
+    expect(f.completed[0]).toMatchObject({ id: 'a1', ok: false, final: true, delivered: [] })
+    expect(f.completed[1]).toMatchObject(done('d1', [3]))
+  })
+  it("authorizeDispatch: noto'g'ri sir → 401, navbat o'qilmaydi; to'g'ri → sir qaytadi", async () => {
+    const f = fake({ rows: [row('alert')] })
+    expect(await authorizeDispatch('wrong', f.deps)).toEqual({ ok: false, result: { status: 401, body: { error: 'unauthorized' } } })
+    expect(f.claims).toEqual([])
+    expect(await authorizeDispatch(SECRET, f.deps)).toEqual({ ok: true, secret: SECRET })
+  })
+  it("runDispatch: sir xatolardan o'chiriladi", async () => {
+    const f = fake({ rows: [row('alert', { id: 'a1' })], recipients: { c1: [R(1)] }, send: () => ({ ok: false, kind: 'error', error: `boom ${SECRET}` }) })
+    await runDispatch(f.deps, SECRET)
+    expect(f.completed[0]?.error).toBe('p1: boom ***')
+  })
+})
+
+describe('audit — ish oqimi kindlari (request_*, transfer_sent, purchase_for_object, login_changed)', () => {
+  const REQ = {
+    request_id: 'q1', company_name: 'F', status: 'tasdiqlandi', object_name: 'Obyekt A', material_name: 'Sement',
+    qty_input: 5, unit_input: 'qop', qty_base: 250, base_unit: 'kg', needed_by: null, note: null,
+    decision_note: 'Ertaga', created_by_name: 'Ali', decided_by_name: 'Bek', created_at: '2026-10-29T09:32:00Z',
+    decided_at: '2026-10-29T10:00:00Z',
+  }
+  const TR = {
+    transfer_id: 't1', company_name: 'F', from_object_name: 'A', to_object_name: 'B', material_name: 'Sement',
+    qty_input: 3, unit_input: 'qop', qty_base: 150, base_unit: 'kg', note: null, sent_by_name: 'Ali', created_at: '2026-10-29T09:32:00Z',
+  }
+  const PU = {
+    purchase_id: 'p1', company_name: 'F', object_name: 'A', material_name: 'Sement', qty_input: 10, unit_input: 'qop',
+    qty_base: 500, base_unit: 'kg', buyer_name: 'Sobir', supplier_name: null, purchased_at: '2026-10-29T09:32:00Z',
+  }
+  const LG = { alert_id: 'a1', profile_id: 'p9', profile_name: 'Vali', company_name: 'F', actor_name: 'Bek', changed_at: '2026-10-29T09:32:00Z' }
+  const k = (kind: string, id: string, payload: unknown): OutboxRow => ({
+    id, company_id: 'c1', kind, payload, attempts: 1, delivered_chat_ids: [],
+  })
+
+  it('har kind — o‘z shabloni, oddiy "Ochish" (Mini App, deep link yo‘q), qabul qiluvchilar qator bo‘yicha', async () => {
+    const rows = [
+      k('request_created', 'w1', { ...REQ, status: 'kutilmoqda' }),
+      k('request_decided', 'w2', REQ),
+      k('request_approved', 'w3', REQ),
+      k('transfer_sent', 'w4', TR),
+      k('purchase_for_object', 'w5', PU),
+      k('login_changed', 'w6', LG),
+    ]
+    const url = 'https://app.example.uz/tg'
+    const f = fake({ rows, recipients: { c1: [R(1, 'prorab')] }, miniAppUrl: url })
+    const r = await handleDispatch(SECRET, f.deps)
+    expect(r.body).toEqual({ processed: 6, sent: 6, failed: 0 })
+    expect(f.recipientCalls).toEqual(['w1', 'w2', 'w3', 'w4', 'w5', 'w6'])
+    expect(f.sent.map((s) => s.text.split('\n')[0])).toEqual([
+      "📝 <b>Yangi so'rov</b>",
+      "✅ <b>So'rovingiz tasdiqlandi</b>",
+      '🛒 <b>Sotib olish kerak</b>',
+      "🚚 <b>Yo'lda — o'tkazma keladi</b>",
+      '🛒 <b>Sobir sotib oldi, obyektga keladi</b>',
+      "🔐 <b>Sizning loginingiz o'zgartirildi</b>",
+    ])
+    for (const s of f.sent) expect(s.markup).toEqual(miniAppKeyboard(url, 'Ochish'))
+  })
+
+  it('ko‘p bo‘lsa ham digest qilinmaydi', async () => {
+    const rows = Array.from({ length: DIGEST_THRESHOLD + 2 }, (_, i) => k('request_created', `w${i}`, REQ))
+    const f = fake({ rows, recipients: { c1: [R(1, 'admin')] } })
+    await handleDispatch(SECRET, f.deps)
+    expect(f.sent).toHaveLength(rows.length)
+  })
+
+  it('COMPLETE_SENDS_BLOCKED_CHAT_IDS yoqilgan', () => {
+    expect(COMPLETE_SENDS_BLOCKED_CHAT_IDS).toBe(true)
   })
 })

@@ -5,8 +5,8 @@ import { useAuth } from '@/auth/authContext'
 import { Notice, PageHeader, Tabs, type TabItem } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
 import { listObjects } from '@/data/objectsRepo'
-import { listProfiles } from '@/data/profilesRepo'
-import type { Material, ObjectRow, Profile } from '@/data/types'
+import { listDirectory } from '@/data/profileDirectory'
+import type { Material, ObjectRow, PersonRef } from '@/data/types'
 import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
@@ -49,7 +49,7 @@ export function MovementsPage() {
   const [initialFilters] = useState(() => initialMovementFilters(params))
   const [objects, setObjects] = useState<ObjectRow[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
-  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [profiles, setProfiles] = useState<PersonRef[]>([])
   const [refError, setRefError] = useState<string | null>(null)
 
   // Filtrlar uchun ro'yxatlar; xato bo'lsa ham jadvallar ishlaydi
@@ -61,7 +61,7 @@ export function MovementsPage() {
     listMaterials()
       .then((list) => alive && setMaterials(list))
       .catch((err: unknown) => alive && setRefError(errorText(err)))
-    listProfiles()
+    listDirectory()
       .then((list) => alive && setProfiles(list))
       .catch(() => undefined)
     return () => {

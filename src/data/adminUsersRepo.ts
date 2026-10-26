@@ -21,6 +21,7 @@ const BODY_ERRORS: Record<string, RepoErrorCode> = {
   not_found: 'not_found',
   login_taken: 'login_taken',
   conflict: 'conflict',
+  forbidden_target: 'forbidden_target',
 }
 
 /** Kod bo'lmasa yoki noma'lum bo'lsa — HTTP status bo'yicha. */
@@ -42,16 +43,25 @@ export function setLoginErrorCode(status: number, bodyError: string | undefined)
  * Veb login berish yoki parolni tiklash — `admin-users` Edge Function.
  * Parol javobda qaytmaydi; natija — login (email yoki telefon).
  */
-export async function setLogin(input: SetLoginInput): Promise<{ login: string; loginKind: LoginKind }> {
+export async function setLogin(
+  input: SetLoginInput,
+): Promise<{ login: string; loginKind: LoginKind; existingLoginReplaced: boolean }> {
   if (input.password.length < 8) throw new RepoError('weak_password')
   const email = input.email?.trim().toLowerCase()
-  const result = await invokeFunction<{ ok: true; login: string; login_kind?: LoginKind }>('admin-users', {
+  const result = await invokeFunction<{ ok: true; login: string; login_kind?: LoginKind; existing_login_replaced?: boolean }>('admin-users', {
     action: 'set_login',
     profile_id: input.profileId,
     ...(email ? { email } : {}),
     password: input.password,
   })
-  if (result.ok) return { login: result.data.login, loginKind: result.data.login_kind ?? 'web' }
+  if (result.ok) {
+    return {
+      login: result.data.login,
+      loginKind: result.data.login_kind ?? 'web',
+      // Avvalgi login almashtirildi — egasiga Telegram'da xabar boradi (login_changed)
+      existingLoginReplaced: result.data.existing_login_replaced === true,
+    }
+  }
   if (result.network) throw new RepoError('network')
   throw new RepoError(setLoginErrorCode(result.status, result.body?.error), result.body?.error)
 }

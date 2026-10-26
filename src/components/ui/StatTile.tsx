@@ -41,8 +41,8 @@ export function StatTile({
       <div className="flex items-start justify-between gap-2">
         <span className={cx('inline-flex size-9 items-center justify-center rounded-lg [&>svg]:size-5', iconTone[tone])}>{icon}</span>
         {live && (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-ok-bg px-2 py-0.5 text-xs font-semibold text-ok">
-            <span aria-hidden className="size-1.5 rounded-full bg-ok" />
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-ice px-2 py-0.5 text-xs font-semibold text-brand">
+            <span aria-hidden className="size-1.5 rounded-full bg-brand" />
             {t.ui.now}
           </span>
         )}

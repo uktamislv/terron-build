@@ -3,7 +3,6 @@ import { isPhotoError, uploadPhoto, type PhotoKind } from '@/data/photosRepo'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { preparePhoto } from '@/lib/image'
-import { sha256Hex } from '@/lib/sha256'
 import type { PickedPhoto } from './PhotoPicker'
 
 /**
@@ -24,10 +23,10 @@ export function usePhotoDraft({ kind = 'ops' }: { kind?: PhotoKind } = {}) {
     setError(null)
     setPreparing(true)
     try {
-      // Xesh asl fayldan (Batch 12, C): bir xil rasm qayta tanlansa — bir xil xesh
-      const [result, sha256] = await Promise.all([preparePhoto(file, { maxSide: 1600, quality: 0.8 }), sha256Hex(file)])
+      // Rasm xeshini klient hisoblamaydi: saqlangandan keyin server (`photo-hash`) hisoblaydi
+      const result = await preparePhoto(file, { maxSide: 1600, quality: 0.8 })
       if (result.ok) {
-        setPhoto({ blob: result.blob, name: file.name, sha256 })
+        setPhoto({ blob: result.blob, name: file.name })
       } else {
         // Ochib bo'lmaydigan yoki katta rasm — olib tashlanadi, forma saqlanadi
         setPhoto(null)

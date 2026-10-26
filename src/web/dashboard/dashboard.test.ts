@@ -1,6 +1,7 @@
 import { normalizeSummary, type NormOverviewRow } from '@/data/reportsRepo'
 import { t } from '@/i18n'
 import { makeProfile } from '@/test/fixtures'
+import { plain } from '@/test/text'
 import { buildCards, dashboardSections, summaryExportRows } from './cards'
 import { axisNumber, cashChartRows, dailyChartRows, normChartRows, spendChartRows } from './chartData'
 import { dashboardSearch, isoToUz, parseUzDate, presetOf, readDashboardQuery } from './query'
@@ -88,7 +89,7 @@ describe('kartochkalar', () => {
     const by = Object.fromEntries(cards.map((c) => [c.key, c]))
     expect(by.kirim?.to).toBe('/movements?type=kirim&from=2026-10-01&to=2026-10-07&object=3f2b8c1e-1d2a-4b5c-9d8e-0f1a2b3c4d5e')
     expect(by.purchases?.to).toBe('/purchases?from=2026-10-01&to=2026-10-07&object=3f2b8c1e-1d2a-4b5c-9d8e-0f1a2b3c4d5e')
-    expect(by.purchases?.value).toBe('1 250 000,5 so‘m')
+    expect(plain(String(by.purchases?.value))).toBe('1 250 000,5 so‘m')
     expect(by.alertsOpen?.to).toBe('/alerts?status=open&object=3f2b8c1e-1d2a-4b5c-9d8e-0f1a2b3c4d5e')
     expect(by.alertsOpen?.tone).toBe('danger')
     expect(by.cashOnHand?.tone).toBe('danger')

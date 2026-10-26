@@ -1,12 +1,19 @@
 name: CI
 
 on:
+  # main'ga push (va deploy) + har pull request tekshiruvi. Boshqa branch'larga push — PR orqali.
   push:
+    branches: [main]
   pull_request:
+
+# Eng kam huquq: faqat kodni o'qish (deploy — Cloudflare tokeni bilan, GitHub huquqi kerak emas)
+permissions:
+  contents: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,10 +26,13 @@ jobs:
       - run: npm run test
       - run: npm run test:sql
       - run: npm run build
-      # Edge Functions (Deno): index.ts va Deno'ga xos _shared fayllari tsc'da tekshirilmaydi
+        env:
+          VITE_APP_VERSION: ${{ github.sha }}
+      # Edge Functions (Deno): index.ts va Deno'ga xos _shared fayllari tsc'da tekshirilmaydi.
+      # Versiya aniq qotirilgan — yangi Deno chiqishi CI'ni kutilmaganda buzmasin.
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: v2.9.7
       - name: Deno check (Edge Functions)
         working-directory: supabase/functions
         run: deno check */index.ts
@@ -32,23 +42,40 @@ jobs:
     needs: check
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.CLOUDFLARE_DEPLOY == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     concurrency:
       group: deploy-production
       cancel-in-progress: false
+    env:
+      # Faqat ochiq (public) qiymatlar. service_role va bot tokeni bu yerga qo'yilmaydi
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+      VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+      VITE_APP_VERSION: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      # Bo'sh VITE_ o'zgaruvchi bilan yig'ilgan frontend production'da ishlamaydi — deploy'dan oldin to'xtaymiz
+      - name: Guard — majburiy VITE_ o'zgaruvchilar
+        run: |
+          missing=0
+          for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_TELEGRAM_BOT_USERNAME VITE_APP_VERSION; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name bo'sh (GitHub → Settings → Secrets and variables → Actions → Variables)"
+              missing=1
+            fi
+          done
+          case "$VITE_SUPABASE_URL" in
+            https://*) ;;
+            *) echo "::error::VITE_SUPABASE_URL https:// bilan boshlanishi kerak"; missing=1 ;;
+          esac
+          exit $missing
       - run: npm ci
       - name: Build
         run: npm run build
-        env:
-          # Faqat ochiq (public) qiymatlar. service_role va bot tokeni bu yerga qo'yilmaydi
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
-          VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
       - name: Deploy
         run: npx wrangler deploy
         env:

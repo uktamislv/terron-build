@@ -9,7 +9,10 @@ import { add, cmp, isZero } from '@/domain/decimal'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatDateTime, formatQty, formatSum } from '@/lib/format'
+import { exportFileName, exportWorkbook } from '@/lib/excelExport'
 import { alertDetailText } from '../alerts/alertDetails'
+import { ExportButton } from '../ExportButton'
+import { inventorySheet } from '../exports'
 
 const ti = t.ombor.inventory
 
@@ -109,6 +112,17 @@ function CountDetail({ countId, canApply, onBack }: { countId: string; canApply:
           <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-5" strokeWidth={1.75} />} onClick={onBack} className="-ml-2">
             {ti.back}
           </Button>
+          {submitted && count && rows && rows.length > 0 && (
+            <ExportButton
+              run={async (signal) => {
+                await exportWorkbook({
+                  fileName: exportFileName(t.excel.sections.inventory),
+                  sheets: [inventorySheet(rows, { objectName: count.object_name, countedAt: count.counted_at })],
+                  signal,
+                })
+              }}
+            />
+          )}
           {canApply && submitted && count && !count.applied_at && (
             <Button
               disabled={diffCount === 0}

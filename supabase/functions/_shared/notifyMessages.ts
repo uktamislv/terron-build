@@ -42,6 +42,18 @@ export interface DailyReportPayload {
   geo_denied_count?: number | null
   /** Batch 12: joylashuv aniqlanmagan yozuvlar (`geo_status = 'unavailable'`). */
   geo_unavailable_count?: number | null
+  /** Audit: oraliqda yaratilgan, sanasi oraliqdan oldingi yozuvlar. */
+  backdated_count?: number | null
+  /** Audit: oraliqda qo'lda yopilgan alertlar. */
+  manual_closed_count?: number | null
+  /** Audit: navbatda qolib ketgan bildirishnomalar (joriy). */
+  stuck_pending_count?: number | null
+  /** Audit: oxirgi 7 kunda yuborilmagan bildirishnomalar. */
+  failed_7d_count?: number | null
+  /** Audit: xodimlar qo'lidagi pul (Σ musbat balans), matn. */
+  cash_outstanding_sum?: string | null
+  /** Audit: xodimlarga qarz (Σ manfiy balans, musbat son), matn. */
+  cash_owed_to_staff_sum?: string | null
 }
 
 /** Batch 12 (J): `alert_remind_hours` dan beri ko'rilmagan alert — eslatma. */
@@ -153,6 +165,10 @@ export const NOTIFY_TEXTS = {
     sorovdan_ortiq_xarid: "So'rovdan ortiq xarid",
     podotchet_muddati: "Podotchet muddati o'tdi",
     podotchet_manfiy: 'Podotchet manfiy',
+    sozlama_ozgardi: "Firma sozlamasi o'zgartirildi",
+    login_ozgardi: "Login o'zgartirildi",
+    podotchet_belgisi: 'Podotchet belgisi',
+    sotuvchi_stir_farqi: 'Sotuvchi STIR farqi',
   },
   deletedTitles: {
     purchases: "Xarid o'chirildi",
@@ -198,6 +214,12 @@ export const NOTIFY_TEXTS = {
     sorovdan_ortiq_xarid: "so'rovdan ortiq",
     podotchet_muddati: 'podotchet muddati',
     podotchet_manfiy: 'podotchet manfiy',
+    yozuv_ozgartirildi: "o'zgartirish",
+    yozuv_tuzatildi: 'tuzatish',
+    sozlama_ozgardi: 'sozlama',
+    login_ozgardi: 'login',
+    podotchet_belgisi: 'podotchet belgisi',
+    sotuvchi_stir_farqi: 'sotuvchi STIR',
   } as Record<string, string>,
   noSource: {
     open_purchase: "Ochiq xarid bor edi, lekin kirim unga bog'lanmagan",
@@ -285,6 +307,123 @@ export const NOTIFY_TEXTS = {
   buttons: {
     seen: "✓ Ko'rildi",
     open: 'Ochish',
+  },
+  /** Audit (20261108): yozuv o'zgartirildi / tuzatildi. */
+  recordChange: {
+    titles: {
+      purchases: "Xarid o'zgartirildi",
+      kirim: "Kirim o'zgartirildi",
+      chiqim: "Chiqim o'zgartirildi",
+      movements: "Ombor harakati o'zgartirildi",
+      other: "Yozuv o'zgartirildi",
+    } as Record<string, string>,
+    correctedTitle: 'Muallif yozuvni tuzatdi',
+    actor: "O'zgartirdi: ",
+    author: 'muallif: ',
+    viaCorrect: '(tuzatish orqali)',
+    changed: "o'zgardi",
+    labels: {
+      type: 'Tur',
+      object_id: 'Obyekt',
+      material_id: 'Material',
+      unit_id: 'Birlik',
+      qty_input: 'Miqdor',
+      qty_base: 'Miqdor (asosiy birlikda)',
+      occurred_at: 'Sana',
+      purchased_at: 'Sana',
+      purchase_id: "Bog'langan xarid",
+      total_amount: 'Summa',
+      unit_price: 'Narx',
+      price_per_base: 'Narx (asosiy birlik)',
+      buyer_id: 'Xaridor',
+    } as Record<string, string>,
+    movementTypes: {
+      kirim: 'kirim',
+      chiqim: 'chiqim',
+      transfer_out: "o'tkazma (chiqim)",
+      transfer_in: "o'tkazma (kirim)",
+      inventory_adjust: 'inventarizatsiya tuzatishi',
+    } as Record<string, string>,
+  },
+  settingsChange: {
+    title: "Firma sozlamasi o'zgartirildi",
+    actor: "O'zgartirdi: ",
+    yes: 'ha',
+    no: "yo'q",
+    empty: '—',
+    labels: {
+      price_deviation_pct: "Narx og'ishi chegarasi, %",
+      price_avg_window: "Narx o'rtachasi — xaridlar soni",
+      receipt_mismatch_pct: 'Xarid/qabul farqi chegarasi, %',
+      estimate_increase_pct: 'Smeta oshishi chegarasi, %',
+      transfer_receive_hours: "O'tkazmani qabul qilish muddati, soat",
+      photo_required_amount: 'Rasm majburiy bo‘lgan summa',
+      cash_max_days: 'Podotchet muddati, kun',
+      duplicate_window_minutes: 'Takroriy yozuv oynasi, daqiqa',
+      request_overbuy_pct: "So'rovdan ortiq xarid chegarasi, %",
+      alert_remind_hours: 'Eslatma, soat',
+      forecast_days_warn: 'Tugash ogohlantirishi, kun',
+      quiet_hours_start: 'Tinch soatlar boshi',
+      quiet_hours_end: 'Tinch soatlar oxiri',
+    } as Record<string, string>,
+  },
+  loginChange: {
+    title: "Login o'zgartirildi",
+    target: 'Kimning: ',
+    actor: "O'zgartirdi: ",
+    actorExternal: 'Tizim egasi (boshqa firma)',
+  },
+  cashFlag: {
+    title: 'Podotchet belgisi',
+    reasons: {
+      qaytarildi: 'Pul qaytarildi deb kiritildi',
+      issued_at_outside_window: 'Sana odatiy oynadan tashqarida',
+    } as Record<string, string>,
+    recipient: 'Kimga: ',
+    amount: 'Summa: ',
+    date: 'Sana: ',
+    actor: 'Kiritdi: ',
+  },
+  sellerTin: {
+    title: 'Sotuvchi STIR farqi',
+    receipt: 'Chekda STIR: ',
+    supplier: 'Tanlangan sotuvchi: ',
+    supplierTin: 'STIR ',
+    noTin: "STIR yo'q",
+    fiscal: 'Fiskal belgi: ',
+  },
+  negativeCause: {
+    deleted: (type: string) => `Sabab: ${type} o'chirildi`,
+    changed: (type: string) => `Sabab: ${type} o'zgartirildi`,
+    qty: 'Miqdor: ',
+  },
+  inventoryDuring: {
+    /** "Sanash paytida 3 ta harakat: Sement — 2, Qum — 1" */
+    line: (n: string) => `Sanash paytida ${n} ta harakat bo'ldi`,
+  },
+  /** Ish oqimi xabarlari (outbox: request_*, transfer_sent, purchase_for_object, login_changed). */
+  workflow: {
+    requestCreated: "Yangi so'rov",
+    requestApproved: "So'rovingiz tasdiqlandi",
+    requestRejected: "So'rovingiz rad etildi",
+    requestDecided: "So'rov bo'yicha qaror",
+    buyNeeded: 'Sotib olish kerak',
+    transferSent: "Yo'lda — o'tkazma keladi",
+    /** "Ali sotib oldi, obyektga keladi" */
+    purchaseFor: (who: string) => `${who} sotib oldi, obyektga keladi`,
+    purchaseForUnknown: 'Xarid qilindi, obyektga keladi',
+    neededBy: 'Kerak: ',
+    note: 'Izoh: ',
+    decisionNote: 'Izoh: ',
+    rejectNote: 'Sabab: ',
+    requestedBy: "So'radi: ",
+    decidedBy: 'Qaror: ',
+    approvedBy: 'tasdiqladi: ',
+    sentBy: 'Yubordi: ',
+    supplier: 'Sotuvchi: ',
+    loginTitle: "Sizning loginingiz o'zgartirildi",
+    loginActor: "O'zgartirdi: ",
+    loginWarn: "Agar bu siz bo'lmasangiz — darhol adminga ayting.",
   },
   /** Rol nomlari — `src/i18n/uz.ts` `roles` bilan bir xil. */
   roles: {
@@ -383,6 +522,12 @@ export const NOTIFY_TEXTS = {
     failed: 'Yuborilmagan xabarlar: ',
     transfersPending: "Qabul qilinmagan o'tkazmalar: ",
     chiqimWithoutEstimate: 'Smetasiz obyektlarda chiqim: ',
+    backdated: 'Orqa sana bilan kiritilgan yozuvlar: ',
+    manualClosed: "Qo'lda yopilgan farqlar: ",
+    stuckPending: "Navbatda qolib ketgan xabarlar: ",
+    failed7d: "7 kunda yuborilmagan xabarlar: ",
+    cashOutstanding: "Xodimlar qo'lidagi pul: ",
+    cashOwed: 'Xodimlarga qarz (ortiqcha sarf): ',
     lowStock: 'Tugayotgan materiallar: ',
     geoDenied: 'Joylashuvga ruxsat berilmagan: ',
     geoUnavailable: 'Joylashuvsiz yozuvlar: ',
@@ -553,7 +698,23 @@ function fitLines(lines: string[], max = TELEGRAM_MAX_LENGTH): string {
     text = kept.join('\n') + '\n' + NOTIFY_TEXTS.ellipsis
     if (text.length <= max) return text
   }
-  return (kept[0] ?? '').slice(0, max - 1) + NOTIFY_TEXTS.ellipsis
+  return safeSlice(kept[0] ?? '', max - 1) + NOTIFY_TEXTS.ellipsis
+}
+
+/**
+ * Bitta qator ham sig'masa: HTML teglar olib tashlanadi (yarim teg / yopilmagan teg qolmasin —
+ * Telegram "can't parse entities" bilan rad etadi), keyin kesiladi; oxirida yarim qolgan
+ * entity (`&am`) ham olib tashlanadi. Matn allaqachon escape qilingan — `&lt;` lar saqlanadi.
+ */
+export function safeSlice(line: string, max: number): string {
+  const plain = line.replace(/<[^>]*>/g, '').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  // Kod nuqtalari bo'yicha (surrogat juftlik bo'linmaydi), UTF-16 uzunligi ≤ max.
+  let out = ''
+  for (const ch of plain) {
+    if (out.length + ch.length > max) break
+    out += ch
+  }
+  return out.replace(/&[a-zA-Z0-9#]{0,10}$/, '')
 }
 
 function contextLine(p: AlertPayload): string {
@@ -587,7 +748,11 @@ function alertEmoji(type: string, severity: string, details: Record<string, unkn
   if (type === 'smetasiz_chiqim') return '📋'
   if (type === 'chek_farqi') return '🧾'
   if (type === 'sorovdan_ortiq_xarid') return '🛒'
-  if (type === 'podotchet_muddati' || type === 'podotchet_manfiy') return '💵'
+  if (type === 'podotchet_muddati' || type === 'podotchet_manfiy' || type === 'podotchet_belgisi') return '💵'
+  if (type === 'yozuv_ozgartirildi' || type === 'yozuv_tuzatildi') return '✏️'
+  if (type === 'sozlama_ozgardi') return '⚙️'
+  if (type === 'login_ozgardi') return '🔐'
+  if (type === 'sotuvchi_stir_farqi') return '🧾'
   if (type === 'normadan_oshish') return '📉'
   if (type === 'smetadan_ortiq_sorov') return '📝'
   if (type === 'otkazma_farqi') return '🔄'
@@ -961,6 +1126,7 @@ function formatInventoryMessage(p: AlertPayload, head: string, when: string | nu
       ...b,
       restB > 0 ? more(count(restB)) : '',
       total ? t.total + total : '',
+      inventoryDuringLine(d),
       when ?? '',
     ]
       .filter((l) => l !== '')
@@ -1018,7 +1184,15 @@ function negativeStockLines(p: AlertPayload): string[] {
   const unit = typeof d.unit === 'string' && d.unit.trim() !== '' ? d.unit : unitOf(p)
   const stock = signedQty(d.stock_after, unit)
   const last = qtyText(d.qty_base, unit)
-  const label = d.movement_type === 'transfer_out' ? t.lastTransfer : t.lastChiqim
+  const mt = typeof d.movement_type === 'string' ? d.movement_type : null
+  // Audit: sabab istalgan tur bo'lishi mumkin — kirim / o'tkazma qabuli o'chirildi yoki kamaytirildi.
+  if (d.movement_deleted === true || (mt !== null && mt !== 'chiqim' && mt !== 'transfer_out')) {
+    const c = NOTIFY_TEXTS.negativeCause
+    const typeLabel = (mt && NOTIFY_TEXTS.recordChange.movementTypes[mt]) ?? (mt ? nameHtml(mt) : null) ?? 'yozuv'
+    const cause = d.movement_deleted === true ? c.deleted(typeLabel) : c.changed(typeLabel)
+    return [stock ? t.stock + stock : '', cause + (last ? ` (${last})` : '')]
+  }
+  const label = mt === 'transfer_out' ? t.lastTransfer : t.lastChiqim
   return [stock ? t.stock + stock : '', last ? label + last : '']
 }
 
@@ -1124,6 +1298,198 @@ function cashAlertLines(p: AlertPayload): string[] {
   ]
 }
 
+// ---------------------------------------------------------------------------
+// Audit (20261108) — yangi alert turlari
+// ---------------------------------------------------------------------------
+
+const CHANGE_DATE_KEYS = ['occurred_at', 'purchased_at']
+const CHANGE_MONEY_KEYS = ['total_amount', 'unit_price', 'price_per_base']
+/** Qiymati id (uuid) bo'lgan ustunlar — qiymat ko'rsatilmaydi, faqat "o'zgardi". */
+const CHANGE_ID_KEYS = ['object_id', 'material_id', 'purchase_id', 'buyer_id']
+/** O'zgargan ustunlar ro'yxatida ko'pi bilan shuncha qator. */
+const CHANGE_MAX_LINES = 12
+
+function recordObj(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
+}
+
+/** O'zgargan ustun qiymati matni (HTML-xavfsiz). Bo'sh → "—". */
+function changeValue(key: string, v: unknown, unit: string | null): string {
+  const empty = NOTIFY_TEXTS.settingsChange.empty
+  if (v === null || v === undefined || v === '') return empty
+  if (CHANGE_DATE_KEYS.includes(key)) {
+    const dt = typeof v === 'string' ? formatDateTimeTashkent(v) : null
+    return dt ?? nameHtml(String(v)) ?? empty
+  }
+  if (CHANGE_MONEY_KEYS.includes(key)) return moneyText(v) ?? nameHtml(String(v)) ?? empty
+  if (key === 'qty_base') return qtyText(v, unit) ?? empty
+  if (key === 'type') {
+    return typeof v === 'string' ? (NOTIFY_TEXTS.recordChange.movementTypes[v] ?? nameHtml(v) ?? empty) : empty
+  }
+  if (typeof v === 'number' || typeof v === 'string') return formatDecimal(v, 3) ?? nameHtml(String(v)) ?? empty
+  if (typeof v === 'boolean') return v ? NOTIFY_TEXTS.settingsChange.yes : NOTIFY_TEXTS.settingsChange.no
+  return empty
+}
+
+/** "5 qop" — miqdor kiritilgan birlik bilan. */
+function inputQty(o: Record<string, unknown>): string {
+  const q = formatDecimal(o.qty_input, 3)
+  if (q === null) return NOTIFY_TEXTS.settingsChange.empty
+  const u = nameHtml(o.unit_input)
+  return u ? `${q} ${u}` : q
+}
+
+/** "• Miqdor: 5 qop → 7 qop", "• Obyekt o'zgardi" ... (alifbo tartibida, DB bergan `changed`). */
+function recordChangeItems(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.recordChange
+  const d = p.details
+  const changed = Array.isArray(d.changed) ? d.changed.filter((k): k is string => typeof k === 'string') : []
+  const before = recordObj(d.before)
+  const after = recordObj(d.after)
+  const unit = unitOf(p)
+  const lines: string[] = []
+  for (const key of changed) {
+    const label = t.labels[key] ?? nameHtml(key) ?? '?'
+    if (key === 'unit_id' && changed.includes('qty_input')) continue // birlik miqdor bilan birga
+    if (key === 'qty_input') {
+      lines.push(`• ${label}: ${inputQty(before)} → ${inputQty(after)}`)
+      continue
+    }
+    if (key === 'unit_id') {
+      const b = nameHtml(before.unit_input) ?? NOTIFY_TEXTS.settingsChange.empty
+      const a = nameHtml(after.unit_input) ?? NOTIFY_TEXTS.settingsChange.empty
+      lines.push(`• ${label}: ${b} → ${a}`)
+      continue
+    }
+    if (CHANGE_ID_KEYS.includes(key)) {
+      lines.push(`• ${label} ${t.changed}`)
+      continue
+    }
+    lines.push(`• ${label}: ${changeValue(key, before[key], unit)} → ${changeValue(key, after[key], unit)}`)
+  }
+  if (lines.length > CHANGE_MAX_LINES) {
+    const rest = lines.length - CHANGE_MAX_LINES
+    return [...lines.slice(0, CHANGE_MAX_LINES), NOTIFY_TEXTS.estimate.more(count(rest))]
+  }
+  return lines
+}
+
+/** "O'zgartirdi: Admin (muallif: Ali) (tuzatish orqali)". */
+function recordChangeActor(d: Record<string, unknown>): string {
+  const t = NOTIFY_TEXTS.recordChange
+  const actor = nameHtml(d.actor_name)
+  const author = nameHtml(d.author_name)
+  const sameAuthor =
+    (typeof d.actor_profile_id === 'string' && d.actor_profile_id === d.author_id) || (actor !== null && actor === author)
+  const parts = [actor ? t.actor + actor : '', author && !sameAuthor ? `(${t.author}${author})` : '', d.via === 'correct_entry' ? t.viaCorrect : '']
+  return parts.filter((x) => x).join(' ')
+}
+
+function recordChangeTitle(type: string, d: Record<string, unknown>): string {
+  const t = NOTIFY_TEXTS.recordChange
+  if (type === 'yozuv_tuzatildi') return t.correctedTitle
+  if (d.table === 'purchases') return t.titles.purchases ?? t.titles.other ?? ''
+  if (d.table === 'movements') {
+    if (d.movement_type === 'kirim') return t.titles.kirim ?? ''
+    if (d.movement_type === 'chiqim') return t.titles.chiqim ?? ''
+    return t.titles.movements ?? ''
+  }
+  return t.titles.other ?? ''
+}
+
+/** Material · obyekt (material details'da bo'lsa ham) + o'zgarishlar + kim. */
+function recordChangeLines(p: AlertPayload): string[] {
+  const d = p.details
+  const material = nameHtml(p.material_name) ?? nameHtml(d.material_name)
+  const ctx = [material, nameHtml(p.object_name)].filter((x) => x).join(' · ')
+  return [ctx, ...recordChangeItems(p), recordChangeActor(d)]
+}
+
+/** Sozlama qiymati: vaqt "22:00", son, ha/yo'q, bo'sh "—". */
+function settingValue(v: unknown): string {
+  const t = NOTIFY_TEXTS.settingsChange
+  if (v === null || v === undefined || v === '') return t.empty
+  if (typeof v === 'boolean') return v ? t.yes : t.no
+  if (typeof v === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(v)) return v.slice(0, 5)
+  return formatDecimal(v, 2) ?? nameHtml(String(v)) ?? t.empty
+}
+
+function settingsChangeLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.settingsChange
+  const raw = Array.isArray(p.details.changes) ? p.details.changes : []
+  const items = raw
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object' && typeof (c as Record<string, unknown>).key === 'string')
+    .map((c) => {
+      const key = c.key as string
+      return `• ${t.labels[key] ?? nameHtml(key) ?? '?'}: ${settingValue(c.before)} → ${settingValue(c.after)}`
+    })
+  const actor = nameHtml(p.details.actor_name)
+  return [...items, actor ? t.actor + actor : '']
+}
+
+function roleLabel(v: unknown): string | null {
+  return typeof v === 'string' ? (NOTIFY_TEXTS.roles[v] ?? nameHtml(v)) : null
+}
+
+function loginChangeLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.loginChange
+  const d = p.details
+  const target = [nameHtml(d.target_name), roleLabel(d.target_role)].filter((x) => x).join(' · ')
+  const actorName = nameHtml(d.actor_name)
+  const actorRole = roleLabel(d.actor_role)
+  // actor_role null — aktyor boshqa firmaniki (tizim egasi)
+  const actor = actorName ? (actorRole ? `${actorName} · ${actorRole}` : `${actorName} (${t.actorExternal})`) : actorRole === null ? t.actorExternal : null
+  return [target ? t.target + target : '', actor ? t.actor + actor : '']
+}
+
+function cashFlagLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.cashFlag
+  const d = p.details
+  const reasons = Array.isArray(d.reasons) ? d.reasons : typeof d.reasons === 'string' ? [d.reasons] : []
+  const reasonLines = reasons
+    .filter((r): r is string => typeof r === 'string')
+    .map((r) => t.reasons[r] ?? nameHtml(r) ?? '')
+  const recipient = nameHtml(d.recipient_name)
+  const amount = moneyText(d.amount)
+  const date = typeof d.issued_at === 'string' ? formatDateTimeTashkent(d.issued_at) : null
+  const actor = nameHtml(d.actor_name)
+  return [
+    ...reasonLines,
+    recipient ? t.recipient + recipient : '',
+    amount ? t.amount + amount : '',
+    date ? t.date + date : '',
+    actor ? t.actor + actor : '',
+  ]
+}
+
+function sellerTinLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.sellerTin
+  const d = p.details
+  const receiptTin = nameHtml(d.seller_tin)
+  const supplier = nameHtml(d.supplier_name)
+  const supplierTin = nameHtml(d.supplier_tin)
+  const fiscal = nameHtml(d.receipt_fiscal_sign)
+  return [
+    contextLine(p),
+    receiptTin ? t.receipt + receiptTin : '',
+    supplier ? `${t.supplier}${supplier} (${supplierTin ? t.supplierTin + supplierTin : t.noTin})` : '',
+    fiscal ? t.fiscal + fiscal : '',
+  ]
+}
+
+/** Inventarizatsiya: "Sanash paytida 3 ta harakat bo'ldi: Sement — 2, Qum — 1". */
+function inventoryDuringLine(d: Record<string, unknown>): string {
+  const raw = Array.isArray(d.movements_during_count) ? d.movements_during_count : []
+  const items = raw.filter((m): m is Record<string, unknown> => !!m && typeof m === 'object')
+  const total = nonNegInt(d.movements_during_count_total)
+  const sum = items.reduce((acc, m) => acc + Number((nonNegInt(m.count) ?? '0').replace(/ /g, '')), 0)
+  const n = total ?? (sum > 0 ? count(sum) : null)
+  if (n === null || n === '0') return ''
+  const parts = items.slice(0, 5).map((m) => `${nameHtml(m.material_name) ?? '?'} — ${nonNegInt(m.count) ?? '0'}`)
+  const more = items.length > 5 ? `, ${NOTIFY_TEXTS.ellipsis}` : ''
+  return `⚠️ ${NOTIFY_TEXTS.inventoryDuring.line(n)}${parts.length ? `: ${parts.join(', ')}${more}` : ''}`
+}
+
 /** Tur sarlavhasi (escape kerak emas — bizning matnimiz). */
 function alertTitle(type: string, details: Record<string, unknown>): string {
   const titles = NOTIFY_TEXTS.alertTitles
@@ -1177,6 +1543,17 @@ function alertTitle(type: string, details: Record<string, unknown>): string {
       return titles.podotchet_muddati
     case 'podotchet_manfiy':
       return titles.podotchet_manfiy
+    case 'yozuv_ozgartirildi':
+    case 'yozuv_tuzatildi':
+      return recordChangeTitle(type, details)
+    case 'sozlama_ozgardi':
+      return titles.sozlama_ozgardi
+    case 'login_ozgardi':
+      return titles.login_ozgardi
+    case 'podotchet_belgisi':
+      return titles.podotchet_belgisi
+    case 'sotuvchi_stir_farqi':
+      return titles.sotuvchi_stir_farqi
     default:
       return NOTIFY_TEXTS.genericAlert
   }
@@ -1250,6 +1627,22 @@ export function formatAlertMessage(p: AlertPayload): string {
     case 'podotchet_manfiy':
       lines.push(...cashAlertLines(payload))
       break
+    case 'yozuv_ozgartirildi':
+    case 'yozuv_tuzatildi':
+      lines.push(...recordChangeLines(payload))
+      break
+    case 'sozlama_ozgardi':
+      lines.push(...settingsChangeLines(payload))
+      break
+    case 'login_ozgardi':
+      lines.push(...loginChangeLines(payload))
+      break
+    case 'podotchet_belgisi':
+      lines.push(...cashFlagLines(payload))
+      break
+    case 'sotuvchi_stir_farqi':
+      lines.push(...sellerTinLines(payload))
+      break
     default:
       lines.push(ctx)
   }
@@ -1280,6 +1673,12 @@ const ALERT_TYPE_ORDER = [
   'joylashuv_farqi',
   'sorovdan_ortiq_xarid',
   'podotchet_manfiy',
+  'yozuv_ozgartirildi',
+  'sozlama_ozgardi',
+  'login_ozgardi',
+  'podotchet_belgisi',
+  'sotuvchi_stir_farqi',
+  'yozuv_tuzatildi',
   'ozi_qabul_qilgan',
 ]
 
@@ -1330,7 +1729,13 @@ export function formatAlertDigest(payloads: AlertPayload[], opts: { reminder?: b
             ? (transferLines({ ...p, details })[0] ?? '')
             : p.type === 'podotchet_muddati' || p.type === 'podotchet_manfiy'
               ? (nameHtml(details.profile_name) ?? '')
-              : contextLine(p)
+              : p.type === 'podotchet_belgisi'
+                ? (nameHtml(details.recipient_name) ?? '')
+                : p.type === 'login_ozgardi'
+                  ? (nameHtml(details.target_name) ?? '')
+                  : p.type === 'sozlama_ozgardi'
+                    ? (nameHtml(details.actor_name) ?? '')
+                    : contextLine(p) || (nameHtml(details.material_name) ?? '')
     const head = `${escalationPrefix(p)}${alertEmoji(p.type, p.severity, details)} ${alertTitle(p.type, details)}`
     return ctx ? `${head}: ${ctx}` : head
   })
@@ -1378,6 +1783,17 @@ export function formatDailyReport(p: DailyReportPayload): string {
   const lowStock = positive(p.low_stock_count)
   const geoDenied = positive(p.geo_denied_count)
   const geoUnavailable = positive(p.geo_unavailable_count)
+  const backdated = positive(p.backdated_count)
+  const manualClosed = positive(p.manual_closed_count)
+  const stuckPending = positive(p.stuck_pending_count)
+  const failed7d = positive(p.failed_7d_count)
+  /** Musbat summa (matn) → "1 250 000 so‘m", 0 / manfiy / yo'q → null. */
+  const positiveMoney = (v: unknown): string | null => {
+    const n = formatDecimal(v, 2)
+    return n !== null && n !== '0' && !n.startsWith('-') ? `${n} ${NOTIFY_TEXTS.currency}` : null
+  }
+  const cashOutstanding = positiveMoney(p.cash_outstanding_sum)
+  const cashOwed = positiveMoney(p.cash_owed_to_staff_sum)
   return fitLines([
     `📊 <b>${t.title} · ${formatDateIso(p.date)}</b>`,
     period ?? '',
@@ -1394,7 +1810,13 @@ export function formatDailyReport(p: DailyReportPayload): string {
     lowStock ? `📉 ${t.lowStock}${lowStock}` : '',
     geoDenied ? t.geoDenied + geoDenied : '',
     geoUnavailable ? t.geoUnavailable + geoUnavailable : '',
+    backdated ? t.backdated + backdated : '',
+    manualClosed ? t.manualClosed + manualClosed : '',
+    cashOutstanding ? t.cashOutstanding + cashOutstanding : '',
+    cashOwed ? t.cashOwed + cashOwed : '',
     failed !== '0' && !failed.startsWith('-') ? `⚠️ ${t.failed}${failed}` : '',
+    stuckPending ? `⚠️ ${t.stuckPending}${stuckPending}` : '',
+    failed7d ? `⚠️ ${t.failed7d}${failed7d}` : '',
   ])
 }
 
@@ -1529,6 +1951,209 @@ export function webBugsUrl(miniAppUrl: string): string {
 /** Xatolik xabari tugmasi: "Ochish" — oddiy `url` (veb panel, Mini App emas). */
 export function bugReportKeyboard(miniAppUrl: string): InlineKeyboard {
   return { inline_keyboard: [[{ text: NOTIFY_TEXTS.buttons.open, url: webBugsUrl(miniAppUrl) }]] }
+}
+
+// ---------------------------------------------------------------------------
+// Audit (20261108) — ish oqimi xabarlari (docs/audit-fixes.md, "Bildirishnoma payloadlari")
+// ---------------------------------------------------------------------------
+
+/** request_created / request_decided / request_approved payloadi. */
+export interface RequestWorkflowPayload {
+  request_id: string
+  company_name: string | null
+  status: string | null
+  object_id?: string | null
+  object_name: string | null
+  material_id?: string | null
+  material_name: string | null
+  qty_input: number | string | null
+  unit_input: string | null
+  qty_base: number | string | null
+  base_unit: string | null
+  needed_by: string | null
+  note: string | null
+  decision_note: string | null
+  created_by_name: string | null
+  decided_by_name: string | null
+  created_at: string | null
+  decided_at: string | null
+}
+
+export interface TransferSentPayload {
+  transfer_id: string
+  company_name: string | null
+  from_object_id?: string | null
+  from_object_name: string | null
+  to_object_id?: string | null
+  to_object_name: string | null
+  material_id?: string | null
+  material_name: string | null
+  qty_input: number | string | null
+  unit_input: string | null
+  qty_base: number | string | null
+  base_unit: string | null
+  note: string | null
+  sent_by_name: string | null
+  created_at: string | null
+}
+
+export interface PurchaseForObjectPayload {
+  purchase_id: string
+  company_name: string | null
+  object_id?: string | null
+  object_name: string | null
+  material_id?: string | null
+  material_name: string | null
+  qty_input: number | string | null
+  unit_input: string | null
+  qty_base: number | string | null
+  base_unit: string | null
+  buyer_id?: string | null
+  buyer_name: string | null
+  supplier_name: string | null
+  purchased_at: string | null
+}
+
+export interface LoginChangedPayload {
+  alert_id: string | null
+  profile_id: string
+  profile_name: string | null
+  company_name: string | null
+  actor_name: string | null
+  changed_at: string | null
+}
+
+/** Foydalanuvchi izohi uchun maksimal uzunlik (escape'dan oldin). */
+const NOTE_MAX = 300
+
+/** Izoh: qisqartiriladi va escape qilinadi; bo'sh → null. */
+function noteHtml(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const s = v.replace(/\s+/g, ' ').trim()
+  if (s === '') return null
+  const chars = Array.from(s)
+  return escapeHtml(chars.length > NOTE_MAX ? chars.slice(0, NOTE_MAX - 1).join('') + NOTIFY_TEXTS.ellipsis : s)
+}
+
+/** "2,5 qop (125 kg)" — kiritilgan birlik va (farq qilsa) asosiy birlikda. */
+function workflowQty(p: { qty_input: unknown; unit_input: unknown; qty_base: unknown; base_unit: unknown }): string | null {
+  const input = formatDecimal(p.qty_input, 3)
+  const inputUnit = nameHtml(p.unit_input)
+  const base = qtyText(p.qty_base, typeof p.base_unit === 'string' ? p.base_unit : null)
+  if (input === null) return base
+  const main = inputUnit ? `${input} ${inputUnit}` : input
+  return base !== null && inputUnit !== nameHtml(p.base_unit) ? `${main} (${base})` : main
+}
+
+function isoTime(v: unknown): string {
+  return typeof v === 'string' ? (formatDateTimeTashkent(v) ?? '') : ''
+}
+
+/** Material · obyekt, miqdor, kerak sanasi — so'rov xabarlari uchun umumiy. */
+function requestCore(p: RequestWorkflowPayload): string[] {
+  const t = NOTIFY_TEXTS.workflow
+  const needed = typeof p.needed_by === 'string' ? dateOnly(p.needed_by) : null
+  return [
+    [nameHtml(p.material_name), nameHtml(p.object_name)].filter((x) => x).join(' · '),
+    workflowQty(p) ?? '',
+    needed ? t.neededBy + needed : '',
+  ]
+}
+
+/** Admin'larga: yangi so'rov. */
+export function formatRequestCreated(p: RequestWorkflowPayload): string {
+  const t = NOTIFY_TEXTS.workflow
+  const note = noteHtml(p.note)
+  const by = nameHtml(p.created_by_name)
+  return fitLines([
+    `📝 <b>${t.requestCreated}</b>`,
+    ...requestCore(p),
+    note ? t.note + note : '',
+    by ? t.requestedBy + by : '',
+    isoTime(p.created_at),
+  ])
+}
+
+/** So'rov muallifiga: tasdiqlandi / rad etildi (+ qaror izohi). */
+export function formatRequestDecided(p: RequestWorkflowPayload): string {
+  const t = NOTIFY_TEXTS.workflow
+  const head =
+    p.status === 'tasdiqlandi'
+      ? `✅ <b>${t.requestApproved}</b>`
+      : p.status === 'rad'
+        ? `❌ <b>${t.requestRejected}</b>`
+        : `📝 <b>${t.requestDecided}</b>`
+  const decision = noteHtml(p.decision_note)
+  const by = nameHtml(p.decided_by_name)
+  return fitLines([
+    head,
+    ...requestCore(p),
+    decision ? (p.status === 'rad' ? t.rejectNote : t.decisionNote) + decision : '',
+    by ? t.decidedBy + by : '',
+    isoTime(p.decided_at ?? p.created_at),
+  ])
+}
+
+/** Ta'minotchilarga: tasdiqlangan so'rov — sotib olish kerak. */
+export function formatRequestApproved(p: RequestWorkflowPayload): string {
+  const t = NOTIFY_TEXTS.workflow
+  const note = noteHtml(p.note)
+  const decision = noteHtml(p.decision_note)
+  const by = nameHtml(p.created_by_name)
+  const approver = nameHtml(p.decided_by_name)
+  const people = [by ? t.requestedBy + by : null, approver ? t.approvedBy + approver : null].filter((x) => x).join(' · ')
+  return fitLines([
+    `🛒 <b>${t.buyNeeded}</b>`,
+    ...requestCore(p),
+    note ? t.note + note : '',
+    decision ? t.decisionNote + decision : '',
+    people,
+    isoTime(p.decided_at ?? p.created_at),
+  ])
+}
+
+/** Qabul qiluvchi obyekt xodimlariga: o'tkazma yo'lda. */
+export function formatTransferSent(p: TransferSentPayload): string {
+  const t = NOTIFY_TEXTS.workflow
+  const material = nameHtml(p.material_name)
+  const route = `${nameHtml(p.from_object_name) ?? '?'} → ${nameHtml(p.to_object_name) ?? '?'}`
+  const note = noteHtml(p.note)
+  const by = nameHtml(p.sent_by_name)
+  return fitLines([
+    `🚚 <b>${t.transferSent}</b>`,
+    material ? `${material}: ${route}` : route,
+    workflowQty(p) ?? '',
+    note ? t.note + note : '',
+    by ? t.sentBy + by : '',
+    isoTime(p.created_at),
+  ])
+}
+
+/** Obyekt xodimlariga: "Ali sotib oldi, obyektga keladi". */
+export function formatPurchaseForObject(p: PurchaseForObjectPayload): string {
+  const t = NOTIFY_TEXTS.workflow
+  const buyer = nameHtml(p.buyer_name)
+  const supplier = nameHtml(p.supplier_name)
+  return fitLines([
+    `🛒 <b>${buyer ? t.purchaseFor(buyer) : t.purchaseForUnknown}</b>`,
+    [nameHtml(p.material_name), nameHtml(p.object_name)].filter((x) => x).join(' · '),
+    workflowQty(p) ?? '',
+    supplier ? t.supplier + supplier : '',
+    isoTime(p.purchased_at),
+  ])
+}
+
+/** Login egasiga: loginingiz o'zgartirildi — siz bo'lmasangiz adminga ayting. */
+export function formatLoginChanged(p: LoginChangedPayload): string {
+  const t = NOTIFY_TEXTS.workflow
+  const actor = nameHtml(p.actor_name)
+  return fitLines([
+    `🔐 <b>${t.loginTitle}</b>`,
+    nameHtml(p.profile_name) ?? '',
+    actor ? t.loginActor + actor : '',
+    isoTime(p.changed_at),
+    `⚠️ ${t.loginWarn}`,
+  ])
 }
 
 // ---------------------------------------------------------------------------

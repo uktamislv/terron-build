@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
 import { ClipboardCheck, ClipboardList, Plus, TriangleAlert } from 'lucide-react'
-import { BottomSheet, Button, Notice, PageHeader, SkeletonRows } from '@/components/ui'
+import { BottomSheet, Button, Notice, RetryNotice, SkeletonRows } from '@/components/ui'
 import {
   createCount,
   listCandidateMaterials,
@@ -25,8 +25,8 @@ import { useEntryData } from '../entry/useEntryData'
 import { useRankedMaterials } from '../entry/useRankedMaterials'
 import { CountMaterialList } from '../inventory/CountMaterialList'
 import { getWebApp, haptic } from '../telegram'
-import { LoadError, SavedBanner } from '../ui'
-import { useBackButton, useMainButton } from '../useTelegramButtons'
+import { SavedBanner } from '../ui'
+import { flashMainButtonSaved, useBackButton, useClosingConfirmation, useMainButton } from '../useTelegramButtons'
 
 const ti = t.tg.inventory
 
@@ -84,6 +84,7 @@ function CountItemForm({
         qtyInput: value,
       })
       haptic.success()
+      flashMainButtonSaved()
       onSaved(item)
     } catch (err) {
       haptic.error()
@@ -96,6 +97,7 @@ function CountItemForm({
 
   const onMain = useCallback(() => void save(), [save])
   useMainButton(ti.save, onMain, false, saving)
+  useClosingConfirmation(qty.trim() !== '')
   useBackButton(onCancel)
   const insideTelegram = getWebApp() !== null
 
@@ -104,6 +106,7 @@ function CountItemForm({
       <MaterialHeader name={material.name} onChange={onCancel} />
       <QtyField
         label={ti.qty}
+        suffix={unit?.unit ?? null}
         value={qty}
         error={qtyError}
         onChange={(v) => {
@@ -231,7 +234,7 @@ function CountSession({
   const notCounted = [...relevant].filter((id) => !countedIds.has(id)).length
   return (
     <div className="flex flex-col gap-4">
-      {error && <LoadError message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
+      {error && <RetryNotice message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
       {!items && !error && <SkeletonRows rows={3} />}
       {items && (
         <>
@@ -283,12 +286,11 @@ function CountSession({
           <div className="flex flex-col gap-4 px-2 pb-1">
             <p className="text-base text-ink">{n === 0 ? ti.nothingCounted : ti.confirmText(n)}</p>
             {notCounted > 0 && (
-              <div data-testid="not-counted" className="flex gap-2.5 rounded-xl border border-warn/25 bg-warn-bg px-4 py-3 text-sm text-warn">
-                <TriangleAlert aria-hidden className="mt-0.5 size-5 shrink-0" strokeWidth={1.75} />
-                <div>
+              <div data-testid="not-counted">
+                <Notice tone="warn">
                   <p className="font-semibold">{ti.notCounted(notCounted)}</p>
                   <p>{ti.notCountedWarn}</p>
-                </div>
+                </Notice>
               </div>
             )}
             {submitError && <Notice>{submitError}</Notice>}
@@ -364,8 +366,7 @@ export function InventoryPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title={ti.title} />
-      {error && <LoadError message={error} onRetry={reload} />}
+      {error && <RetryNotice message={error} onRetry={reload} />}
       {!error && (!objects || !materials) && <SkeletonRows rows={3} />}
       {objects && objects.length === 0 && <Notice tone="warn">{ti.noObjects}</Notice>}
 
@@ -437,7 +438,7 @@ export function InventoryPage() {
             <section role="status" className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-paper px-5 py-8 text-center">
               <span
                 aria-hidden
-                className={`inline-flex size-16 items-center justify-center rounded-full ${phase.shortage ? 'bg-warn-bg text-warn' : 'bg-ok-bg text-ok'}`}
+                className={`inline-flex size-16 items-center justify-center rounded-full ${phase.shortage ? 'bg-danger-bg text-danger' : 'bg-ok-bg text-ok'}`}
               >
                 {phase.shortage ? <TriangleAlert className="size-8" strokeWidth={1.5} /> : <ClipboardCheck className="size-8" strokeWidth={1.5} />}
               </span>

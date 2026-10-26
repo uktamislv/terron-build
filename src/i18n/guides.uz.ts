@@ -40,7 +40,7 @@ const admin: RoleGuide = {
       title: 'Boshlash (bir marta)',
       steps: [
         '“Obyektlar” → “Obyekt qo‘shish”. Kerak bo‘lsa, joylashuvni kiriting.',
-        '“Foydalanuvchilar” → “Foydalanuvchi qo‘shish”: ism, telefon raqami, rol va obyektlar. Odam Mini App’ni ochib, raqamini ulashadi.',
+        '“Foydalanuvchilar” → “Foydalanuvchi qo‘shish”: ism, telefon raqami, rol va obyektlar. Odam Telegram ilovasini ochib, raqamini ulashadi.',
         'Veb kerak bo‘lsa — “Veb login berish”. Parol faqat bir marta ko‘rsatiladi.',
         '“Materiallar” da birliklar va muqobil nomlarni tekshiring. “Sozlamalar” da chegaralarni belgilang.',
       ],
@@ -50,7 +50,7 @@ const admin: RoleGuide = {
       steps: [
         '“Ogohlantirishlar” ni oching: har birini tekshiring, “Ko‘rildi” yoki “Yopish” (sabab bilan).',
         '“So‘rovlar”: “Tasdiqlash” yoki “Rad etish” (sababini yozing).',
-        '“Ombor harakatlari” → “Inventarizatsiya”: farq bo‘lsa, tekshirib “Qoldiqni tuzatish”.',
+        '“Ombor” → “Inventarizatsiya”: farq bo‘lsa, tekshirib “Qoldiqni tuzatish”.',
         'Xato yozuvni “O‘chirish”; kerak bo‘lsa “Tarix” → “O‘chirilganlar” dan “Tiklash”.',
       ],
     },
@@ -107,9 +107,9 @@ export const guides: Record<Role, RoleGuide> = {
         title: 'Telegram’da',
         steps: [
           'Kunlik hisobotni o‘qing: kirim, chiqim, xaridlar, so‘rovlar, farqlar soni.',
-          'Mini App’ni oching. “Bosh” ekranda bugungi holat, smeta ishlatilishi va ogohlantirishlar.',
+          'Telegram ilovasini oching. “Bosh” ekranda bugungi holat, smeta ishlatilishi va ogohlantirishlar.',
           '“Tugayotganlar” ro‘yxatida qaysi material necha kunga yetishini ko‘ring.',
-          'Ogohlantirish xabaridagi “Ochish” tugmasi uni Mini App’da ochadi.',
+          'Ogohlantirish xabaridagi “Ochish” tugmasi uni Telegram ilovasida ochadi.',
         ],
       },
       {
@@ -173,7 +173,7 @@ export const guides: Record<Role, RoleGuide> = {
           '“Podotchet” → “Pul berish”.',
           '“Kimga” ni tanlang, summa va sanani kiriting, “Saqlash”.',
           'Odam ortiqcha pulni qaytarsa — “Qaytarish”, “Kimdan” ni tanlang.',
-          '“Qo‘limdagi pul” jadvalida har kimning berilgan, sarflangan va qo‘lidagi puli ko‘rinadi.',
+          '“Qo‘ldagi pul” jadvalida har kimning berilgan, sarflangan va qo‘lidagi puli ko‘rinadi.',
         ],
       },
       {
@@ -225,14 +225,14 @@ export const guides: Record<Role, RoleGuide> = {
   taminotchi: {
     title: 'Ta’minotchi uchun qo‘llanma',
     intro:
-      'Siz material sotib olasiz va har bir xaridni Mini App’da kiritasiz. Tasdiqlangan so‘rovlar bo‘yicha xarid qilasiz. Qo‘lingizdagi pul doim ko‘rinib turadi.',
+      'Siz material sotib olasiz va har bir xaridni Telegram ilovasida kiritasiz. Tasdiqlangan so‘rovlar bo‘yicha xarid qilasiz. Qo‘lingizdagi pul doim ko‘rinib turadi.',
     daily: [
       {
-        title: 'Xarid kiritish (Mini App)',
+        title: 'Xarid kiritish (Telegram ilovasi)',
         steps: [
           '“Xarid” ni oching. Yuqorida “Qo‘limda” — qo‘lingizdagi pul.',
-          'So‘rov bo‘yicha olsangiz, “Tasdiqlangan so‘rovlar” dan uni bosing — ma’lumot to‘ladi.',
-          'Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing: summa va sotuvchi o‘zi to‘ladi.',
+          'So‘rov bo‘yicha olsangiz, “Tasdiqlangan so‘rovlar” dan uni bosing — ma’lumotlar o‘zi to‘ldiriladi.',
+          'Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing: summa va sotuvchi o‘zi to‘ldiriladi.',
           'Material, miqdor, “Jami summa (chekdagi)”, obyekt va sotuvchini tanlang.',
           '“Saqlash” ni bosing.',
         ],
@@ -249,7 +249,7 @@ export const guides: Record<Role, RoleGuide> = {
       'Har xaridni o‘sha kuni kiriting. Summa — chekdagi jami summa.',
       'Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda va “majburiy” belgili materialda chek rasmisiz saqlanmaydi. QR skanerlangan chekda rasm shart emas.',
       'Bitta chekni ikki xaridda ishlatib bo‘lmaydi.',
-      'Mini App joylashuvni so‘raydi — ruxsat bering.',
+      'Telegram ilovasi joylashuvni so‘raydi — ruxsat bering.',
     ],
     alerts: [
       {
@@ -280,7 +280,7 @@ export const guides: Record<Role, RoleGuide> = {
   prorab: {
     title: 'Prorab uchun qo‘llanma',
     intro:
-      'Siz obyektga kelgan va ishlatilgan materialni yozasiz, xarid kiritasiz va kerakli materialni so‘raysiz. Hamma ish Telegram’dagi Mini App’da. Faqat sizga biriktirilgan obyektlar ko‘rinadi.',
+      'Siz obyektga kelgan va ishlatilgan materialni yozasiz, xarid kiritasiz va kerakli materialni so‘raysiz. Hamma ish Telegram ilovasida. Faqat sizga biriktirilgan obyektlar ko‘rinadi.',
     daily: [
       {
         title: 'Material keldi yoki ishlatildi',
@@ -310,7 +310,7 @@ export const guides: Record<Role, RoleGuide> = {
       },
     ],
     rules: [
-      'Mini App joylashuvni so‘raydi — ruxsat bering.',
+      'Telegram ilovasi joylashuvni so‘raydi — ruxsat bering.',
       'Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda va “majburiy” belgili materialda rasmsiz saqlanmaydi. QR skanerlangan chekda rasm shart emas.',
       'Material kelishi bilan yozing, kechga qoldirmang.',
       '“Xuddi shunday yozuv bor” chiqsa, “Yozuvlarim” ni tekshiring.',
@@ -345,7 +345,7 @@ export const guides: Record<Role, RoleGuide> = {
   omborchi: {
     title: 'Omborchi uchun qo‘llanma',
     intro:
-      'Siz obyektga kelgan va berilgan materialni Mini App’da yozasiz. To‘g‘ri yozuv — aniq qoldiq. Faqat sizga biriktirilgan obyektlar ko‘rinadi.',
+      'Siz obyektga kelgan va berilgan materialni Telegram ilovasida yozasiz. To‘g‘ri yozuv — aniq qoldiq. Faqat sizga biriktirilgan obyektlar ko‘rinadi.',
     daily: [
       {
         title: 'Material keldi (kirim)',
@@ -374,7 +374,7 @@ export const guides: Record<Role, RoleGuide> = {
       },
     ],
     rules: [
-      'Mini App joylashuvni so‘raydi — ruxsat bering.',
+      'Telegram ilovasi joylashuvni so‘raydi — ruxsat bering.',
       'Rasm odatda ixtiyoriy. “Majburiy” belgili materialda rasmsiz saqlanmaydi.',
       'Haydovchi aytgan emas, o‘zingiz sanagan miqdorni yozing.',
       '“Xuddi shunday yozuv bor” chiqsa, “Yozuvlarim” ni tekshiring.',
@@ -408,14 +408,14 @@ export const guides: Record<Role, RoleGuide> = {
   haydovchi: {
     title: 'Haydovchi uchun qo‘llanma',
     intro:
-      'Siz berilgan pulga material sotib olasiz va har bir xaridni Mini App’da kiritasiz. Qo‘lingizdagi pul doim ko‘rinib turadi.',
+      'Siz berilgan pulga material sotib olasiz va har bir xaridni Telegram ilovasida kiritasiz. Qo‘lingizdagi pul doim ko‘rinib turadi.',
     daily: [
       {
         title: 'Xarid kiritish',
         steps: [
-          'Mini App’da “Xarid” ni oching. “Qo‘limda” — qo‘lingizdagi pul.',
+          'Telegram ilovasida “Xarid” ni oching. “Qo‘limda” — qo‘lingizdagi pul.',
           'So‘rov bo‘yicha olsangiz, “Tasdiqlangan so‘rovlar” dan uni bosing.',
-          'Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing: summa va sotuvchi o‘zi to‘ladi.',
+          'Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing: summa va sotuvchi o‘zi to‘ldiriladi.',
           'Material, miqdor, “Jami summa (chekdagi)” va obyektni tanlang.',
           '“Saqlash” ni bosing. “Qo‘limda” yangi summani ko‘rsatadi.',
         ],
@@ -433,7 +433,7 @@ export const guides: Record<Role, RoleGuide> = {
       'Summa — chekdagi jami summa. Chekni saqlang.',
       'Rasm odatda ixtiyoriy. Firma belgilagan summadan katta xaridda chek rasmisiz saqlanmaydi. QR skanerlangan chekda rasm shart emas.',
       'Ortib qolgan pulni buxgalterga qaytaring.',
-      'Mini App joylashuvni so‘raydi — ruxsat bering.',
+      'Telegram ilovasi joylashuvni so‘raydi — ruxsat bering.',
     ],
     alerts: [
       {
@@ -463,7 +463,7 @@ export const guides: Record<Role, RoleGuide> = {
       {
         title: 'Sanash',
         steps: [
-          'Mini App’da “Inventar” ni oching, obyektni tanlang.',
+          'Telegram ilovasida “Sanash” ni oching, obyektni tanlang.',
           '“Yangi sanash” ni bosing (boshlangan bo‘lsa — “Davom ettirish”).',
           'Har bir materialni sanab, “Sanalgan miqdor” ni yozing, “Saqlash”. Har kiritish darhol saqlanadi.',
           'Ro‘yxatda yo‘q material bo‘lsa — “Boshqa materiallar”.',

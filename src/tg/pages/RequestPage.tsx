@@ -2,17 +2,16 @@ import { useCallback, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useAuth } from '@/auth/authContext'
 import { ArrowLeftRight, ClipboardList } from 'lucide-react'
-import { Notice, PageHeader, SegmentedControl, SkeletonRows } from '@/components/ui'
+import { Notice, RetryNotice, SegmentedControl, SkeletonRows } from '@/components/ui'
 import { listTransferTargets } from '@/data/transfersRepo'
 import { t } from '@/i18n'
 import { useEntryData } from '../entry/useEntryData'
-import { useRankedMaterials } from '../entry/useRankedMaterials'
+import { useRankedMaterialsWithPins } from '../entry/useRankedMaterials'
 import { readPrefill } from '../request/prefill'
 import { MyRequests } from '../request/MyRequests'
 import { RequestForm } from '../request/RequestForm'
 import { TransferForm } from '../request/TransferForm'
 import { haptic } from '../telegram'
-import { LoadError } from '../ui'
 
 const tr = t.tg.request
 type Tab = 'request' | 'transfer'
@@ -22,7 +21,7 @@ export function RequestPage() {
   const { profile } = useAuth()
   const { objects, materials: catalog, error, reload } = useEntryData(profile?.company_id)
   // Batch 12 (L): materiallar foydalanish bo'yicha (kirim/chiqim ekranidagidek)
-  const materials = useRankedMaterials(catalog)
+  const { ranked: materials, pinned } = useRankedMaterialsWithPins(catalog)
   // Batch 12 (K): bosh ekrandagi "Tugayotganlar" dan to'ldirish
   const location = useLocation()
   const prefill = readPrefill(location.state)
@@ -47,7 +46,6 @@ export function RequestPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title={tr.title} />
       <SegmentedControl
         label={tr.tabsLabel}
         value={tab}
@@ -62,15 +60,15 @@ export function RequestPage() {
         ]}
       />
 
-      {error && <LoadError message={error} onRetry={reload} />}
+      {error && <RetryNotice message={error} onRetry={reload} />}
       {!error && (!objects || !materials) && <SkeletonRows rows={3} />}
       {objects && objects.length === 0 && <Notice tone="warn">{t.tg.movement.noObjects}</Notice>}
       {objects && objects.length > 0 && materials && (
         tab === 'request' ? (
-          <RequestForm key="request" profile={profile} objects={objects} materials={materials} prefill={prefill} onSaved={onSaved} />
+          <RequestForm key="request" profile={profile} objects={objects} materials={materials} pinnedIds={pinned} prefill={prefill} onSaved={onSaved} />
         ) : (
           targets ? (
-            <TransferForm key="transfer" profileId={profile.id} objects={objects} targets={targets} materials={materials} onSaved={onSaved} />
+            <TransferForm key="transfer" profileId={profile.id} objects={objects} targets={targets} materials={materials} pinnedIds={pinned} onSaved={onSaved} />
           ) : (
             <SkeletonRows rows={2} />
           )

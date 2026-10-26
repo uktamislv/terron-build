@@ -16,6 +16,7 @@ import { t } from '@/i18n'
 import { formatSum } from '@/lib/format'
 import { routes } from '@/routes'
 import { makeMaterial, makeObject, makeProfile } from '@/test/fixtures'
+import { plain } from '@/test/text'
 
 vi.mock('@/data/systemRepo', () => ({
   isConfigured: () => true,
@@ -265,7 +266,7 @@ describe('/movements — O‘tkazmalar', () => {
     open('/movements')
     fireEvent.click(await screen.findByRole('tab', { name: t.ombor.tabTransfers }))
     const rows = await screen.findAllByTestId('transfer-row')
-    expect(within(rows[0] as HTMLElement).getByTestId('transfer-diff')).toHaveTextContent('-10 kg')
+    expect(within(rows[0] as HTMLElement).getByTestId('transfer-diff')).toHaveTextContent('−10 kg')
     // Qabul qilingan o'tkazmada amal yo'q — "⋯" menyusi ham yo'q
     expect(within(rows[0] as HTMLElement).queryByRole('button', { name: t.ui.actions })).not.toBeInTheDocument()
     expect(within(rows[1] as HTMLElement).queryByRole('button', { name: tt.cancel })).not.toBeInTheDocument()
@@ -366,11 +367,11 @@ describe('/movements — Inventarizatsiya', () => {
     open('/movements')
     fireEvent.click(await screen.findByRole('tab', { name: t.ombor.tabInventory }))
     fireEvent.click(await screen.findByRole('button', { name: ti.open }))
-    expect((await screen.findAllByTestId('inventory-shortage'))[0]).toHaveTextContent('-20 kg')
-    expect(screen.getAllByTestId('inventory-shortage')[1]).toHaveTextContent('-4 dona')
+    expect((await screen.findAllByTestId('inventory-shortage'))[0]).toHaveTextContent('−20 kg')
+    expect(screen.getAllByTestId('inventory-shortage')[1]).toHaveTextContent('−4 dona')
     expect(screen.getByTestId('inventory-surplus')).toHaveTextContent('+1 m³')
     // Qiymat bazadan (inventory_count_details) — klientda narx hisoblanmaydi
-    expect(screen.getByTestId('inventory-total')).toHaveTextContent(formatSum('30010'))
+    expect(screen.getByTestId('inventory-total')).toHaveTextContent(plain(formatSum('30010')))
     expect(inventoryRepo.getCountDetails).toHaveBeenCalledWith('ic1')
     // Sanalmagan material belgili
     expect(screen.getByText(ti.notCountedMark)).toBeInTheDocument()

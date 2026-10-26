@@ -10,7 +10,9 @@ import {
   createAuthUser,
   deleteAuthUser,
   findAuthUserByEmail,
+  getAdminClient,
   getAuthUserIdFromJwt,
+  lastProfileCompanyByAuthUserId,
   linkAuthUser,
   logAuthEvent,
   profileById,
@@ -20,6 +22,16 @@ import {
 } from '../_shared/supabaseAdmin.ts'
 
 const deps: AdminUsersDeps = {
+  alertLoginSet: async (targetProfileId, actorProfileId) => {
+    const { error } = await getAdminClient().rpc('svc_alert_login_set', {
+      p_target_profile: targetProfileId,
+      p_actor: actorProfileId,
+    })
+    if (error) {
+      const hint = error.hint === 'login_target_not_found' ? ' (login_target_not_found)' : ''
+      throw new Error(`svc_alert_login_set${hint}: ${error.message}`)
+    }
+  },
   getAuthUserIdFromJwt,
   getActiveProfileByAuthUserId: async (authUserId: string) => {
     const p = await activeProfileByAuthUserId(authUserId)
@@ -37,6 +49,7 @@ const deps: AdminUsersDeps = {
   findProfileIdByAuthUserId: profileIdByAuthUserId,
   deleteAuthUser,
   linkAuthUser,
+  lastProfileCompanyByAuthUserId,
   setLoginKind,
   logAuthEvent,
   log,

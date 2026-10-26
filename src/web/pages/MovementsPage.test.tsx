@@ -31,7 +31,16 @@ vi.mock('@/data/materialsRepo', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/data/materialsRepo')>()),
   listMaterials: vi.fn(),
 }))
-vi.mock('@/data/profilesRepo', () => ({ listProfiles: vi.fn(async () => [makeProfile('prorab')]) }))
+// Admin bo'lmaganlar boshqa xodimlar ismini profile_directory dan oladi (docs/audit-fixes.md)
+vi.mock('@/data/profileDirectory', async (orig) => {
+  // Funksiya — fixtures import qilingandan keyin chaqiriladi (vi.mock yuqoriga ko'tariladi)
+  const people = () => [makeProfile('prorab')]
+  return {
+    ...(await orig<typeof import('@/data/profileDirectory')>()),
+    listDirectory: vi.fn(async () => people()),
+    listActiveDirectory: vi.fn(async () => people()),
+  }
+})
 vi.mock('@/data/movementsRepo', () => ({
   listMovements: vi.fn(),
   softDeleteMovement: vi.fn(async () => undefined),
@@ -219,7 +228,7 @@ describe('/movements — Qoldiq', () => {
     const cells = screen.getAllByTestId('stock-qty')
     expect(cells[0]).toHaveTextContent('420 kg')
     expect(cells[0]).not.toHaveClass('text-danger')
-    expect(cells[1]).toHaveTextContent('-2,5 m³')
+    expect(cells[1]).toHaveTextContent('−2,5 m³')
     expect(cells[1]).toHaveClass('text-danger')
 
     fireEvent.change(screen.getByLabelText(to.filterObject), { target: { value: 'o-b' } })

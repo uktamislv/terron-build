@@ -1,7 +1,7 @@
 // Import ustasining 1–4 qadamlari: fayl, varaq va sarlavha, ustunlar, qatorlar.
 import { useId, useState, type ChangeEvent } from 'react'
 import { StatusBadge, type BadgeTone } from '@/components/ui'
-import { Button, Notice, Spinner, TextField } from '@/components/ui'
+import { Button, chipClass, choiceClass, cx, Notice, Spinner, TextField } from '@/components/ui'
 import type { EstimateImportTemplate, ObjectRow } from '@/data/types'
 import { cellText } from '@/domain/estimate'
 import type { ParsedRow } from '@/domain/estimate'
@@ -11,7 +11,7 @@ import { formatDateTime, formatQty, formatSum } from '@/lib/format'
 import { DateField, Pager, SelectField } from '@/components/ui'
 import { Checkbox } from './parts'
 import { ACCEPTED_EXTENSIONS, type ReadError, type SheetData } from './readWorkbook'
-import { chipClass, pageSlice } from './styles'
+import { pageSlice } from './styles'
 import {
   columnLetter,
   duplicateColumns,
@@ -82,7 +82,7 @@ export function FileStep({
           type="file"
           accept={ACCEPTED_EXTENSIONS.join(',')}
           onChange={onChange}
-          className="min-h-24 w-full cursor-pointer rounded-xl border-2 border-dashed border-line bg-canvas px-4 py-6 text-sm text-muted hover:border-brand/40 file:mr-3 file:min-h-11 file:rounded-xl file:border-0 file:bg-brand file:px-4 file:font-semibold file:text-white"
+          className="min-h-24 w-full cursor-pointer rounded-xl border-2 border-dashed border-line-strong bg-canvas px-4 py-6 text-sm text-muted hover:border-brand file:mr-3 file:min-h-11 file:rounded-xl file:border-0 file:bg-brand file:px-4 file:font-semibold file:text-white"
         />
         <p className="text-xs text-muted">{tw.fileHint}</p>
       </div>
@@ -162,7 +162,7 @@ export function SheetStep({
                       aria-pressed={selected}
                       aria-label={tw.headerPick(i + 1)}
                       onClick={() => onHeader(i)}
-                      className={`min-h-11 w-12 rounded-lg border text-xs ${selected ? 'border-brand bg-brand text-white' : 'border-line bg-paper'}`}
+                      className={cx(choiceClass({ selected, shape: 'box' }), 'w-12')}
                     >
                       {i + 1}
                     </button>
@@ -264,7 +264,7 @@ export function ColumnsStep({
                 const f = fieldOf(c)
                 return (
                   <th key={c} className={`px-2 py-2 align-bottom font-medium ${f ? 'bg-ice text-navy' : ''}`}>
-                    <span className="block text-[11px] text-muted">{columnLetter(c)}</span>
+                    <span className="block text-xs text-muted">{columnLetter(c)}</span>
                     {f && <span className="block font-semibold">{tw.fields[f]}</span>}
                     <span className="block max-w-48 truncate">{cellText(header[c])}</span>
                   </th>

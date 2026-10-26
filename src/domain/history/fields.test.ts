@@ -42,6 +42,7 @@ function allowedKinds(sqlType: string): FieldKind[] {
   if (sqlType === 'numeric(9,6)') return ['text'] // koordinatalar
   if (sqlType === 'timestamptz') return ['datetime']
   if (sqlType === 'date') return ['date']
+  if (sqlType === 'time') return ['text']
   if (sqlType === 'boolean') return ['bool']
   if (sqlType === 'jsonb') return ['json']
   if (sqlType.startsWith('public.')) return ['enum']

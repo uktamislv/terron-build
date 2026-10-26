@@ -12,6 +12,7 @@ import {
   parseReceiptDocument,
   qrDateTime,
   readCapped,
+  SlidingWindowLimiter,
   toDecimal,
   validateReceiptUrl,
   type Caller,
@@ -462,6 +463,35 @@ describe('handleReceiptLookup', () => {
       expect(r.body).toMatchObject({ error: 'receipt_unparseable', qr: { fiscalSign: '111122223333' } })
       expect(puts).toEqual([])
     }
+  })
+  it('chegara: 20 ta / 10 daqiqa profil bo\'yicha → 21-chisi 429 rate_limited, retry_after_sec; boshqa profil ta\'sirlanmaydi', async () => {
+    const limiter = new SlidingWindowLimiter()
+    let now = 1_000_000
+    const { deps, fetched } = fake()
+    deps.limiter = limiter
+    deps.now = () => now
+    for (let i = 0; i < 20; i++) {
+      expect((await handleReceiptLookup(AUTH, { url: URL_CHECK }, deps)).status).toBe(200)
+      now += 1000
+    }
+    const r = await handleReceiptLookup(AUTH, { url: URL_CHECK }, deps)
+    expect(r).toEqual({ status: 429, body: { error: 'rate_limited', retry_after_sec: 580 } })
+    expect(fetched).toHaveLength(20)
+    // boshqa profil
+    deps.getActiveProfile = async () => ({ profileId: 'p2', companyId: 'c1' })
+    expect((await handleReceiptLookup(AUTH, { url: URL_CHECK }, deps)).status).toBe(200)
+    // oyna o'tgach — yana ruxsat
+    deps.getActiveProfile = async () => ({ profileId: 'p1', companyId: 'c1' })
+    now += 600_000
+    expect((await handleReceiptLookup(AUTH, { url: URL_CHECK }, deps)).status).toBe(200)
+  })
+  it('SlidingWindowLimiter: kalitlar soni cheklangan', () => {
+    const l = new SlidingWindowLimiter(1, 1000, 2)
+    expect(l.hit('a', 0)).toEqual({ ok: true })
+    expect(l.hit('a', 10)).toEqual({ ok: false, retryAfterSec: 1 })
+    l.hit('b', 0)
+    l.hit('c', 0) // 'a' chiqarib yuboriladi
+    expect(l.hit('a', 20)).toEqual({ ok: true })
   })
   it.each(['timeout', 'redirect', 'too_large', 'http_status', 'network'] as const)('olinmadi (%s) → 502', async (reason) => {
     const { deps } = fake({ page: { ok: false, reason } })

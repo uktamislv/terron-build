@@ -3,11 +3,29 @@
 // verify_jwt = false (supabase/config.toml): chaqiruvchi — baza (pg_net), ishonch
 // `x-dispatch-secret` sarlavhasida (Vault: tg_dispatch_secret, svc_dispatch_secret orqali).
 
-import { handleDispatch, classifyTelegramResponse, type DispatchDeps, type OutboxRow, type Recipient } from './logic.ts'
+import {
+  authorizeDispatch,
+  classifyTelegramResponse,
+  COMPLETE_SENDS_BLOCKED_CHAT_IDS,
+  runDispatch,
+  type DispatchDeps,
+  type OutboxRow,
+  type Recipient,
+} from './logic.ts'
 import { json, log } from '../_shared/http.ts'
 import { getAdminClient, telegramCall } from '../_shared/supabaseAdmin.ts'
 
 const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? ''
+
+/** `p_blocked_chat_ids` RPC tomonidan qabul qilinadimi (PGRST202 bo'lsa izolyat umriga o'chadi). */
+let blockedParamSupported = true
+
+/** Supabase Edge Runtime: javobdan keyin ham fon vazifasini davom ettirish. */
+type EdgeRuntimeLike = { waitUntil: (p: Promise<unknown>) => void }
+function edgeRuntime(): EdgeRuntimeLike | null {
+  const er = (globalThis as { EdgeRuntime?: Partial<EdgeRuntimeLike> }).EdgeRuntime
+  return er && typeof er.waitUntil === 'function' ? (er as EdgeRuntimeLike) : null
+}
 
 /**
  * Sir keshi: odatda 5 daqiqa. Sarlavha mos kelmasa (sir almashtirilgan bo'lishi mumkin)
@@ -58,14 +76,24 @@ const deps: DispatchDeps = {
     return classifyTelegramResponse(r.status, r.body)
   },
   complete: async (id, args) => {
-    const { error } = await getAdminClient().rpc('svc_complete_notification', {
+    const base = {
       p_id: id,
       p_ok: args.ok,
       p_delivered: args.delivered,
       p_error: args.error,
       p_retry_after_sec: args.retryAfterSec ?? null,
       p_final: args.final ?? false,
-    })
+    }
+    const blocked = args.blocked ?? []
+    if (blockedParamSupported && COMPLETE_SENDS_BLOCKED_CHAT_IDS && blocked.length > 0) {
+      const { error } = await getAdminClient().rpc('svc_complete_notification', { ...base, p_blocked_chat_ids: blocked })
+      if (!error) return
+      // RPC hali yangilanmagan (PGRST202 — bunday imzo yo'q): parametrsiz qayta, keyin eslab qolamiz.
+      if (error.code !== 'PGRST202') throw new Error(`svc_complete_notification: ${error.message}`)
+      blockedParamSupported = false
+      log('warn', "tg-dispatch: svc_complete_notification p_blocked_chat_ids ni qabul qilmaydi — parametrsiz")
+    }
+    const { error } = await getAdminClient().rpc('svc_complete_notification', base)
     if (error) throw new Error(`svc_complete_notification: ${error.message}`)
   },
   now: () => Date.now(),
@@ -81,7 +109,20 @@ Deno.serve(async (req: Request) => {
   }
   try {
     // Body ishlatilmaydi (pg_net '{}' yuboradi) — o'qilmaydi.
-    const result = await handleDispatch(req.headers.get('x-dispatch-secret'), deps)
+    const auth = await authorizeDispatch(req.headers.get('x-dispatch-secret'), deps)
+    if (!auth.ok) return json(auth.result.status, auth.result.body)
+    const er = edgeRuntime()
+    if (er !== null) {
+      // pg_net 5 s da uziladi — darhol 202, yuborish sikli (≤ ~50 s byudjet) fonda davom etadi.
+      er.waitUntil(
+        runDispatch(deps, auth.secret).catch((e) => {
+          log('error', 'tg-dispatch: fon vazifasi xatosi', { error: e instanceof Error ? e.name : 'unknown' })
+        }),
+      )
+      return json(202, { accepted: true })
+    }
+    // Zaxira (lokal / EdgeRuntime yo'q): sinxron, natija bilan.
+    const result = await runDispatch(deps, auth.secret)
     return json(result.status, result.body)
   } catch (e) {
     log('error', 'tg-dispatch: kutilmagan xato', { error: e instanceof Error ? e.name : 'unknown' })

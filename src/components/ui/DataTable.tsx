@@ -29,6 +29,7 @@ export function DataTable<T>({
   className,
   testId,
   rowTestId,
+  rowData,
 }: {
   columns: readonly (Column<T> | false | null | undefined)[]
   rows: readonly T[]
@@ -45,6 +46,8 @@ export function DataTable<T>({
   testId?: string
   /** Har bir qator (tr / telefonda li) uchun data-testid. */
   rowTestId?: string
+  /** Qatorga qo'shimcha `data-*` atributlar (holat va h.k.). */
+  rowData?: (row: T) => Record<`data-${string}`, string | undefined>
 }) {
   const mobile = useIsMobile()
   const cols = columns.filter((c): c is Column<T> => Boolean(c))
@@ -56,7 +59,9 @@ export function DataTable<T>({
       <div className={cx('flex flex-col gap-3', className)} data-testid={testId}>
         <ul aria-label={caption} className="flex flex-col gap-2">
           {rows.map((row, i) => (
-            <li key={rowKey(row)} data-testid={rowTestId}>{renderMobile(row, i)}</li>
+            <li key={rowKey(row)} data-testid={rowTestId} {...rowData?.(row)}>
+              {renderMobile(row, i)}
+            </li>
           ))}
         </ul>
         {footer}
@@ -87,7 +92,7 @@ export function DataTable<T>({
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={rowKey(row)} data-testid={rowTestId} className={cx('border-b border-line/70 transition-colors last:border-0 hover:bg-ice/35', rowClassName?.(row))}>
+              <tr key={rowKey(row)} data-testid={rowTestId} {...rowData?.(row)} className={cx('border-b border-line/70 transition-colors last:border-0 hover:bg-ice/35', rowClassName?.(row))}>
                 {cols.map((c) => (
                   <td
                     key={c.key}

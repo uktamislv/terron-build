@@ -12,6 +12,17 @@
 
 import { timingSafeEqual } from '../_shared/telegramAuth.ts'
 import {
+  formatLoginChanged,
+  formatPurchaseForObject,
+  formatRequestApproved,
+  formatRequestCreated,
+  formatRequestDecided,
+  formatTransferSent,
+  NOTIFY_TEXTS,
+  type LoginChangedPayload,
+  type PurchaseForObjectPayload,
+  type RequestWorkflowPayload,
+  type TransferSentPayload,
   alertKeyboard,
   bugReportKeyboard,
   formatBugReport,
@@ -44,11 +55,34 @@ export const SAME_CHAT_GAP_MS = 1000
 export const TIME_BUDGET_MS = 50_000
 /** Vaqt byudjeti tugaganda qaytarilgan qatorlar shuncha soniyadan keyin. */
 export const BUDGET_RETRY_SEC = 1
+/** Bot tokeni yaroqsiz (401/404): shuncha soniyadan keyin qayta, urinish hisoblanmaydi. */
+export const TOKEN_RETRY_SEC = 600
+/**
+ * `svc_complete_notification` ga `p_blocked_chat_ids bigint[]` yuborilsinmi (index.ts). Yoqilgan —
+ * parametr 20261108000001_audit_fixes.sql da qo'shildi (`default null`). RPC eski bo'lsa (PGRST202) —
+ * index.ts parametrsiz qayta chaqiradi.
+ */
+export const COMPLETE_SENDS_BLOCKED_CHAT_IDS = true
+/** 400 javobida qabul qiluvchiga bog'liq (chat yo'q) xatolar — o'tkazib yuboriladi. */
+const UNREACHABLE_400_RE = /chat not found|user not found|peer_id_invalid|user is deactivated/i
 
 export interface OutboxRow {
   id: string
   company_id: string
-  kind: 'alert' | 'daily_report' | 'alert_reminder' | 'request_overdue' | 'cash_statement' | 'bug_report' | string
+  kind:
+    | 'alert'
+    | 'daily_report'
+    | 'alert_reminder'
+    | 'request_overdue'
+    | 'cash_statement'
+    | 'bug_report'
+    | 'request_created'
+    | 'request_decided'
+    | 'request_approved'
+    | 'transfer_sent'
+    | 'purchase_for_object'
+    | 'login_changed'
+    | string
   payload: unknown
   /** Faqat `cash_statement`: xabar egasi. */
   profile_id?: string | null
@@ -69,8 +103,13 @@ export type SendResult =
   /** Foydalanuvchi botni bloklagan / akkaunt o'chirilgan / chat yo'q — o'tkazib yuboriladi. */
   | { ok: false; kind: 'unreachable'; error: string }
   | { ok: false; kind: 'rate_limited'; retryAfterSec: number; error: string }
-  /** Doimiy xato (bot tokeni noto'g'ri: 401, 404) — qatorlar darhol failed. */
-  | { ok: false; kind: 'fatal'; error: string }
+  /**
+   * Bot tokeni yaroqsiz / bekor qilingan (401, 404). Qatorlar failed EMAS — token almashtirilguncha
+   * uzoq kutish (`TOKEN_RETRY_SEC`), urinish hisoblanmaydi; shu chaqiruvdagi qolganlari ham.
+   */
+  | { ok: false; kind: 'token_invalid'; error: string }
+  /** Xabarning o'zi yaroqsiz (400, masalan "can't parse entities") — shu qator darhol failed. */
+  | { ok: false; kind: 'invalid_message'; error: string }
   | { ok: false; kind: 'error'; error: string }
 
 export interface CompleteArgs {
@@ -82,6 +121,11 @@ export interface CompleteArgs {
   retryAfterSec?: number | null
   /** Doimiy xato — darhol failed. */
   final?: boolean
+  /**
+   * Yetib bo'lmaydigan chatlar (403 bot bloklangan / akkaunt o'chirilgan, 400 chat topilmadi).
+   * index.ts `COMPLETE_SENDS_BLOCKED_CHAT_IDS` yoqilgan bo'lsa `p_blocked_chat_ids` sifatida yuboradi.
+   */
+  blocked?: number[]
 }
 
 export interface DispatchDeps {
@@ -136,10 +180,11 @@ export function sanitizeError(message: string, secrets: readonly string[] = []):
  * Telegram Bot API javobini tasniflaydi.
  * - 200 + ok → yuborildi;
  * - 429 → `parameters.retry_after` (soniya);
- * - 403 (bot bloklangan, akkaunt o'chirilgan, ...) va 400 "chat not found" → qabul qiluvchi
- *   o'tkazib yuboriladi (xato emas);
- * - 401, 404 → bot tokeni noto'g'ri (doimiy xato);
- * - qolganlari → xato (qayta urinish).
+ * - 403 (bot bloklangan, akkaunt o'chirilgan, ...) va 400 "chat not found" / "user not found" /
+ *   "PEER_ID_INVALID" → qabul qiluvchi o'tkazib yuboriladi (xato emas);
+ * - 401, 404 → bot tokeni yaroqsiz (bekor qilingan) — uzoq qayta urinish, failed emas;
+ * - boshqa 400 (masalan "can't parse entities", "message is too long") → xabar yaroqsiz, qator failed;
+ * - qolganlari (5xx, tarmoq) → xato (qayta urinish).
  */
 export function classifyTelegramResponse(status: number, body: unknown): SendResult {
   const rec = isRecord(body) ? body : {}
@@ -153,10 +198,11 @@ export function classifyTelegramResponse(status: number, body: unknown): SendRes
       typeof ra === 'number' && Number.isFinite(ra) && ra > 0 ? Math.min(Math.ceil(ra), 3600) : DEFAULT_RETRY_AFTER_SEC
     return { ok: false, kind: 'rate_limited', retryAfterSec, error }
   }
-  if (status === 403 || (status === 400 && /chat not found|user not found/i.test(description))) {
+  if (status === 403 || (status === 400 && UNREACHABLE_400_RE.test(description))) {
     return { ok: false, kind: 'unreachable', error }
   }
-  if (status === 401 || status === 404) return { ok: false, kind: 'fatal', error }
+  if (status === 401 || status === 404) return { ok: false, kind: 'token_invalid', error }
+  if (status === 400) return { ok: false, kind: 'invalid_message', error }
   return { ok: false, kind: 'error', error }
 }
 
@@ -180,6 +226,18 @@ export function buildMessage(row: OutboxRow): string {
       return formatCashStatement(row.payload as unknown as CashStatementPayload)
     case 'bug_report':
       return formatBugReport(row.payload as unknown as BugReportPayload)
+    case 'request_created':
+      return formatRequestCreated(row.payload as unknown as RequestWorkflowPayload)
+    case 'request_decided':
+      return formatRequestDecided(row.payload as unknown as RequestWorkflowPayload)
+    case 'request_approved':
+      return formatRequestApproved(row.payload as unknown as RequestWorkflowPayload)
+    case 'transfer_sent':
+      return formatTransferSent(row.payload as unknown as TransferSentPayload)
+    case 'purchase_for_object':
+      return formatPurchaseForObject(row.payload as unknown as PurchaseForObjectPayload)
+    case 'login_changed':
+      return formatLoginChanged(row.payload as unknown as LoginChangedPayload)
     default:
       throw new Error(`noma'lum kind: ${String(row.kind).slice(0, 40)}`)
   }
@@ -206,6 +264,16 @@ function hasExtraRecipients(row: OutboxRow): boolean {
 function digestible(row: OutboxRow): boolean {
   return (row.kind === 'alert' || row.kind === 'alert_reminder') && isRecord(row.payload) && !hasExtraRecipients(row)
 }
+
+/** Ish oqimi va shaxsiy xabar turlari (audit 20261108) — tugma: oddiy "Ochish" (Mini App). */
+export const WORKFLOW_KINDS: readonly string[] = [
+  'request_created',
+  'request_decided',
+  'request_approved',
+  'transfer_sent',
+  'purchase_for_object',
+  'login_changed',
+]
 
 /** Faqat admin / super_admin "Ko'rildi" bosa oladi (`svc_mark_alert_seen`). */
 export const SEEN_ROLES: readonly string[] = ['admin', 'super_admin']
@@ -289,15 +357,19 @@ export function planUnits(rows: OutboxRow[]): { units: Unit[]; invalid: { row: O
 type Stop =
   | { kind: 'rate_limited'; retryAfterSec: number; error: string }
   | { kind: 'budget' }
-  | { kind: 'fatal'; error: string }
+  | { kind: 'token_invalid'; error: string }
+
+/** `authorizeDispatch` natijasi: rad etilsa — javob; ruxsat — sir (log tozalash uchun). */
+export type DispatchAuth = { ok: false; result: HandlerResult } | { ok: true; secret: string }
 
 /**
- * @param secretHeader `x-dispatch-secret` sarlavhasi
+ * `x-dispatch-secret` ni tekshiradi (doimiy vaqtda). index.ts avval shuni chaqiradi, keyin
+ * darhol 202 qaytarib, `runDispatch` ni fonda (`EdgeRuntime.waitUntil`) ishga tushiradi.
  */
-export async function handleDispatch(secretHeader: string | null, deps: DispatchDeps): Promise<HandlerResult> {
+export async function authorizeDispatch(secretHeader: string | null, deps: DispatchDeps): Promise<DispatchAuth> {
   if (typeof secretHeader !== 'string' || secretHeader === '') {
-    deps.log('warn', 'tg-dispatch: sir sarlavhasi yo\'q')
-    return respond(401, { error: 'unauthorized' })
+    deps.log('warn', "tg-dispatch: sir sarlavhasi yo'q")
+    return { ok: false, result: respond(401, { error: 'unauthorized' }) }
   }
 
   let expected: string | null
@@ -308,25 +380,33 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
       expected = await deps.getDispatchSecret(true)
     }
   } catch (e) {
-    deps.log('error', 'tg-dispatch: sir o\'qilmadi', { error: sanitizeError(errMessage(e)) })
-    return respond(500, { error: 'server_error' })
+    deps.log('error', "tg-dispatch: sir o'qilmadi", { error: sanitizeError(errMessage(e)) })
+    return { ok: false, result: respond(500, { error: 'server_error' }) }
   }
   if (typeof expected !== 'string' || expected === '') {
     deps.log('error', 'tg-dispatch: tg_dispatch_secret sozlanmagan')
-    return respond(500, { error: 'server_misconfigured' })
+    return { ok: false, result: respond(500, { error: 'server_misconfigured' }) }
   }
   if (!timingSafeEqual(secretHeader, expected)) {
-    deps.log('warn', 'tg-dispatch: sir noto\'g\'ri')
-    return respond(401, { error: 'unauthorized' })
+    deps.log('warn', "tg-dispatch: sir noto'g'ri")
+    return { ok: false, result: respond(401, { error: 'unauthorized' }) }
   }
-  const secrets = [expected]
+  return { ok: true, secret: expected }
+}
+
+/**
+ * Navbatdan qatorlarni olib yuboradi. `secret` — log/xatolardan o'chiriladigan sir.
+ * Natija: 200 + summary yoki 500 (navbat o'qilmadi).
+ */
+export async function runDispatch(deps: DispatchDeps, secret: string): Promise<HandlerResult> {
+  const secrets = [secret]
   const clean = (e: unknown): string => sanitizeError(errMessage(e), secrets)
 
   let rows: OutboxRow[]
   try {
     rows = await deps.claim(CLAIM_LIMIT)
   } catch (e) {
-    deps.log('error', 'tg-dispatch: navbat o\'qilmadi', { error: clean(e) })
+    deps.log('error', "tg-dispatch: navbat o'qilmadi", { error: clean(e) })
     return respond(500, { error: 'server_error' })
   }
 
@@ -334,12 +414,16 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
   const appUrl = resolveMiniAppUrl(deps.env.miniAppUrl)
   const keyboard = miniAppKeyboard(appUrl)
   const bugKeyboard = bugReportKeyboard(appUrl)
+  // Ish oqimi xabarlari: oddiy Mini App havolasi (deep link yo'q — har rol uchun xavfsiz).
+  const workflowKeyboard = miniAppKeyboard(appUrl, NOTIFY_TEXTS.buttons.open)
   const keyboardFor = (unit: Unit, r: Recipient): unknown =>
     unit.rows[0]?.kind === 'bug_report'
       ? bugKeyboard
-      : unit.alertId === null
-      ? keyboard
-      : alertKeyboard(appUrl, unit.alertId, SEEN_ROLES.includes(r.role), ALERT_READER_ROLES.includes(r.role))
+      : WORKFLOW_KINDS.includes(unit.rows[0]?.kind ?? '')
+        ? workflowKeyboard
+        : unit.alertId === null
+        ? keyboard
+        : alertKeyboard(appUrl, unit.alertId, SEEN_ROLES.includes(r.role), ALERT_READER_ROLES.includes(r.role))
   const summary: DispatchSummary = { processed: rows.length, sent: 0, failed: 0 }
   const lastSentAt = new Map<number, number>()
   let stop: Stop | null = null
@@ -348,21 +432,29 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
     if (args.ok) summary.sent++
     else summary.failed++
     const error = args.error === null ? null : sanitizeError(args.error, secrets)
+    const { blocked, ...rest } = args
     try {
-      await deps.complete(row.id, { ...args, error })
+      await deps.complete(row.id, { ...rest, error, ...(blocked && blocked.length > 0 ? { blocked } : {}) })
     } catch (e) {
       // Qator 'sending' da qoladi — 10 daqiqadan keyin qayta olinadi.
       deps.log('error', 'tg-dispatch: natija yozilmadi', { id: row.id, error: clean(e) })
     }
   }
 
-  const finishStopped = async (row: OutboxRow, s: Stop, delivered: number[], error: string | null): Promise<void> => {
+  const finishStopped = async (
+    row: OutboxRow,
+    s: Stop,
+    delivered: number[],
+    error: string | null,
+    blocked: number[],
+  ): Promise<void> => {
     if (s.kind === 'rate_limited') {
-      await finish(row, { ok: false, delivered, error: error ?? 'rate_limited', retryAfterSec: s.retryAfterSec })
+      await finish(row, { ok: false, delivered, error: error ?? 'rate_limited', retryAfterSec: s.retryAfterSec, blocked })
     } else if (s.kind === 'budget') {
-      await finish(row, { ok: false, delivered, error: error ?? 'time_budget', retryAfterSec: BUDGET_RETRY_SEC })
+      await finish(row, { ok: false, delivered, error: error ?? 'time_budget', retryAfterSec: BUDGET_RETRY_SEC, blocked })
     } else {
-      await finish(row, { ok: false, delivered, error: error ?? s.error, final: true })
+      // Token bekor qilingan / yaroqsiz: failed EMAS — token almashtirilguncha uzoq kutish.
+      await finish(row, { ok: false, delivered, error: error ?? s.error, retryAfterSec: TOKEN_RETRY_SEC, blocked })
     }
   }
 
@@ -378,7 +470,7 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
       deps.log('warn', 'tg-dispatch: vaqt byudjeti tugadi, qolganlari keyinga')
     }
     if (stop !== null) {
-      for (const row of unit.rows) await finishStopped(row, stop, [], null)
+      for (const row of unit.rows) await finishStopped(row, stop, [], null, [])
       continue
     }
 
@@ -386,7 +478,7 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
     try {
       recipients = await deps.recipients(unit.rows[0] as OutboxRow)
     } catch (e) {
-      deps.log('error', 'tg-dispatch: qabul qiluvchilar o\'qilmadi', { company_id: unit.companyId, error: clean(e) })
+      deps.log('error', "tg-dispatch: qabul qiluvchilar o'qilmadi", { company_id: unit.companyId, error: clean(e) })
       for (const row of unit.rows) await finish(row, { ok: false, delivered: [], error: clean(e) })
       continue
     }
@@ -397,6 +489,8 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
     const deliveredNow: number[] = []
     const unreachable = new Set<number>()
     const errors: string[] = []
+    /** Xabarning o'zi yaroqsiz (400) — boshqa qabul qiluvchilarga ham yuborilmaydi, qator failed. */
+    let invalidMessage: string | null = null
 
     for (const r of todo) {
       const last = lastSentAt.get(r.chat_id)
@@ -418,7 +512,7 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
       }
       if (res.kind === 'unreachable') {
         unreachable.add(r.chat_id)
-        deps.log('info', 'tg-dispatch: qabul qiluvchiga yetib bo\'lmaydi (o\'tkazildi)', {
+        deps.log('info', "tg-dispatch: qabul qiluvchiga yetib bo'lmaydi (o'tkazildi)", {
           profile_id: r.profile_id,
           error: sanitizeError(res.error, secrets),
         })
@@ -429,31 +523,45 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
         stop = { kind: 'rate_limited', retryAfterSec: res.retryAfterSec, error: res.error }
         break
       }
-      if (res.kind === 'fatal') {
-        stop = { kind: 'fatal', error: res.error }
-        deps.log('error', 'tg-dispatch: doimiy Telegram xatosi (bot tokeni?)', { error: sanitizeError(res.error, secrets) })
+      if (res.kind === 'token_invalid') {
+        stop = { kind: 'token_invalid', error: res.error }
+        deps.log('error', `tg-dispatch: bot tokeni yaroqsiz — ${TOKEN_RETRY_SEC} s dan keyin qayta (failed emas)`, {
+          error: sanitizeError(res.error, secrets),
+        })
+        break
+      }
+      if (res.kind === 'invalid_message') {
+        invalidMessage = res.error
+        deps.log('error', 'tg-dispatch: xabar Telegram tomonidan rad etildi (doimiy)', {
+          rows: unit.rows.length,
+          kind: unit.rows[0]?.kind ?? null,
+          error: sanitizeError(res.error, secrets),
+        })
         break
       }
     }
 
     const errorText = errors.length > 0 ? errors.join('; ') : null
-    if (errorText !== null) {
+    if (errorText !== null && invalidMessage === null) {
       deps.log('warn', 'tg-dispatch: yuborishda xato', {
         rows: unit.rows.length,
         delivered: deliveredNow.length,
         error: sanitizeError(errorText, secrets),
       })
     }
+    const blocked = [...unreachable]
 
     for (const [i, row] of unit.rows.entries()) {
       const set = new Set([...(rowSets[i] ?? []), ...deliveredNow])
       const done = recipients.every((r) => set.has(r.chat_id) || unreachable.has(r.chat_id))
       if (done) {
-        await finish(row, { ok: true, delivered: deliveredNow, error: null })
+        await finish(row, { ok: true, delivered: deliveredNow, error: null, blocked })
+      } else if (invalidMessage !== null) {
+        await finish(row, { ok: false, delivered: deliveredNow, error: errorText ?? invalidMessage, final: true, blocked })
       } else if (stop !== null) {
-        await finishStopped(row, stop, deliveredNow, errorText)
+        await finishStopped(row, stop, deliveredNow, errorText, blocked)
       } else {
-        await finish(row, { ok: false, delivered: deliveredNow, error: errorText ?? 'not_delivered' })
+        await finish(row, { ok: false, delivered: deliveredNow, error: errorText ?? 'not_delivered', blocked })
       }
     }
   }
@@ -462,4 +570,14 @@ export async function handleDispatch(secretHeader: string | null, deps: Dispatch
     deps.log('info', 'tg-dispatch: tugadi', { ...summary })
   }
   return respond(200, summary)
+}
+
+/**
+ * Sinxron variant (testlar va `EdgeRuntime.waitUntil` bo'lmagan muhit): avtorizatsiya + yuborish.
+ * @param secretHeader `x-dispatch-secret` sarlavhasi
+ */
+export async function handleDispatch(secretHeader: string | null, deps: DispatchDeps): Promise<HandlerResult> {
+  const auth = await authorizeDispatch(secretHeader, deps)
+  if (!auth.ok) return auth.result
+  return runDispatch(deps, auth.secret)
 }

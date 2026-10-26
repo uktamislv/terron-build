@@ -14,6 +14,7 @@ import { t } from '@/i18n'
 import { formatSum } from '@/lib/format'
 import { routes } from '@/routes'
 import { COMPANY_ID, makeAlias, makeMaterial, makeObject, makeProfile, makeUnit } from '@/test/fixtures'
+import { plain } from '@/test/text'
 
 vi.mock('xlsx', () => ({
   read: vi.fn(() => ({ SheetNames: ['Smeta'], Sheets: { Smeta: {} } })),
@@ -225,7 +226,7 @@ describe('/estimates — import ustasi', () => {
     next()
 
     // Tekshirish: jami va farq
-    expect(await screen.findByTestId('review-total')).toHaveTextContent(formatSum('9700000'))
+    expect(await screen.findByTestId('review-total')).toHaveTextContent(plain(formatSum('9700000')))
     const added = await screen.findByRole('region', { name: te.diff.added })
     expect(within(added).getByText('Qum')).toBeInTheDocument()
     expect(within(added).getByText('Gips plita')).toBeInTheDocument()

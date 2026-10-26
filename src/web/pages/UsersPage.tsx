@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { Building2, Globe, KeyRound, Pencil, Power, Send, UserPlus, Users } from 'lucide-react'
+import { BellOff, Building2, Globe, KeyRound, Pencil, Power, Send, ShieldCheck, UserPlus, Users } from 'lucide-react'
 import { Badge, Button, EmptyState, Notice, PageHeader, RetryNotice, SkeletonRows } from '@/components/ui'
 import { listObjectMembers } from '@/data/objectMembersRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { listProfiles, setProfileActive } from '@/data/profilesRepo'
 import type { LoginKind, ObjectMember, ObjectRow, Profile } from '@/data/types'
-import { can } from '@/domain/roles'
+import { can, isProtectedProfile } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatPhoneDisplay } from '@shared/phone'
@@ -114,6 +114,8 @@ export function UsersPage() {
           {data.profiles.map((p) => {
             const objs = objectsOf(p.id)
             const isMe = p.id === me.id
+            // Himoyalangan profil (admin/direktor): rol, telefon va faollik — faqat tizim egasi
+            const locked = isProtectedProfile(me.role, p.role)
             return (
               <li key={p.id} className="flex flex-col gap-3 rounded-xl border border-line bg-paper p-4">
                 <div className="flex items-start gap-3">
@@ -135,6 +137,16 @@ export function UsersPage() {
                   <div className="flex flex-wrap justify-end gap-1.5">
                     <Badge tone="info">{t.roles[p.role]}</Badge>
                     <Badge tone={p.is_active ? 'ok' : 'danger'}>{p.is_active ? t.status.active : t.status.inactive}</Badge>
+                    {locked && (
+                      <Badge tone="neutral" icon={<ShieldCheck aria-hidden strokeWidth={2} />}>
+                        <span title={t.users.protectedHint}>{t.users.protectedBadge}</span>
+                      </Badge>
+                    )}
+                    {p.telegram_blocked_at && (
+                      <Badge tone="warn" icon={<BellOff aria-hidden strokeWidth={2} />}>
+                        <span title={t.users.botBlockedHint}>{t.users.botBlocked}</span>
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -180,7 +192,7 @@ export function UsersPage() {
                         {p.login_kind === 'web' ? t.users.resetPassword : t.users.setLogin}
                       </Button>
                     )}
-                    {!isMe && (
+                    {!isMe && !locked && (
                       <Button
                         variant={p.is_active ? 'danger' : 'secondary'}
                         icon={<Power aria-hidden className="size-4" strokeWidth={1.75} />}

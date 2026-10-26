@@ -12,6 +12,7 @@ import * as excel from '@/lib/excelExport'
 import { tashkentIsoDate } from '@/lib/format'
 import { routes } from '@/routes'
 import { makeProfile } from '@/test/fixtures'
+import { plain } from '@/test/text'
 import { HistoryLink } from '../history/HistoryLink'
 import { historyHref } from '../history/historyQuery'
 
@@ -30,7 +31,16 @@ vi.mock('@/data/authRepo', () => ({
   changePassword: vi.fn(),
   MIN_PASSWORD_LENGTH: 8,
 }))
-vi.mock('@/data/profilesRepo', () => ({ listProfiles: vi.fn(async () => [makeProfile('prorab')]) }))
+// Admin bo'lmaganlar boshqa xodimlar ismini profile_directory dan oladi (docs/audit-fixes.md)
+vi.mock('@/data/profileDirectory', async (orig) => {
+  // Funksiya — fixtures import qilingandan keyin chaqiriladi (vi.mock yuqoriga ko'tariladi)
+  const people = () => [makeProfile('prorab')]
+  return {
+    ...(await orig<typeof import('@/data/profileDirectory')>()),
+    listDirectory: vi.fn(async () => people()),
+    listActiveDirectory: vi.fn(async () => people()),
+  }
+})
 vi.mock('@/data/historyRepo', async (orig) => ({
   ...(await orig<typeof import('@/data/historyRepo')>()),
   listAuditFeed: vi.fn(),
@@ -213,7 +223,7 @@ describe('/history — Tarix', () => {
     await waitFor(() => expect(excel.exportWorkbook).toHaveBeenCalled())
     expect(vi.mocked(historyRepo.listAllAuditFeed).mock.calls[0]?.[0]).toMatchObject({ table: 'purchases' })
     const sheet = vi.mocked(excel.exportWorkbook).mock.calls[0]?.[0].sheets[0]
-    expect(String(sheet?.rows[0]?.changes)).toContain('1 000 000 so‘m → 1 250 000 so‘m')
+    expect(plain(String(sheet?.rows[0]?.changes))).toContain('1 000 000 so‘m → 1 250 000 so‘m')
     expect(String(sheet?.rows[0]?.changes)).toContain('Sement M400')
   })
 })

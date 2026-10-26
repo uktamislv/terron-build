@@ -6,9 +6,9 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 export type ButtonSize = 'sm' | 'md' | 'lg'
 
 const variants: Record<ButtonVariant, string> = {
-  primary: 'bg-brand text-white hover:bg-[#1a52e0] active:bg-[#1747c4] disabled:bg-brand/45',
-  secondary: 'border border-line bg-paper text-ink hover:border-[#c5d0e3] hover:bg-canvas disabled:text-muted/70',
-  ghost: 'text-brand hover:bg-ice disabled:text-muted/70',
+  primary: 'bg-brand text-white hover:bg-brand-600 active:bg-brand-700 disabled:bg-brand/45',
+  secondary: 'border border-line bg-paper text-ink hover:border-line-hover hover:bg-canvas disabled:text-muted',
+  ghost: 'text-brand hover:bg-ice disabled:text-muted',
   danger: 'border border-danger/25 bg-paper text-danger hover:bg-danger-bg disabled:opacity-60',
 }
 
@@ -72,7 +72,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
         'inline-flex size-11 shrink-0 items-center justify-center rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-50',
         variant === 'ghost' && 'text-muted hover:bg-ice hover:text-brand',
         variant === 'secondary' && 'border border-line bg-paper text-ink hover:bg-canvas',
-        variant === 'onDark' && 'text-white/80 hover:bg-white/10 hover:text-white',
+        variant === 'onDark' && 'text-white hover:bg-white/10 focus-visible:outline-white',
         className,
       )}
       {...props}

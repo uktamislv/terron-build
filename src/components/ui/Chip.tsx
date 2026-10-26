@@ -29,7 +29,7 @@ export function Chip({
   const main = (
     <button type="button" className={cx(chipClass(active), onClear && active && 'rounded-r-none border-r-0 pr-2', className)} {...props}>
       {icon}
-      <span className={cx(value !== undefined && 'text-muted', active && 'text-brand/80')}>
+      <span className={cx(value !== undefined && 'text-muted', active && 'text-brand')}>
         {label}
         {value !== undefined && ':'}
       </span>
@@ -45,7 +45,7 @@ export function Chip({
         type="button"
         aria-label={clearLabel ?? label}
         onClick={onClear}
-        className="inline-flex min-h-11 items-center rounded-r-full border border-l-0 border-brand/30 bg-ice pr-3 pl-1 text-brand hover:bg-[#dce8ff]"
+        className="inline-flex min-h-11 items-center rounded-r-full border border-l-0 border-brand bg-ice pr-3 pl-1 text-brand hover:bg-ice-hover"
       >
         <X aria-hidden className="size-4" strokeWidth={2} />
       </button>

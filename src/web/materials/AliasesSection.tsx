@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Button, Notice, TextField } from '@/components/ui'
+import { Button, choiceClass, cx, Notice, TextField } from '@/components/ui'
 import { addMaterialAlias, softDeleteMaterialAlias } from '@/data/materialAliasesRepo'
 import { ALIAS_LANGS, type AliasLang, type Material } from '@/data/types'
 import { t } from '@/i18n'
@@ -116,9 +116,7 @@ export function AliasesSection({
               {ALIAS_LANGS.map((l) => (
                 <label
                   key={l}
-                  className={`flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-xl border px-3 text-sm font-medium ${
-                    lang === l ? 'border-brand bg-brand text-white' : 'border-line bg-paper text-ink'
-                  }`}
+                  className={cx(choiceClass({ selected: lang === l, shape: 'box', label: true }), 'min-w-11')}
                 >
                   <input
                     type="radio"

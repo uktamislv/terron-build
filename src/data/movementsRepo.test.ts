@@ -3,7 +3,12 @@ import { photoPath } from './photosRepo'
 
 type Call = [string, ...unknown[]]
 
-const fake = vi.hoisted(() => ({ calls: [] as [string, ...unknown[]][], results: [] as unknown[] }))
+const fake = vi.hoisted(() => ({
+  calls: [] as [string, ...unknown[]][],
+  results: [] as unknown[],
+  /** `profile_directory` qatorlari (ismlar ikkinchi so'rovda). */
+  people: [] as { id: string; company_id?: string; full_name: string; role: string; is_active?: boolean }[],
+}))
 
 function fakeQuery(calls: Call[], result: () => unknown): unknown {
   const q: unknown = new Proxy(
@@ -29,6 +34,7 @@ vi.mock('./supabaseClient', () => ({
   getSupabase: () => ({
     from: (table: string) => {
       fake.calls.push(['from', table])
+      if (table === 'profile_directory') return fakeQuery(fake.calls, () => ({ data: fake.people, error: null }))
       return fakeQuery(fake.calls, () => fake.results.shift())
     },
   }),
@@ -37,6 +43,7 @@ vi.mock('./supabaseClient', () => ({
 beforeEach(() => {
   fake.calls.length = 0
   fake.results.length = 0
+  fake.people.length = 0
 })
 
 const arg = (method: string) => fake.calls.find((c) => c[0] === method)?.[1]

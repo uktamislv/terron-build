@@ -1,10 +1,19 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Button, Notice, RetryNotice, SkeletonRows, TextField } from '@/components/ui'
+import { Button, Notice, RetryNotice, SelectField, SkeletonRows, TextField } from '@/components/ui'
 import { getCompanySettings, updateCompanySettings } from '@/data/companiesRepo'
 import { formatSumInput } from '@/domain/cash'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
-import { fromForm, INT_LIMITS, PCT_LIMITS, toForm, type SettingsErrors, type SettingsForm, type SettingsKey } from './settingsForm'
+import {
+  fromForm,
+  INT_LIMITS,
+  PCT_LIMITS,
+  QUIET_TIME_OPTIONS,
+  toForm,
+  type SettingsErrors,
+  type SettingsForm,
+  type SettingsKey,
+} from './settingsForm'
 
 const ts = t.settings
 
@@ -65,6 +74,21 @@ export function CompanySettingsForm({ companyId, canEdit, onSaved }: { companyId
     )
   }
 
+  const quietOn = form.quietHoursStart !== '' || form.quietHoursEnd !== ''
+  const quietError = errors.quietHoursStart || errors.quietHoursEnd ? ts.errQuiet : null
+  const timeOptions = (current: string) =>
+    // Bazadagi qiymat 30 daqiqalik qadamda bo'lmasa ham ro'yxatda ko'rinsin
+    (current && !QUIET_TIME_OPTIONS.includes(current) ? [current, ...QUIET_TIME_OPTIONS] : QUIET_TIME_OPTIONS).map((v) => (
+      <option key={v} value={v}>
+        {v}
+      </option>
+    ))
+  const toggleQuiet = (on: boolean) => {
+    setForm({ ...form, quietHoursStart: on ? '22:00' : '', quietHoursEnd: on ? '07:00' : '' })
+    setErrors((er) => ({ ...er, quietHoursStart: undefined, quietHoursEnd: undefined }))
+    setDone(false)
+  }
+
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!canEdit || saving) return
@@ -109,6 +133,44 @@ export function CompanySettingsForm({ companyId, canEdit, onSaved }: { companyId
           {field('alertRemindHours', ts.alertRemindHours)}
           {field('forecastDaysWarn', ts.forecastDaysWarn)}
         </div>
+      </fieldset>
+      <fieldset className="flex flex-col gap-3" aria-describedby="quiet-intro">
+        <legend className="mb-2 text-base font-semibold text-ink">{ts.groupQuiet}</legend>
+        <p id="quiet-intro" className="text-sm text-muted">
+          {ts.quietIntro}
+        </p>
+        <label className="inline-flex min-h-11 items-center gap-3 self-start text-sm text-ink">
+          <input
+            type="checkbox"
+            className="size-5 border-line-strong accent-brand"
+            checked={quietOn}
+            disabled={!canEdit}
+            onChange={(e) => toggleQuiet(e.target.checked)}
+          />
+          {ts.quietEnabled}
+        </label>
+        {quietOn ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SelectField
+              label={ts.quietStart}
+              value={form.quietHoursStart}
+              disabled={!canEdit}
+              onChange={(v) => set('quietHoursStart', v)}
+            >
+              {timeOptions(form.quietHoursStart)}
+            </SelectField>
+            <SelectField label={ts.quietEnd} value={form.quietHoursEnd} disabled={!canEdit} onChange={(v) => set('quietHoursEnd', v)}>
+              {timeOptions(form.quietHoursEnd)}
+            </SelectField>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">{ts.quietOff}</p>
+        )}
+        {quietError && (
+          <p role="alert" className="text-sm text-danger">
+            {quietError}
+          </p>
+        )}
       </fieldset>
       {saveError && <Notice>{saveError}</Notice>}
       {done && <Notice tone="ok">{ts.saved}</Notice>}

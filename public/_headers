@@ -1,0 +1,22 @@
+# Cloudflare Workers Static Assets sarlavhalari (https://developers.cloudflare.com/workers/static-assets/headers/).
+# Vite public/ dan dist/ ga nusxalaydi; fayl o'zi asset sifatida berilmaydi.
+# Bir nechta qoida mos kelsa sarlavhalar QO'SHILADI (vergul bilan) — shuning uchun /tg da umumiy CSP
+# "! Content-Security-Policy" bilan olib tashlanib, Telegram ichida ochilishga ruxsat beruvchi CSP qo'yiladi.
+# CSP: skriptlar — faqat o'zimiz va telegram.org (Mini App SDK); API — Supabase; shriftlar — o'zimiz (Inter).
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://telegram.org; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: blob: https://*.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+/tg
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://telegram.org; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: blob: https://*.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors https://web.telegram.org https://*.telegram.org
+
+/tg/*
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://telegram.org; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: blob: https://*.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors https://web.telegram.org https://*.telegram.org
+
+# Vite fayl nomlarida hash bor — o'zgarmaydi, uzoq keshlanadi
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

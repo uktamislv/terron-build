@@ -6,7 +6,7 @@
 // Umumiy admin klientda chaqirilsa, sessiya klient xotirasiga yozilib, keyingi so'rovlar
 // service_role o'rniga foydalanuvchi JWT'si bilan ketardi.
 
-import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.118.0'
 import type {
   AuthEvent,
   AuthUserInfo,
@@ -231,6 +231,22 @@ export async function profileIdByAuthUserId(authUserId: string): Promise<string 
     .maybeSingle()
   if (error) throw new Error(`profiles(auth id): ${error.message}`)
   return (data as { id: string } | null)?.id ?? null
+}
+
+/**
+ * Shu auth user'ga bog'langan profillarning (o'chirilganlar ham) eng oxirgi yangilanganining
+ * firmasi. Yo'q bo'lsa null. admin-users: yetim auth user'ni o'chirishdan oldin firma tekshiruvi.
+ */
+export async function lastProfileCompanyByAuthUserId(authUserId: string): Promise<string | null> {
+  const { data, error } = await getAdminClient()
+    .from('profiles')
+    .select('company_id')
+    .eq('auth_user_id', authUserId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`profiles(last company): ${error.message}`)
+  return (data as { company_id: string } | null)?.company_id ?? null
 }
 
 export async function activeProfileByAuthUserId(authUserId: string): Promise<ProfileRow | null> {

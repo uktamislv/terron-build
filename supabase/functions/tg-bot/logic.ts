@@ -66,6 +66,12 @@ export interface TgBotDeps {
     edit: { text: string; entities: unknown[] } | null,
     replyMarkup: InlineMarkup,
   ) => Promise<void>
+  /**
+   * Foydalanuvchi botni blokladi (`true`) yoki blokdan chiqardi (`false`):
+   * RPC `svc_mark_chat_blocked(p_chat_id bigint, p_blocked boolean)`. RPC hali yo'q bo'lsa —
+   * index.ts faqat loglaydi (xato tashlamaydi).
+   */
+  markChatBlocked: (chatId: number, blocked: boolean) => Promise<void>
   logAuthEvent: LogAuthEventFn
   log: LogFn
 }
@@ -122,6 +128,10 @@ export async function handleTgBot(
     return respond(401, { error: 'unauthorized' })
   }
 
+  if (isRecord(update) && isRecord(update.my_chat_member)) {
+    await handleMyChatMember(update.my_chat_member, deps)
+    return OK
+  }
   if (isRecord(update) && isRecord(update.callback_query)) {
     await handleCallbackQuery(update.callback_query, deps)
     return OK
@@ -327,5 +337,41 @@ async function handleCallbackQuery(cq: Record<string, unknown>, deps: TgBotDeps)
     await deps.editMessage(msg.chat.id, msg.message_id, text === null ? null : { text, entities }, markup)
   } catch (e) {
     deps.log('warn', 'tg-bot: xabar tahrirlanmadi', { error: errMessage(e), alert_id: alertId })
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Audit: botni bloklash / blokdan chiqarish (my_chat_member, faqat shaxsiy chat)
+// ---------------------------------------------------------------------------
+
+/** Bot holati shu statusga o'tsa — foydalanuvchi botni bloklagan / chatni o'chirgan. */
+const BLOCKED_STATUSES = ['kicked', 'left']
+const ACTIVE_STATUSES = ['member', 'administrator', 'creator', 'restricted']
+
+/**
+ * `my_chat_member` → bloklandi (`true`), blokdan chiqdi (`false`) yoki o'zgarish yo'q (`null`).
+ * Faqat shaxsiy chat (guruhga qo'shish/chiqarish e'tiborsiz).
+ */
+export function chatBlockedChange(m: Record<string, unknown>): { chatId: number; blocked: boolean } | null {
+  const chat = m.chat
+  if (!isRecord(chat) || chat.type !== 'private' || !isSafeId(chat.id)) return null
+  const oldStatus = isRecord(m.old_chat_member) ? m.old_chat_member.status : undefined
+  const newStatus = isRecord(m.new_chat_member) ? m.new_chat_member.status : undefined
+  if (typeof newStatus !== 'string' || newStatus === oldStatus) return null
+  if (BLOCKED_STATUSES.includes(newStatus)) return { chatId: chat.id, blocked: true }
+  if (ACTIVE_STATUSES.includes(newStatus)) return { chatId: chat.id, blocked: false }
+  return null
+}
+
+async function handleMyChatMember(m: Record<string, unknown>, deps: TgBotDeps): Promise<void> {
+  const change = chatBlockedChange(m)
+  if (change === null) return
+  try {
+    await deps.markChatBlocked(change.chatId, change.blocked)
+    deps.log('info', change.blocked ? 'tg-bot: bot bloklandi' : 'tg-bot: bot blokdan chiqarildi', {
+      chat_id: change.chatId,
+    })
+  } catch (e) {
+    deps.log('warn', 'tg-bot: svc_mark_chat_blocked xatosi', { error: errMessage(e), chat_id: change.chatId })
   }
 }

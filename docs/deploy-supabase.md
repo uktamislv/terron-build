@@ -4,6 +4,8 @@ Bir martalik ish: loyiha ochish, migratsiyalar, kirish sozlamalari, Edge Functio
 
 Quyida `<REF>` — loyiha identifikatori (Dashboard → Project Settings → General → Reference ID).
 
+> **Free reja cheklovi.** Supabase Free rejasidagi loyiha **7 kun faollik bo'lmasa to'xtatiladi (pause)** — sayt va Mini App ishlamay qoladi, cron va Telegram xabarlari ham to'xtaydi. Qayta yoqish: Dashboard → loyiha → **Restore project** (bir necha daqiqa). Free'da avtomatik zaxira nusxa ham yo'q — haftalik qo'lda zaxira: `docs/backup.md`. Haqiqiy foydalanishdan (production) oldin **Pro** rejaga o'tish tavsiya etiladi.
+
 ## 1. Loyiha
 
 1. https://supabase.com/dashboard → **New project** → nom `TERRON Build`, region **South Asia (Mumbai)**, kuchli database paroli (o'zingizda saqlang).
@@ -48,8 +50,17 @@ Seed ichida vaqtinchalik 4 ta `auth.users` qatori (`*@demo-seed.invalid`) yarati
 Dashboard → **Authentication → Sign In / Providers**:
 
 - **Allow new users to sign up — O'CHIRING.** Foydalanuvchilarni faqat admin qo'shadi. Yoqiq qolsa, begona odam o'zi akkaunt ochishi mumkin.
-- **Email** provider yoqiq qolsin; **Confirm email** — o'chirsa bo'ladi (akkauntlarni tizim tasdiqlangan holda yaratadi).
+- **Email** provider yoqiq qolsin. **Confirm email — YOQIQ qolsin** (tizim akkauntlarni `email_confirm: true` bilan o'zi tasdiqlangan holda yaratadi, shuning uchun bu bizga xalaqit bermaydi; o'chirilsa — tasdiqlanmagan email bilan kirish ochilib qoladi).
+- **Secure email change — YOQIQ** (email o'zgartirish ikkala manzildan tasdiqlanadi).
 - **Phone** provider kerak emas (SMS ishlatilmaydi).
+
+Authentication → **Policies / Passwords** (Dashboard'da "Password security"):
+
+- **Minimum password length: 10.** (Admin parol berishda ham shu qoidaga tushadi; qisqa parol `weak_password` bilan rad etiladi.)
+- **Leaked password protection — YOQING** (HaveIBeenPwned ro'yxatidagi parollar rad etiladi; Pro rejada mavjud — Free'da ko'rinmasa, Pro'ga o'tganda yoqing).
+- **Secure password change — YOQING** (parolni almashtirish uchun yaqinda kirgan bo'lish talab qilinadi).
+
+Authentication → **Rate Limits** — standart qiymatlarni ko'rib chiqing: sign-in/sign-up va token refresh chegaralari bitta firma uchun yetarli; "email sent" chegarasi bizga ta'sir qilmaydi (xat yuborilmaydi). Ko'p xodim bir IP (ofis NAT) orqali kirsa va "rate limit" xatosi chiqsa — sign-in chegarasini oshiring.
 
 Authentication → **Emails → SMTP Settings**:
 
@@ -88,11 +99,55 @@ npx supabase secrets set TELEGRAM_BOT_TOKEN=<BotFather bergan token> TELEGRAM_WE
 
 ## 6. Edge Functions deploy
 
+Oltala funksiya:
+
 ```bash
-npx supabase functions deploy tg-auth tg-bot admin-users
+npx supabase functions deploy tg-auth tg-bot admin-users tg-dispatch receipt-lookup photo-hash --project-ref <REF>
 ```
 
-`verify_jwt` qiymatlari `supabase/config.toml` dan olinadi — uchalasida ham `false`: `tg-auth` initData imzosini, `tg-bot` webhook sirini, `admin-users` esa chaqiruvchini `auth.getUser(jwt)` bilan o'zi tekshiradi (yangi JWT signing keys bilan ham ishlaydi).
+`verify_jwt` qiymatlari `supabase/config.toml` dan olinadi — hammasida `false`, har biri chaqiruvchini o'zi tekshiradi:
+
+| Funksiya | Ishonch |
+|---|---|
+| `tg-auth` | initData HMAC imzosi (15 daqiqa muddat, takroriy ishlatishdan himoya) |
+| `tg-bot` | `X-Telegram-Bot-Api-Secret-Token` (webhook siri) |
+| `admin-users`, `receipt-lookup`, `photo-hash` | foydalanuvchi JWT'si — `auth.getUser(jwt)` (anon kalit → 401) |
+| `tg-dispatch` | `x-dispatch-secret` = Vault'dagi `tg_dispatch_secret` (faqat baza chaqiradi) |
+
+### Yangi loyihada: `dispatch_url`
+
+Migratsiya production loyiha (`srriiiugmxgrdnuvhgix`) URL'ini yozadi. **Boshqa loyiha** (yangi production, staging) uchun SQL Editor'da o'z URL'ingizni qo'ying — aks holda bildirishnomalar boshqa loyihaning funksiyasini uyg'otadi:
+
+```sql
+update private.app_settings
+   set value = 'https://<REF>.supabase.co/functions/v1/tg-dispatch'
+ where key = 'dispatch_url';
+```
+
+Lokal / sinov bazasida uyg'otishni o'chirish: `value = ''` (cron baribir har daqiqada chaqiradi — u ham shu URL'dan foydalanadi).
+
+### Bildirishnomalar ishlayaptimi (tekshirish)
+
+SQL Editor'da ketma-ket:
+
+```sql
+-- 1. Cron vazifalari (dispatch har daqiqada, kunlik hisobot, eslatmalar va h.k.)
+select jobname, schedule, active from cron.job order by jobname;
+
+-- 2. Dispatch siri Vault'da bor (qiymati ko'rsatilmaydi)
+select count(*) as secret_bor from vault.secrets where name = 'tg_dispatch_secret';   -- 1
+
+-- 3. URL to'g'ri loyihaga qaraydi
+select value from private.app_settings where key = 'dispatch_url';
+
+-- 4. Qo'lda uyg'otish va javob
+select private.wake_dispatch();
+select status_code, content, created from net._http_response order by id desc limit 1;
+```
+
+4-qadam natijasi: **`202 {"accepted":true}`** — funksiya darhol javob beradi, yuborish fonda davom etadi (pg_net 5 s da uziladi, shuning uchun kutmaydi). `401` — Vault siri va funksiya mos emas (funksiyani qayta deploy qiling, 5 daqiqa kesh); `404` — `dispatch_url` noto'g'ri yoki `tg-dispatch` deploy qilinmagan.
+
+Natijani navbatdan ko'rish: `select kind, status, attempts, last_error, sent_count, updated_at from public.notification_outbox order by created_at desc limit 20;`
 
 ### Birinchi deploy'dan keyin tekshiring
 
@@ -102,9 +157,19 @@ npx supabase functions deploy tg-auth tg-bot admin-users
 
 ## 7. Telegram webhook
 
+Tavsiya: skript (secrets, webhook, `/start` buyrug'i va menu tugmasini birga sozlaydi, tokenni ekranga chiqarmaydi):
+
 ```bash
-curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" -H "Content-Type: application/json" -d "{\"url\":\"https://<REF>.supabase.co/functions/v1/tg-bot\",\"secret_token\":\"<TELEGRAM_WEBHOOK_SECRET>\",\"allowed_updates\":[\"message\",\"callback_query\"],\"drop_pending_updates\":true}"
+node scripts/setup-telegram.mjs --project-ref <REF> --app-url https://<domen>
 ```
+
+Qo'lda (skriptsiz):
+
+```bash
+curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" -H "Content-Type: application/json" -d "{\"url\":\"https://<REF>.supabase.co/functions/v1/tg-bot\",\"secret_token\":\"<TELEGRAM_WEBHOOK_SECRET>\",\"allowed_updates\":[\"message\",\"callback_query\",\"my_chat_member\"],\"drop_pending_updates\":true}"
+```
+
+`callback_query` — alert xabaridagi **Ko'rildi** tugmasi; `my_chat_member` — foydalanuvchi botni bloklaganini bilish (bloklanganlarga xabar yuborish to'xtatiladi).
 
 Tekshirish:
 
@@ -123,7 +188,7 @@ Dashboard → Project Settings → **API**: Project URL va **anon / publishable*
   VITE_SUPABASE_URL=https://<REF>.supabase.co
   VITE_SUPABASE_ANON_KEY=<anon kalit>
   ```
-- GitHub → Settings → Secrets and variables → Actions → **Variables**: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+- GitHub → Settings → Secrets and variables → Actions → **Variables**: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_TELEGRAM_BOT_USERNAME` (hammasi majburiy — biri bo'sh bo'lsa CI deploy qadami to'xtaydi). `VITE_APP_VERSION` ni CI o'zi beradi (commit SHA).
 - Qayta deploy: `npm run deploy` (yoki GitHub avtomatik deploy yoqilgan bo'lsa — push).
 
 ## 9. Tekshirish

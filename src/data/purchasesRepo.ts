@@ -1,7 +1,8 @@
 import { isPkeyConflict, toRepoError } from './errors'
 import { chunkOpts, fetchAll, inChunks, type ChunkOpts } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
-import { cleanSha256, geoColumns, GEO_SELECT } from './geo'
+import { geoColumns, GEO_SELECT } from './geo'
+import { attachNames } from './profileDirectory'
 import { cleanTin } from './suppliersRepo'
 import { getSupabase } from './supabaseClient'
 import type { AlertType, GeoFix, Purchase, PurchaseReceipt } from './types'
@@ -17,7 +18,7 @@ const PURCHASE_SELECT =
   `${PURCHASE_COLUMNS}, ` +
   'object:objects!purchases_object_fkey(name), ' +
   'material:materials!purchases_material_fkey(name, base_unit), ' +
-  'buyer:profiles!purchases_buyer_fkey(full_name), ' +
+
   'supplier:suppliers!purchases_supplier_fkey(name)'
 
 /** `purchase_receipts` view: kalit ustuni va qiymatlar. */
@@ -48,8 +49,6 @@ export interface NewPurchase {
   requestId?: string | null
   /** Batch 12 (G): chek QR maydonlari. */
   receipt?: PurchaseReceiptQr | null
-  /** Batch 12 (C): chek rasmi SHA-256 (hex). */
-  receiptPhotoSha256?: string | null
   /** Batch 12 (D): Mini App joylashuvi. */
   geo?: GeoFix | null
 }
@@ -69,6 +68,8 @@ export interface PurchaseFilters {
   objectId?: string
   materialId?: string
   buyerId?: string
+  /** Sotuvchi bo'yicha (veb filtri). */
+  supplierId?: string
   /** ISO, shu vaqtdan (kiritilgan) */
   from?: string
   /** ISO, shu vaqtgacha (kiritilmagan) */
@@ -87,18 +88,17 @@ type RawPurchase = Omit<
 > & {
   object: { name: string } | null
   material: { name: string; base_unit: string } | null
-  buyer: { full_name: string } | null
   supplier: { name: string } | null
 }
 
 function normalize(raw: RawPurchase): Purchase {
-  const { object, material, buyer, supplier, ...rest } = raw
+  const { object, material, supplier, ...rest } = raw
   return {
     ...rest,
     object_name: object?.name ?? null,
     material_name: material?.name ?? null,
     base_unit: material?.base_unit ?? null,
-    buyer_name: buyer?.full_name ?? null,
+    buyer_name: null,
     supplier_name: supplier?.name ?? null,
     receipt: null,
     alert_types: [],
@@ -132,8 +132,7 @@ export async function createPurchase(input: NewPurchase): Promise<Purchase> {
   if (input.purchasedAt) row.purchased_at = input.purchasedAt
   if (input.requestId) row.request_id = input.requestId
   Object.assign(row, geoColumns(input.geo))
-  const sha = row.receipt_photo_path ? cleanSha256(input.receiptPhotoSha256) : null
-  if (sha) row.receipt_photo_sha256 = sha
+  // Chek rasmi xeshi klientdan yuborilmaydi — saqlangandan keyin `photo-hash` (functions.ts)
   if (input.receipt) {
     row.receipt_fiscal_sign = input.receipt.fiscalSign
     row.receipt_terminal_id = input.receipt.terminalId
@@ -150,13 +149,19 @@ export async function createPurchase(input: NewPurchase): Promise<Purchase> {
     }
     throw toRepoError(error)
   }
-  return normalize(data as unknown as RawPurchase)
+  const [saved] = await withNames([normalize(data as unknown as RawPurchase)])
+  return saved as Purchase
+}
+
+/** Xaridor ismi — `profile_directory` dan (admin bo'lmaganlar `profiles` dan faqat o'zini ko'radi). */
+function withNames(rows: Purchase[]): Promise<Purchase[]> {
+  return attachNames(rows, [['buyer_id', 'buyer_name']])
 }
 
 export async function getPurchaseById(id: string): Promise<Purchase> {
   const { data, error } = await getSupabase().from('purchases').select(PURCHASE_SELECT).eq('id', id).single()
   if (error) throw toRepoError(error)
-  const [withStatus] = await attachStatus([normalize(data as unknown as RawPurchase)])
+  const [withStatus] = await attachStatus(await withNames([normalize(data as unknown as RawPurchase)]))
   return withStatus as Purchase
 }
 
@@ -222,6 +227,7 @@ async function loadPurchases(
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.materialId) q = q.eq('material_id', filters.materialId)
   if (filters.buyerId) q = q.eq('buyer_id', filters.buyerId)
+  if (filters.supplierId) q = q.eq('supplier_id', filters.supplierId)
   if (filters.from) q = q.gte('purchased_at', filters.from)
   if (filters.to) q = q.lt('purchased_at', filters.to)
   if (opts.before) q = q.lte('created_at', opts.before)
@@ -233,7 +239,7 @@ async function loadPurchases(
   if (opts.signal) ranged = ranged.abortSignal(opts.signal)
   const { data, error, count } = await ranged
   if (error) throw toRepoError(error)
-  const rows = await attachStatus(((data ?? []) as unknown as RawPurchase[]).map(normalize))
+  const rows = await attachStatus(await withNames(((data ?? []) as unknown as RawPurchase[]).map(normalize)))
   return { rows, total: count ?? null }
 }
 
@@ -249,7 +255,8 @@ export async function listMyPurchases(profileId: string, limit = 50): Promise<Pu
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) throw toRepoError(error)
-  return ((data ?? []) as unknown as RawPurchase[]).map(normalize)
+  // Qabul holati ("Qabul qilindi / Qisman / Kutilmoqda") — purchase_receipts orqali
+  return attachStatus(await withNames(((data ?? []) as unknown as RawPurchase[]).map(normalize)))
 }
 
 export type PriceCheck = 'ok' | 'high' | 'low'

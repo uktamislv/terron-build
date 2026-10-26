@@ -20,7 +20,7 @@
 import type { Alert } from '@/data/types'
 import { parseDec } from '@/domain/decimal'
 import { t } from '@/i18n'
-import { formatDate, formatQty, formatSum } from '@/lib/format'
+import { formatDate, formatDateTime, formatQty, formatSum } from '@/lib/format'
 
 const td = t.alertsPage.details
 
@@ -52,6 +52,8 @@ export function alertDetailText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>
   if (a.type === 'otkazma_farqi') return transferText(d, a.base_unit)
   const batch12 = automationText(a)
   if (batch12 !== null) return batch12
+  const audit = auditText(a)
+  if (audit !== null) return audit
   if (a.type === 'narx_ogishi') {
     const avg = dec(d, 'avg')
     if (avg !== null && pct !== null) {
@@ -242,9 +244,26 @@ function inventoryText(d: Record<string, unknown>): string {
   const notCountedMore = dec(d, 'not_counted_more')
   const notCounted = (Array.isArray(d.not_counted) ? d.not_counted.length : 0) + (notCountedMore !== null ? Number(notCountedMore) : 0)
   if (notCounted > 0) parts.push(td.inventoryNotCounted(notCounted))
+  const during = movementsDuringCountText(d)
+  if (during) parts.push(during)
   const appliedAt = str(d, 'applied_at')
   if (appliedAt) parts.push(td.inventoryApplied(str(d, 'applied_by_name'), formatDate(appliedAt)))
   return parts.filter(Boolean).join('. ')
+}
+
+/** Audit (A3): sanash paytida kiritilgan harakatlar — `movements_during_count`, `movements_during_count_total`. */
+function movementsDuringCountText(d: Record<string, unknown>): string {
+  const items = (Array.isArray(d.movements_during_count) ? (d.movements_during_count as unknown[]) : []).filter(
+    (m): m is Record<string, unknown> => typeof m === 'object' && m !== null,
+  )
+  const totalRaw = dec(d, 'movements_during_count_total')
+  const total = totalRaw !== null ? Number(totalRaw) : items.reduce((s, m) => s + (Number(dec(m, 'count') ?? 0) || 0), 0)
+  if (!total) return ''
+  const list = items
+    .slice(0, SHOWN_SHORTAGES)
+    .map((m) => td.movementsDuringItem(str(m, 'material_name'), formatQty(dec(m, 'count') ?? '0', 0)))
+    .join(', ')
+  return td.movementsDuringCount(total, list + (items.length > SHOWN_SHORTAGES ? '…' : ''))
 }
 
 /** O'tkazma farqi: "Obyekt A → Obyekt B: yuborildi 100 kg, qabul qilindi 90 kg (farq -10 kg)". */
@@ -277,6 +296,162 @@ function transferText(d: Record<string, unknown>, baseUnit: string | null): stri
 //  podotchet_manfiy: profile_id, profile_name, balance
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Audit tuzatishlari — `details` kalitlari docs/audit-fixes.md "Yangi alert turlari" bo'yicha:
+//  yozuv_ozgartirildi / yozuv_tuzatildi: table, record_id, changed[], before{}, after{} (o'zgargan
+//    ustunlar + unit_input), via (direct | correct_entry), actor_profile_id, actor_name, author_id,
+//    author_name, material_name, base_unit, movement_type (faqat harakat)
+//  sozlama_ozgardi: changes[{ key, before, after }], actor_profile_id, actor_name
+//  login_ozgardi: target_profile_id, target_name, target_role, actor_profile_id, actor_name, actor_role, changed_at
+//  podotchet_belgisi: table, record_id, reasons[] (qaytarildi | issued_at_outside_window), cash_kind, amount,
+//    issued_at, recipient_id, recipient_name, actor_profile_id, actor_name
+//  sotuvchi_stir_farqi: seller_tin, supplier_id, supplier_name, supplier_tin, receipt_fiscal_sign
+// ---------------------------------------------------------------------------
+
+const ID_FIELDS = new Set(['object_id', 'material_id', 'purchase_id', 'buyer_id'])
+const SUM_FIELDS = new Set(['total_amount', 'unit_price', 'price_per_base'])
+const DATE_FIELDS = new Set(['occurred_at', 'purchased_at'])
+
+function obj(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
+}
+
+function shown(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null
+  return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? String(v) : null
+}
+
+/** Bitta ustun qiymati matnda (birlik, summa, sana bilan). */
+function fieldValue(key: string, side: Record<string, unknown>, baseUnit: string | null): string {
+  const raw = shown(side[key])
+  if (raw === null) return td.emptyValue
+  if (key === 'qty_input') {
+    const unit = shown(side.unit_input)
+    const d = parseDec(raw)
+    return d !== null ? qty(d, unit) : raw
+  }
+  if (key === 'qty_base') {
+    const d = parseDec(raw)
+    return d !== null ? qty(d, baseUnit) : raw
+  }
+  if (SUM_FIELDS.has(key)) {
+    const d = parseDec(raw)
+    return d !== null ? formatSum(d) : raw
+  }
+  if (DATE_FIELDS.has(key)) return Number.isNaN(new Date(raw).getTime()) ? raw : formatDateTime(raw)
+  if (key === 'type' && Object.hasOwn(t.movements.types, raw)) return t.movements.types[raw as keyof typeof t.movements.types]
+  return raw
+}
+
+/**
+ * "Miqdor: 10 qop → 12 qop; Summa: 100 000 so'm → 120 000 so'm". Id ustunlari (obyekt, material, xaridor) —
+ * faqat "o'zgardi". Birlik — `unit_input` bo'yicha; miqdor ko'rsatilsa asosiy birlikdagi qiymat takrorlanmaydi.
+ */
+export function entryChanges(d: Record<string, unknown>): string[] {
+  const before = obj(d.before)
+  const after = obj(d.after)
+  const changed = (Array.isArray(d.changed) ? (d.changed as unknown[]) : Object.keys(after)).filter(
+    (k): k is string => typeof k === 'string' && k !== 'unit_input',
+  )
+  const baseUnit = str(d, 'base_unit') || null
+  const labels = td.changeFields
+  const hasQty = changed.includes('qty_input') || changed.includes('unit_id')
+  const out: string[] = []
+  for (const key of changed) {
+    if (key === 'qty_base' && hasQty) continue
+    const label = labels[key] ?? key
+    if (key === 'unit_id') {
+      if (changed.includes('qty_input')) continue
+      const b = shown(before.unit_input)
+      const a = shown(after.unit_input)
+      out.push(b !== null && a !== null ? td.change(label, b, a) : td.changeOnly(label))
+      continue
+    }
+    if (ID_FIELDS.has(key)) {
+      out.push(td.changeOnly(label))
+      continue
+    }
+    out.push(td.change(label, fieldValue(key, before, baseUnit), fieldValue(key, after, baseUnit)))
+  }
+  return out
+}
+
+function entryWhat(d: Record<string, unknown>): string {
+  const table = str(d, 'table')
+  const type = str(d, 'movement_type')
+  if (table === 'movements' && Object.hasOwn(t.movements.types, type)) return t.movements.types[type as keyof typeof t.movements.types]
+  return table === 'purchases' || table === 'movements' ? td.deletedKinds[table] : td.deletedKinds.other
+}
+
+function settingValue(v: unknown): string {
+  if (v === null || v === undefined || v === '') return td.settingsOff
+  const s = shown(v)
+  if (s === null) return '?'
+  // Vaqt ("22:00:00") — "22:00"
+  const time = /^(\d{2}:\d{2}):\d{2}$/.exec(s)
+  return time ? (time[1] ?? s) : s
+}
+
+/** Sozlama kaliti → yorliq (sozlamalar sahifasidagi nom), noma'lum — kalitning o'zi. */
+function settingLabel(key: string): string {
+  const s = t.settings
+  const known: Record<string, string> = {
+    receipt_mismatch_pct: s.receiptMismatchPct,
+    price_deviation_pct: s.priceDeviationPct,
+    price_avg_window: s.priceAvgWindow,
+    photo_required_amount: s.photoRequiredAmount,
+    cash_max_days: s.cashMaxDays,
+    duplicate_window_minutes: s.duplicateWindowMinutes,
+    request_overbuy_pct: s.requestOverbuyPct,
+    alert_remind_hours: s.alertRemindHours,
+    forecast_days_warn: s.forecastDaysWarn,
+  }
+  return known[key] ?? td.settingsKeys[key] ?? key
+}
+
+function auditText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): string | null {
+  const d = a.details
+  switch (a.type) {
+    case 'yozuv_ozgartirildi':
+    case 'yozuv_tuzatildi': {
+      const changes = entryChanges(d).join('; ')
+      const actor = str(d, 'actor_name')
+      const author = str(d, 'author_name')
+      if (a.type === 'yozuv_tuzatildi') return td.entryCorrected(entryWhat(d), str(d, 'material_name'), changes, author || actor)
+      const who = [actor, author && author !== actor ? td.entryAuthor(author) : ''].filter(Boolean).join('; ')
+      return td.entryChanged(entryWhat(d), str(d, 'material_name'), changes, who)
+    }
+    case 'sozlama_ozgardi': {
+      const changes = (Array.isArray(d.changes) ? (d.changes as unknown[]) : [])
+        .map(obj)
+        .filter((c) => typeof c.key === 'string')
+        .map((c) => td.change(settingLabel(String(c.key)), settingValue(c.before), settingValue(c.after)))
+        .join('; ')
+      return td.settingsChanged(changes, str(d, 'actor_name'))
+    }
+    case 'login_ozgardi': {
+      const role = str(d, 'target_role')
+      const roleLabel = Object.hasOwn(t.roles, role) ? t.roles[role as keyof typeof t.roles] : ''
+      return td.loginChanged(str(d, 'target_name'), roleLabel, str(d, 'actor_name'))
+    }
+    case 'podotchet_belgisi': {
+      const amount = dec(d, 'amount')
+      const reasons = (Array.isArray(d.reasons) ? (d.reasons as unknown[]) : [])
+        .filter((r): r is string => typeof r === 'string')
+        .map((r) => td.cashFlagReasons[r] ?? r)
+        .join(', ')
+      const kind = td.cashFlagKinds[str(d, 'cash_kind')] ?? td.cashFlagKinds.berildi ?? ''
+      const issued = str(d, 'issued_at')
+      const date = issued && !Number.isNaN(new Date(issued).getTime()) ? formatDate(issued) : ''
+      return td.cashFlag(str(d, 'recipient_name'), amount !== null ? formatSum(amount) : '?', kind, reasons, date)
+    }
+    case 'sotuvchi_stir_farqi':
+      return td.sellerTin(str(d, 'seller_tin'), str(d, 'supplier_name'), str(d, 'supplier_tin'))
+    default:
+      return null
+  }
+}
+
 function automationText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): string | null {
   const d = a.details
   const unit = unitOf(d, a.base_unit)
@@ -292,6 +467,16 @@ function automationText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): strin
       const u = str(d, 'unit') || a.base_unit
       const after = dec(d, 'stock_after')
       const q = dec(d, 'qty_base')
+      const type = str(d, 'movement_type')
+      const deleted = d.movement_deleted === true
+      // Audit (A2): sabab istalgan tur bo'lishi mumkin (kirim o'chirildi, o'tkazma va h.k.)
+      if (deleted || (type && type !== 'chiqim')) {
+        const typeLabel = Object.hasOwn(t.movements.types, type)
+          ? t.movements.types[type as keyof typeof t.movements.types]
+          : td.deletedKinds.movements
+        const cause = td.negativeCause(typeLabel, q !== null ? qty(q, u) : '', deleted)
+        return `${td.negativeStock(after !== null ? qty(after, u) : '?', '')} (${cause})`
+      }
       return td.negativeStock(after !== null ? qty(after, u) : '?', q !== null ? qty(q, u) : '')
     }
     case 'takroriy_yozuv': {

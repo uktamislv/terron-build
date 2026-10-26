@@ -1,8 +1,14 @@
 import { emptyRefNames, type AuditEntry } from '@/data/historyRepo'
-import { alertDetailText } from '../alerts/alertDetails'
+import { alertDetailText as rawAlertDetailText } from '../alerts/alertDetails'
+import { plain } from '@/test/text'
 import { t } from '@/i18n'
-import { changesText, collectRefIds, entryRecordDate, formatValue, isPastPeriod, isRestorable, isTransferMovement, localizeLabel, restoredLater } from './historyFormat'
+import { changesText as rawChangesText, collectRefIds, entryRecordDate, formatValue as rawFormatValue, isPastPeriod, isRestorable, isTransferMovement, localizeLabel, restoredLater } from './historyFormat'
 import { historyHref, historySearch, readHistoryQuery } from './historyQuery'
+
+// Tipografik bo'shliqlar (U+202F, U+00A0) oddiy bo'shliq — kutilgan matnlar o'qilishi uchun
+const alertDetailText = (a: Parameters<typeof rawAlertDetailText>[0]) => plain(rawAlertDetailText(a))
+const formatValue = (...args: Parameters<typeof rawFormatValue>) => plain(rawFormatValue(...args))
+const changesText = (...args: Parameters<typeof rawChangesText>) => plain(rawChangesText(...args))
 
 const ID = '5b0e6f0a-1c2d-4e3f-8a9b-0c1d2e3f4a5b'
 const today = '2026-10-25'

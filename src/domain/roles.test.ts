@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { ROLES, can, isRole, tgNavFor, webNavFor, type Action, type Role, type TgNavKey, type WebNavKey } from './roles'
+import {
+  ROLES,
+  TG_BOTTOM_MAX,
+  can,
+  isProtectedProfile,
+  isRole,
+  tgBottomNavFor,
+  tgExtraFor,
+  tgNavFor,
+  tgOverflowFor,
+  webNavFor,
+  type Action,
+  type Role,
+  type TgNavKey,
+  type WebNavKey,
+} from './roles'
 
 // docs/auth-design.md "Rollar va menyu" jadvali — aynan ko'chirma.
 const ALL_WEB: WebNavKey[] = [
@@ -23,15 +38,17 @@ const EXPECTED_WEB: Record<Role, WebNavKey[]> = {
   direktor: ['dashboard', 'movements', 'purchases', 'cash', 'estimates', 'requests', 'alerts', 'history'],
   buxgalter: ['dashboard', 'materials', 'movements', 'purchases', 'cash', 'estimates', 'alerts'],
   taminotchi: ['dashboard', 'materials', 'purchases', 'requests'],
-  prorab: ['dashboard', 'movements', 'requests'],
+  // Audit: prorab smetani (faqat ko'rish) va norma sarfini ko'radi
+  prorab: ['dashboard', 'movements', 'estimates', 'requests'],
   omborchi: ['dashboard', 'movements'],
   haydovchi: [],
   tekshiruvchi: ['dashboard'],
 }
 
 const EXPECTED_TG: Record<Role, TgNavKey[]> = {
-  super_admin: ['home', 'movement', 'purchase', 'inventory', 'mine'],
-  admin: ['home', 'movement', 'purchase', 'inventory', 'mine'],
+  // Audit: admin Telegram ilovasida so'rov ham yarata oladi
+  super_admin: ['home', 'movement', 'purchase', 'request', 'inventory', 'mine'],
+  admin: ['home', 'movement', 'purchase', 'request', 'inventory', 'mine'],
   direktor: ['home', 'mine'],
   buxgalter: ['mine'],
   taminotchi: ['purchase', 'mine'],
@@ -111,6 +128,48 @@ describe('tgNavFor', () => {
   })
   it("hamma rolda 'mine' bor va oxirida", () => {
     for (const role of ROLES) expect(tgNavFor(role).at(-1)).toBe('mine')
+  })
+})
+
+describe('tgBottomNavFor / tgOverflowFor / tgExtraFor', () => {
+  it.each(ROLES)('%s — pastki menyu ≤ 5, hammasi ochiq bandlar ichida, sig‘maganlari bosh ekranda', (role) => {
+    const bottom = tgBottomNavFor(role)
+    const overflow = tgOverflowFor(role)
+    expect(bottom.length).toBeLessThanOrEqual(TG_BOTTOM_MAX)
+    expect([...bottom, ...overflow].sort()).toEqual(tgNavFor(role).sort())
+    // Sig'magan band bo'lsa — "Bosh" bor (u yerdan ochiladi)
+    if (overflow.length > 0) expect(bottom).toContain('home')
+  })
+  it('admin: "Sanash" pastki menyudan bosh ekranga o‘tadi, "So‘rov" pastda', () => {
+    expect(tgBottomNavFor('admin')).toEqual(['home', 'movement', 'purchase', 'request', 'mine'])
+    expect(tgOverflowFor('admin')).toEqual(['inventory'])
+  })
+  it('prorab, omborchi — o‘zgarmagan pastki menyu', () => {
+    expect(tgBottomNavFor('prorab')).toEqual(tgNavFor('prorab'))
+    expect(tgOverflowFor('omborchi')).toEqual([])
+  })
+  it('qo‘shimcha bo‘limlar: Qoldiq — prorab, omborchi, admin; Tasdiqlash — admin', () => {
+    expect(tgExtraFor('prorab')).toEqual(['stock'])
+    expect(tgExtraFor('omborchi')).toEqual(['stock'])
+    expect(tgExtraFor('admin')).toEqual(['stock', 'approvals'])
+    // Ko'r-ko'rona sanash — tekshiruvchi qoldiqni ko'rmaydi
+    expect(tgExtraFor('tekshiruvchi')).toEqual([])
+    expect(tgExtraFor('haydovchi')).toEqual([])
+  })
+  it('buxgalter: faqat "Yozuvlarim" (pul yozuvlari bilan)', () => {
+    expect(tgNavFor('buxgalter')).toEqual(['mine'])
+  })
+})
+
+describe('isProtectedProfile (profile_protected)', () => {
+  it('admin — admin va direktor profillari himoyalangan (o‘zinikini ham)', () => {
+    expect(isProtectedProfile('admin', 'admin')).toBe(true)
+    expect(isProtectedProfile('admin', 'direktor')).toBe(true)
+    expect(isProtectedProfile('admin', 'prorab')).toBe(false)
+  })
+  it('super_admin — cheklovsiz', () => {
+    expect(isProtectedProfile('super_admin', 'admin')).toBe(false)
+    expect(isProtectedProfile('super_admin', 'direktor')).toBe(false)
   })
 })
 

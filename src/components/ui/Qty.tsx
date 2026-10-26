@@ -1,4 +1,5 @@
-import { formatQty, formatSum } from '@/lib/format'
+import { t } from '@/i18n'
+import { formatQty, formatSumNumber } from '@/lib/format'
 import { cx } from './cx'
 
 export type QtySize = 'sm' | 'md' | 'lg' | 'hero'
@@ -7,7 +8,7 @@ const numSize: Record<QtySize, string> = {
   sm: 'text-sm font-semibold',
   md: 'text-base font-semibold',
   lg: 'text-xl font-semibold',
-  hero: 'text-4xl leading-none font-bold sm:text-[44px]',
+  hero: 'text-hero leading-none font-bold',
 }
 
 const unitSize: Record<QtySize, string> = {
@@ -48,7 +49,7 @@ export function Qty({
       )}
     >
       <span className={cx('whitespace-nowrap', numSize[size])}>{text}</span>{unit ? ' ' : null}
-      {unit ? <span className={cx('text-muted', tone === 'danger' && 'text-danger/75', unitSize[size])}>{unit}</span> : null}
+      {unit ? <span className={cx(tone === 'danger' ? 'text-danger' : 'text-muted', unitSize[size])}>{unit}</span> : null}
     </span>
   )
 }
@@ -69,10 +70,8 @@ export function Money({
   /** Rangni majburlash (masalan, musbat qoldiq — ok). */
   tone?: 'ok' | 'muted' | 'danger'
 }) {
-  const full = formatSum(value)
-  const idx = full.lastIndexOf(' ')
-  const num = full.slice(0, idx)
-  const unit = full.slice(idx + 1)
+  const num = formatSumNumber(value)
+  const unit = t.ui.sum
   const negative = String(value).trim().startsWith('-') && /[1-9]/.test(String(value))
   return (
     <span
@@ -84,7 +83,7 @@ export function Money({
       )}
     >
       <span className={cx('whitespace-nowrap', numSize[size])}>{num}</span>{' '}
-      <span className={cx(negative && signTone ? 'text-danger/75' : 'text-muted', unitSize[size])}>{unit}</span>
+      <span className={cx(negative && signTone ? 'text-danger' : 'text-muted', unitSize[size])}>{unit}</span>
     </span>
   )
 }

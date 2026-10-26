@@ -2,13 +2,13 @@
 import { useMemo, useState } from 'react'
 import { normalizeAlias } from '@/domain/aliases'
 import { StatusBadge } from '@/components/ui'
-import { Button, Notice, TextField } from '@/components/ui'
+import { Button, chipClass, Notice, TextField } from '@/components/ui'
 import type { Material } from '@/data/types'
 import { t } from '@/i18n'
 import { Pager, SelectField } from '@/components/ui'
 import { QUICK_BASE_UNITS } from '../materials/materialForm'
 import { Checkbox } from './parts'
-import { chipClass, pageSlice } from './styles'
+import { pageSlice } from './styles'
 import {
   aliasWorthSaving,
   catalogOf,

@@ -7,6 +7,7 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
+  LabelList,
   Legend,
   Line,
   ResponsiveContainer,
@@ -51,14 +52,14 @@ function DailyTip({ active, payload }: TipProps<DailyPoint>) {
   if (!p) return null
   return (
     <TipBox title={p.date}>
-      <TipRow color={PALETTE.brand} label={tc.dailyKirim} value={formatQty(String(p.kirim))} />
-      <TipRow color={PALETTE.dark} label={tc.dailyChiqim} value={formatQty(String(p.chiqim))} />
-      <TipRow color={PALETTE.warn} label={tc.dailySum} value={formatSum(p.sumText)} />
+      <TipRow color={PALETTE.ok} label={tc.dailyKirim} value={formatQty(String(p.kirim))} />
+      <TipRow color={PALETTE.brand} label={tc.dailyChiqim} value={formatQty(String(p.chiqim))} />
+      <TipRow color={PALETTE.dark} label={tc.dailySum} value={formatSum(p.sumText)} />
     </TipBox>
   )
 }
 
-/** Kunlik dinamika: kirim/chiqim soni (ustun) + xarid summasi (chiziq, o'ng o'q). */
+/** Kunlik dinamika: kirim (yashil) / chiqim (ko'k) soni — ustun, xarid summasi — navy chiziq (o'ng o'q). Ranglar EntryRow bilan bir xil. */
 export function DailyChart({ data }: { data: DailyPoint[] }) {
   return (
     <ResponsiveContainer width="100%" height={280}>
@@ -69,9 +70,9 @@ export function DailyChart({ data }: { data: DailyPoint[] }) {
         <YAxis yAxisId="sum" orientation="right" tick={AXIS} tickFormatter={axisNumber} width={64} axisLine={false} tickLine={false} />
         <Tooltip content={<DailyTip />} cursor={{ fill: PALETTE.light }} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
-        <Bar yAxisId="count" dataKey="kirim" name={tc.dailyKirim} fill={PALETTE.brand} radius={[3, 3, 0, 0]} maxBarSize={24} />
-        <Bar yAxisId="count" dataKey="chiqim" name={tc.dailyChiqim} fill={PALETTE.dark} radius={[3, 3, 0, 0]} maxBarSize={24} />
-        <Line yAxisId="sum" type="monotone" dataKey="sum" name={tc.dailySum} stroke={PALETTE.warn} strokeWidth={2} dot={false} />
+        <Bar yAxisId="count" dataKey="kirim" name={tc.dailyKirim} fill={PALETTE.ok} radius={[3, 3, 0, 0]} maxBarSize={24} />
+        <Bar yAxisId="count" dataKey="chiqim" name={tc.dailyChiqim} fill={PALETTE.brand} radius={[3, 3, 0, 0]} maxBarSize={24} />
+        <Line yAxisId="sum" type="monotone" dataKey="sum" name={tc.dailySum} stroke={PALETTE.dark} strokeWidth={2} dot={false} />
       </ComposedChart>
     </ResponsiveContainer>
   )
@@ -158,7 +159,21 @@ function CashTip({ active, payload }: TipProps<CashPoint>) {
   )
 }
 
-/** Podotchet: odamlar bo'yicha qo'ldagi pul; manfiy — qizil. */
+/** Manfiy ustun yonidagi yozuv: "−1,2 mln" (U+2212). Musbat ustunlar uchun hech narsa. */
+function NegativeLabel(props: { x?: number | string; y?: number | string; width?: number | string; height?: number | string; value?: number | string }) {
+  const value = Number(props.value)
+  if (!Number.isFinite(value) || value >= 0) return null
+  // Ustunning o'ng uchi (nol chizig'i) yonida — ustun manfiy kenglik bilan kelsa ham
+  const x = Number(props.x ?? 0) + Math.max(0, Number(props.width ?? 0))
+  const y = Number(props.y ?? 0) + Number(props.height ?? 0) / 2
+  return (
+    <text x={x + 6} y={y} dy="0.35em" fontSize={12} fontWeight={600} fill={colors.danger}>
+      {axisNumber(value)}
+    </text>
+  )
+}
+
+/** Podotchet: odamlar bo'yicha qo'ldagi pul; manfiy — qizil va qiymati yozilgan. */
 export function CashChart({ data }: { data: CashPoint[] }) {
   return (
     <ResponsiveContainer width="100%" height={barHeight(data.length)}>
@@ -171,6 +186,8 @@ export function CashChart({ data }: { data: CashPoint[] }) {
           {data.map((p) => (
             <Cell key={p.profileId} fill={p.negative ? PALETTE.danger : PALETTE.ok} />
           ))}
+          {/* Manfiy ustun — rang yagona belgi bo'lmasin: qiymat minus bilan yoziladi */}
+          <LabelList dataKey="value" content={NegativeLabel} />
         </Bar>
       </BarChart>
     </ResponsiveContainer>

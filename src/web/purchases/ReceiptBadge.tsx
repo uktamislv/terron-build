@@ -8,7 +8,7 @@ import { RECEIPT_TONE, receiptState } from './receiptStatus'
 const tp = t.purchases
 const ic = { strokeWidth: 2, 'aria-hidden': true } as const
 
-/** Qabul holati: "To'liq · 150 / 150 kg" — rang `evaluateReceipt` bo'yicha. `level` — ostida daraja chizig'i. */
+/** Qabul holati: belgi ("To'liq") va ostida alohida qatorda "150 / 150 kg" — rang `evaluateReceipt` bo'yicha. `level` — daraja chizig'i. */
 export function ReceiptBadge({
   p,
   thresholdPct,
@@ -29,9 +29,12 @@ export function ReceiptBadge({
   const purchased = Number(p.qty_base)
   return (
     <span data-testid="receipt-badge" data-state={state} className="inline-flex min-w-40 flex-col gap-1.5">
-      <Badge tone={tone} icon={icon}>
-        {tp.receiptStatus[state]} · {tp.receivedOf(formatQty(p.receipt.received_qty_base), formatQty(p.qty_base), p.base_unit ?? '')}
+      <Badge tone={tone} icon={icon} className="self-start">
+        {tp.receiptStatus[state]}
       </Badge>
+      <span className="tabular text-xs text-muted">
+        {tp.receivedOf(formatQty(p.receipt.received_qty_base), formatQty(p.qty_base), p.base_unit ?? '')}
+      </span>
       {level && purchased > 0 && <LevelBar label={tp.receivedLevel} value={received} max={purchased} warnAt={2} showPercent={false} />}
     </span>
   )

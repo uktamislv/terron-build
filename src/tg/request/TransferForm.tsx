@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Notice } from '@/components/ui'
+import { Button, choiceClass, Notice } from '@/components/ui'
 import { getStock } from '@/data/stockRepo'
 import { createTransfer } from '@/data/transfersRepo'
 import type { Material, ObjectRow } from '@/data/types'
@@ -19,7 +19,7 @@ import { LastQtyChip } from '../entry/LastQtyChip'
 import { loadLastObject } from '../movement/prefs'
 import { getWebApp, haptic } from '../telegram'
 import { SavedBanner, SectionTitle } from '../ui'
-import { useBackButton, useMainButton } from '../useTelegramButtons'
+import { flashMainButtonSaved, useBackButton, useClosingConfirmation, useMainButton } from '../useTelegramButtons'
 
 const tt = t.tg.transfer
 const tm = t.tg.movement
@@ -36,6 +36,7 @@ export function TransferForm({
   objects,
   targets,
   materials,
+  pinnedIds,
   onSaved,
 }: {
   /** Batch 12 (L): oxirgi birlik/miqdor uchun. */
@@ -43,6 +44,8 @@ export function TransferForm({
   objects: ObjectRow[]
   targets: { id: string; name: string }[]
   materials: Material[]
+  /** Ko'p ishlatiladigan materiallar (to'r tepasida). */
+  pinnedIds?: ReadonlySet<string>
   onSaved: () => void
 }) {
   const [fromId, setFromId] = useState<string | null>(() =>
@@ -70,6 +73,8 @@ export function TransferForm({
   const from = objects.find((o) => o.id === fromId) ?? null
   const manyFrom = objects.length > 1
   const toOptions = targets.filter((o) => o.id !== fromId)
+  // Yagona qabul qiluvchi obyekt — avtomatik tanlanadi (bir bosish kam)
+  const selectedToId = toId ?? (toOptions.length === 1 ? (toOptions[0]?.id ?? null) : null)
   const step = (!fromId || pickingFrom) && manyFrom ? 'object' : !material ? 'material' : 'details'
 
   const stockKey = fromId && materialId ? `${fromId}:${materialId}` : null
@@ -97,7 +102,7 @@ export function TransferForm({
     if (savingRef.current) return
     const result = validateMovementDraft({ type: 'chiqim', objectId: fromId, materialId, unitId, qtyInput: qty })
     const errors: FieldErrors = result.ok ? {} : { ...result.errors }
-    const to = toOptions.find((o) => o.id === toId) ?? null
+    const to = toOptions.find((o) => o.id === selectedToId) ?? null
     if (!to) errors.to = 'required'
     if (!result.ok || !to || !fromId || !materialId || !unitId) {
       setFieldErrors(errors)
@@ -118,6 +123,7 @@ export function TransferForm({
         note,
       })
       haptic.success()
+      flashMainButtonSaved()
       rememberLastEntry(profileId, materialId, unitId, result.qtyInput)
       setSavedText(
         tt.saved(formatQty(result.qtyInput), unit ? unitLabel(unit) : '', material?.name ?? '', to.name),
@@ -137,7 +143,7 @@ export function TransferForm({
       savingRef.current = false
       setSaving(false)
     }
-  }, [fromId, materialId, unitId, qty, toOptions, toId, draftId, note, unit, material, onSaved, profileId])
+  }, [fromId, materialId, unitId, qty, toOptions, selectedToId, draftId, note, unit, material, onSaved, profileId])
 
   const onMain = useCallback(() => void save(), [save])
   const onBack = useCallback(() => {
@@ -148,6 +154,7 @@ export function TransferForm({
   const canGoBack = step === 'details' || (step === 'object' && Boolean(fromId)) || (step === 'material' && manyFrom)
   useBackButton(canGoBack ? onBack : null)
   useMainButton(tt.save, step === 'details' && toOptions.length > 0 ? onMain : null, false, saving)
+  useClosingConfirmation(Boolean(materialId) || qty.trim() !== '' || note.trim() !== '')
   const insideTelegram = getWebApp() !== null
 
   return (
@@ -174,6 +181,7 @@ export function TransferForm({
       {step === 'material' && (
         <MaterialGrid
           materials={materials}
+          pinnedIds={pinnedIds}
           onPick={(m) => {
             haptic.tap()
             setMaterialId(m.id)
@@ -200,26 +208,29 @@ export function TransferForm({
                   <button
                     key={o.id}
                     type="button"
-                    aria-pressed={o.id === toId}
+                    aria-pressed={o.id === selectedToId}
                     onClick={() => {
                       haptic.select()
                       setToId(o.id)
                       setFieldErrors((e) => ({ ...e, to: undefined }))
                     }}
-                    className={`min-h-13 rounded-xl border px-3 text-left text-sm font-semibold transition-colors ${
-                      o.id === toId ? 'border-brand bg-ice text-brand' : 'border-line bg-paper text-ink active:bg-ice'
-                    }`}
+                    className={choiceClass({ selected: o.id === selectedToId, shape: 'box', size: 'md' })}
                   >
                     {o.name}
                   </button>
                 ))}
               </div>
             )}
-            {fieldErrors.to && <p className="text-sm text-danger">{tt.errorTo}</p>}
+            {fieldErrors.to && (
+              <p role="alert" className="text-sm text-danger">
+                {tt.errorTo}
+              </p>
+            )}
           </div>
 
           <QtyField
             label={tm.qty}
+            suffix={unit?.unit ?? null}
             value={qty}
             error={fieldErrors.qty}
             onChange={(v) => {

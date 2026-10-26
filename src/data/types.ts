@@ -29,7 +29,17 @@ export interface Profile {
   created_at: string
   updated_at: string
   deleted_at: string | null
+  /** Bot bloklangan vaqt (admin ko'radi); null — bloklanmagan. Eski bazada — undefined. */
+  telegram_blocked_at?: string | null
+  /** Ish oqimi xabarlari (so'rov, o'tkazma, xarid) — profil o'zi o'zgartiradi. */
+  notify_workflow?: boolean
 }
+
+/**
+ * Boshqa xodim haqida ko'rsatiladigan ma'lumot (`profile_directory`): ism, rol, faollik.
+ * Admin bo'lmagan rollar `profiles` dan faqat o'zini ko'radi — ro'yxatlar shu tipda.
+ */
+export type PersonRef = Pick<Profile, 'id' | 'full_name' | 'role' | 'is_active'>
 
 export interface ObjectRow {
   id: string
@@ -224,6 +234,13 @@ export type AlertType =
   | 'sorovdan_ortiq_xarid'
   | 'podotchet_muddati'
   | 'podotchet_manfiy'
+  // Audit tuzatishlari (docs/audit-fixes.md, "Yangi alert turlari")
+  | 'yozuv_ozgartirildi'
+  | 'yozuv_tuzatildi'
+  | 'sozlama_ozgardi'
+  | 'login_ozgardi'
+  | 'podotchet_belgisi'
+  | 'sotuvchi_stir_farqi'
 
 export const ALERT_TYPES: readonly AlertType[] = [
   'xarid_qabul_farqi',
@@ -245,6 +262,12 @@ export const ALERT_TYPES: readonly AlertType[] = [
   'sorovdan_ortiq_xarid',
   'podotchet_muddati',
   'podotchet_manfiy',
+  'yozuv_ozgartirildi',
+  'yozuv_tuzatildi',
+  'sozlama_ozgardi',
+  'login_ozgardi',
+  'podotchet_belgisi',
+  'sotuvchi_stir_farqi',
 ]
 
 export type AlertStatus = 'yangi' | 'korildi' | 'yopildi'

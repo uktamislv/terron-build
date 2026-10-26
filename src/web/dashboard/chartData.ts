@@ -18,7 +18,7 @@ export const PALETTE = {
   warn: colors.warn,
   ok: colors.ok,
   grid: colors.line,
-  muted: '#9AA8C0',
+  muted: colors.muted300,
 } as const
 
 /** Chizish uchun taxminiy son (faqat geometriya; matn — aniq Dec dan). */

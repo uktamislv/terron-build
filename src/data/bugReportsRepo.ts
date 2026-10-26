@@ -4,6 +4,7 @@
 import type { Role } from '@/domain/roles'
 import { isPkeyConflict, RepoError, toRepoError } from './errors'
 import { updateById } from './rowUpdate'
+import { attachNameAndRole } from './profileDirectory'
 import { getSupabase } from './supabaseClient'
 
 export type BugReportStatus = 'yangi' | 'korildi' | 'hal_qilindi'
@@ -35,16 +36,17 @@ export interface BugReport {
 }
 
 const BUG_SELECT =
-  'id, company_id, created_by, message, screen, client, app_version, photo_path, status, created_at, updated_at, ' +
-  'author:profiles!bug_reports_created_by_fkey(full_name, role)'
+  'id, company_id, created_by, message, screen, client, app_version, photo_path, status, created_at, updated_at'
 
-type RawBugReport = Omit<BugReport, 'author_name' | 'author_role'> & {
-  author: { full_name: string; role: Role } | null
-}
+type RawBugReport = Omit<BugReport, 'author_name' | 'author_role'>
 
 function normalize(raw: RawBugReport): BugReport {
-  const { author, ...rest } = raw
-  return { ...rest, author_name: author?.full_name ?? null, author_role: author?.role ?? null }
+  return { ...raw, author_name: null, author_role: null }
+}
+
+/** Muallif ismi va roli — `profile_directory` dan. */
+function withAuthors(rows: BugReport[]): Promise<BugReport[]> {
+  return attachNameAndRole(rows, 'created_by', 'author_name', 'author_role')
 }
 
 function clip(value: string | null | undefined, max: number): string | null {
@@ -103,7 +105,20 @@ export async function listBugReports(filters: BugReportFilters = {}, page = 0): 
     .order('id')
     .range(from, from + BUG_REPORTS_PAGE_SIZE - 1)
   if (error) throw toRepoError(error)
-  return { rows: ((data ?? []) as unknown as RawBugReport[]).map(normalize), total: count ?? 0 }
+  return { rows: await withAuthors(((data ?? []) as unknown as RawBugReport[]).map(normalize)), total: count ?? 0 }
+}
+
+/** Men yuborgan xabarlar (Mini App "Yozuvlarim"), yangisi birinchi. RLS — o'zi yozganlari. */
+export async function listMyBugReports(profileId: string, limit = 20): Promise<BugReport[]> {
+  const { data, error } = await getSupabase()
+    .from('bug_reports')
+    .select(BUG_SELECT)
+    .eq('created_by', profileId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw toRepoError(error)
+  return ((data ?? []) as unknown as RawBugReport[]).map(normalize)
 }
 
 /** Holatni o'zgartirish — faqat admin (RLS). */

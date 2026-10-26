@@ -1,9 +1,6 @@
-import { cx } from './cx'
+import { choiceClass } from './choiceClass'
 
-/** Chip uslubi (filtr, tanlov). Tanlanganda — `ice` fon + `brand` matn. */
+/** Filtr chipi uslubi (veb, 14 px) — `choiceClass` ning qisqa nomi. Tanlanganda — `ice` fon + `brand` chegara. */
 export function chipClass(active: boolean): string {
-  return cx(
-    'inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm whitespace-nowrap transition-colors',
-    active ? 'border-brand/30 bg-ice text-brand' : 'border-line bg-paper text-ink hover:border-[#c5d0e3]',
-  )
+  return choiceClass({ selected: active, shape: 'pill', size: 'sm' })
 }

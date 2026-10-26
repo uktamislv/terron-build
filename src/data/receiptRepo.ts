@@ -65,5 +65,7 @@ export async function receiptLookup(url: string): Promise<ReceiptLookup> {
   if (res.status === 400) throw new RepoError('receipt_url_invalid', res.body?.error)
   if (res.status === 401) throw new RepoError('session_expired', res.body?.error)
   if (res.status === 403) throw new RepoError('forbidden', res.body?.error)
+  // 10 daqiqada 20 tadan ko'p so'rov — qo'lda davom etish mumkin
+  if (res.status === 429 || res.body?.error === 'rate_limited') throw new RepoError('rate_limited', res.body?.error)
   throw new RepoError('receipt_unreadable', res.body?.error)
 }

@@ -54,14 +54,14 @@ function ToastView({ item, onDone }: { item: ToastItem; onDone: (id: number) => 
       {item.tone === 'danger' ? (
         <CircleAlert aria-hidden className="size-5 shrink-0" strokeWidth={1.75} />
       ) : (
-        <CircleCheck aria-hidden className={cx('size-5 shrink-0', item.tone === 'ok' && 'text-[#7EE2A0]')} strokeWidth={1.75} />
+        <CircleCheck aria-hidden className={cx('size-5 shrink-0', item.tone === 'ok' && 'text-ok-300')} strokeWidth={1.75} />
       )}
       <span className="flex-1">{item.message}</span>
       {item.action && (
         <Link
           to={item.action.to}
           onClick={() => onDone(item.id)}
-          className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-2 font-semibold text-[#9DB9FF] underline-offset-2 hover:bg-white/10 hover:underline"
+          className="inline-flex min-h-11 shrink-0 items-center rounded-lg px-2 font-semibold text-brand-300 underline-offset-2 hover:bg-white/10 hover:underline focus-visible:outline-white"
         >
           {item.action.label}
         </Link>
@@ -70,7 +70,7 @@ function ToastView({ item, onDone }: { item: ToastItem; onDone: (id: number) => 
         type="button"
         aria-label={t.ui.toastClose}
         onClick={() => onDone(item.id)}
-        className="inline-flex size-10 items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white"
+        className="inline-flex size-11 items-center justify-center rounded-lg text-white hover:bg-white/10 focus-visible:outline-white"
       >
         <X aria-hidden className="size-4" strokeWidth={2} />
       </button>

@@ -56,7 +56,7 @@ function VersionView({
     <section aria-label={estimate.title} className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-line bg-paper p-4 md:p-5">
         <div className="flex min-w-0 flex-col gap-2">
-          <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-ink">
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-semibold text-ink">
             <span className="rounded-lg bg-ice px-2 py-0.5 text-sm text-navy">{te.version(estimate.version)}</span>
             {estimate.title}
             {estimate.is_current && <Badge tone="ok">{te.current}</Badge>}
@@ -130,7 +130,7 @@ function ComparePanel({ estimates }: { estimates: readonly Estimate[] }) {
   ))
   return (
     <section aria-label={te.compareTitle} className="flex flex-col gap-3 rounded-2xl border border-line bg-paper p-4 md:p-5">
-      <h2 className="flex items-center gap-2 text-base font-semibold text-ink md:text-lg">
+      <h2 className="flex items-center gap-2 text-xl font-semibold text-ink">
         <GitCompare aria-hidden className="size-5 text-brand" strokeWidth={1.75} />
         {te.compareTitle}
       </h2>

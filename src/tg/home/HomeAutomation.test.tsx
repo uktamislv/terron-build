@@ -13,7 +13,7 @@ import * as usageRepo from '@/data/usageRepo'
 import { t } from '@/i18n'
 import { routes } from '@/routes'
 import { makeMaterial, makeObject, makeProfile } from '@/test/fixtures'
-import { alertIdFrom } from './alertLink'
+import { alertIdFrom, alertLinkMode } from './alertLink'
 
 vi.mock('@/data/systemRepo', () => ({
   isConfigured: () => true,
@@ -53,7 +53,11 @@ vi.mock('@/data/normsRepo', () => ({ listNormUsage: vi.fn(async () => []) }))
 vi.mock('@/data/requestsRepo', () => ({ createRequest: vi.fn(), listMyRequests: vi.fn(async () => []) }))
 vi.mock('@/data/transfersRepo', () => ({ listTransferTargets: vi.fn(async () => []), listMyTransfers: vi.fn(async () => []) }))
 vi.mock('@/data/usageRepo', () => ({ getMyMaterialUsage: vi.fn(async () => []) }))
-vi.mock('@/data/alertsRepo', () => ({ getAlertById: vi.fn(), listRecentAlerts: vi.fn(async () => []) }))
+vi.mock('@/data/alertsRepo', () => ({
+  getAlertById: vi.fn(),
+  listRecentAlerts: vi.fn(async () => []),
+  listSiteAlerts: vi.fn(async () => []),
+}))
 vi.mock('@/data/reportsRepo', async (orig) => ({
   ...(await orig<typeof import('@/data/reportsRepo')>()),
   getDashboardSummary: vi.fn(async () => null),
@@ -191,19 +195,39 @@ describe('Batch 12 (J) — ?alert=<id>', () => {
     expect(await screen.findByText(ta.alertNotFound)).toBeInTheDocument()
   })
 
-  it('prorab — oddiy bosh ekran, panel va so‘rov yo‘q', async () => {
+  it('prorab — obyekt alerti (RLS ko‘rsatsa) ochiladi', async () => {
+    vi.mocked(alertsRepo.getAlertById).mockResolvedValue(alertRow())
+    open(`/tg?alert=${ALERT_ID}`)
+    const panel = await screen.findByTestId('alert-deeplink')
+    expect(await within(panel).findByText(t.alertTexts.types.manfiy_qoldiq)).toBeInTheDocument()
+    expect(alertsRepo.getAlertById).toHaveBeenCalledWith(ALERT_ID)
+  })
+
+  it('prorab — RLS hech narsa bermasa jimgina oddiy bosh ekran ("topilmadi" yo‘q)', async () => {
+    vi.mocked(alertsRepo.getAlertById).mockResolvedValue(null)
     open(`/tg?alert=${ALERT_ID}`)
     await screen.findAllByTestId('running-low')
-    expect(screen.queryByTestId('alert-deeplink')).not.toBeInTheDocument()
+    await waitFor(() => expect(alertsRepo.getAlertById).toHaveBeenCalledWith(ALERT_ID))
+    await waitFor(() => expect(screen.queryByTestId('alert-deeplink')).not.toBeInTheDocument())
+    expect(screen.queryByText(ta.alertNotFound)).not.toBeInTheDocument()
+  })
+
+  it('omborchi — xato bo‘lsa ham jimgina; noto‘g‘ri id — so‘rov yo‘q', async () => {
+    vi.mocked(authRepo.getMyProfile).mockResolvedValue(makeProfile('omborchi'))
+    vi.mocked(alertsRepo.getAlertById).mockRejectedValue(new Error('rls'))
+    open(`/tg?alert=${ALERT_ID}`)
+    await screen.findAllByTestId('running-low')
+    await waitFor(() => expect(screen.queryByTestId('alert-deeplink')).not.toBeInTheDocument())
+    vi.mocked(alertsRepo.getAlertById).mockClear()
+    open('/tg?alert=not-a-uuid')
+    await screen.findAllByTestId('running-low')
     expect(alertsRepo.getAlertById).not.toHaveBeenCalled()
   })
 
-  it('omborchi uchun ko‘rsatilmaydi; noto‘g‘ri id — so‘rov yo‘q', async () => {
-    vi.mocked(authRepo.getMyProfile).mockResolvedValue(makeProfile('omborchi'))
-    open(`/tg?alert=${ALERT_ID}`)
-    await screen.findAllByTestId('running-low')
-    expect(screen.queryByTestId('alert-deeplink')).not.toBeInTheDocument()
-    expect(alertsRepo.getAlertById).not.toHaveBeenCalled()
+  it('haydovchi — havola ochilmaydi', () => {
+    expect(alertLinkMode('haydovchi')).toBeNull()
+    expect(alertLinkMode('prorab')).toBe('site')
+    expect(alertLinkMode('direktor')).toBe('full')
   })
 
   it('alertIdFrom: query yoki start_param', () => {

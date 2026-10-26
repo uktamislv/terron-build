@@ -1,4 +1,4 @@
-import { Link2, ShoppingCart } from 'lucide-react'
+import { Check, Link2, ShoppingCart } from 'lucide-react'
 import { cx } from '@/components/ui'
 import type { OpenPurchase } from '@/data/types'
 import { unitLabel } from '@/domain/units'
@@ -48,10 +48,10 @@ export function LinkedPurchases({
             data-linked={selected ? 'true' : undefined}
             className={cx(
               'relative flex min-h-14 items-center gap-3 overflow-hidden rounded-xl border py-2.5 pr-2 pl-4',
-              selected ? 'border-ok/40 bg-ok-bg' : 'border-line bg-paper',
+              selected ? 'border-brand bg-ice' : 'border-line bg-paper',
             )}
           >
-            <span aria-hidden className={cx('absolute inset-y-2 left-0 w-1 rounded-r-full', selected ? 'bg-ok' : 'bg-navy')} />
+            <span aria-hidden className={cx('absolute inset-y-2 left-0 w-1 rounded-r-full', selected ? 'bg-brand' : 'bg-navy')} />
             <ShoppingCart aria-hidden className="size-5 shrink-0 text-navy" strokeWidth={1.75} />
             <div className="min-w-0 flex-1">
               {rows.length === 1 && !selected && <p className="text-xs font-semibold text-brand">{tl.suggestion}</p>}
@@ -62,7 +62,8 @@ export function LinkedPurchases({
             </div>
             <div className="shrink-0">
               {selected ? (
-                <span className="inline-flex min-h-9 items-center text-sm font-semibold text-ok">
+                <span className="inline-flex min-h-11 items-center gap-1 px-1 text-sm font-semibold text-brand">
+                  <Check aria-hidden className="size-4" strokeWidth={2.5} />
                   {tl.linkedMark}
                 </span>
               ) : (

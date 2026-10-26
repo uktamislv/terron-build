@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { HandCoins, History, Plus, RotateCcw, Trash2, Undo2, UserRound, Wallet } from 'lucide-react'
-import { Badge, Button, DataTable, DetailRows, DetailSheet, EmptyState, EntryRow, FilterBar, Modal, Money, Notice, PageHeader, RetryNotice, Spinner } from '@/components/ui'
+import { HandCoins, History, Pencil, Plus, RotateCcw, Trash2, Undo2, UserRound, Wallet } from 'lucide-react'
+import { Badge, Button, DataTable, DetailRows, DetailSheet, EmptyState, EntryRow, FilterBar, Modal, Money, Notice, PageHeader, RetryNotice, Spinner, TextAreaField } from '@/components/ui'
 import {
   emptyBalance,
   listAllCashHistory,
@@ -9,10 +9,11 @@ import {
   listCashHistory,
   restoreAdvance,
   softDeleteAdvance,
+  updateAdvanceNote,
   type CashHistoryEntry,
 } from '@/data/cashRepo'
-import { listProfiles } from '@/data/profilesRepo'
-import type { CashBalance, Profile } from '@/data/types'
+import { listDirectory } from '@/data/profileDirectory'
+import type { CashBalance, PersonRef } from '@/data/types'
 import { isNegative, isZero } from '@/domain/decimal'
 import { can } from '@/domain/roles'
 import { t } from '@/i18n'
@@ -44,12 +45,13 @@ type Dialog =
   | { kind: 'giveBack' }
   | { kind: 'delete'; entry: CashHistoryEntry }
   | { kind: 'detail'; entry: CashHistoryEntry }
+  | { kind: 'note'; entry: CashHistoryEntry }
   | null
 
 /** Podotchet: odamlar bo'yicha qo'limdagi pul, pul berish, tarix. */
 export function CashPage() {
   const { profile: me } = useAuth()
-  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [profiles, setProfiles] = useState<PersonRef[]>([])
   const [balances, setBalances] = useState<CashBalance[] | null>(null)
   const [balanceError, setBalanceError] = useState<string | null>(null)
   const [history, setHistory] = useState<CashHistoryEntry[] | null>(null)
@@ -72,7 +74,7 @@ export function CashPage() {
 
   useEffect(() => {
     let alive = true
-    listProfiles()
+    listDirectory()
       .then((list) => alive && setProfiles(list))
       .catch(() => undefined)
     return () => {
@@ -116,7 +118,7 @@ export function CashPage() {
   const rows = useMemo(() => {
     if (!balances || !me) return []
     const byId = new Map(balances.map((b) => [b.profile_id, b]))
-    const people = new Map<string, Profile>()
+    const people = new Map<string, PersonRef>()
     for (const p of recipients) people.set(p.id, p)
     for (const p of profiles) if (byId.has(p.id)) people.set(p.id, p)
     return [...people.values()]
@@ -196,20 +198,19 @@ export function CashPage() {
                 {tc.issue}
               </Button>
             )}
-            {canIssue && (
-              <Button
-                variant="secondary"
-                icon={<Undo2 aria-hidden className="size-5" strokeWidth={1.75} />}
-                onClick={() => {
-                  setDone(null)
-                  setDialog({ kind: 'giveBack' })
-                }}
-              >
-                {tc.giveBack}
-              </Button>
-            )}
           </>
         }
+        secondaryActions={[
+          canIssue && {
+            key: 'giveBack',
+            label: tc.giveBack,
+            icon: <Undo2 aria-hidden className="size-5" strokeWidth={1.75} />,
+            onSelect: () => {
+              setDone(null)
+              setDialog({ kind: 'giveBack' })
+            },
+          },
+        ]}
       />
       {done && <Notice tone="ok">{done}</Notice>}
 
@@ -376,14 +377,28 @@ export function CashPage() {
           footer={
             dialog.entry.kind !== 'spent' &&
             (canIssue && !dialog.entry.deletedAt ? (
-              <Button
-                variant="danger"
-                className="flex-1 sm:flex-none"
-                icon={<Trash2 aria-hidden className="size-5" strokeWidth={1.75} />}
-                onClick={() => setDialog({ kind: 'delete', entry: dialog.entry })}
-              >
-                {tc.delete}
-              </Button>
+              <>
+                {/* Summa va sana o'zgarmaydi (cash_amount_locked) — faqat izoh */}
+                <Button
+                  variant="secondary"
+                  className="flex-1 sm:flex-none"
+                  icon={<Pencil aria-hidden className="size-5" strokeWidth={1.75} />}
+                  onClick={() => {
+                    setActionError(null)
+                    setDialog({ kind: 'note', entry: dialog.entry })
+                  }}
+                >
+                  {tc.editNote}
+                </Button>
+                <Button
+                  variant="danger"
+                  className="flex-1 sm:flex-none"
+                  icon={<Trash2 aria-hidden className="size-5" strokeWidth={1.75} />}
+                  onClick={() => setDialog({ kind: 'delete', entry: dialog.entry })}
+                >
+                  {tc.delete}
+                </Button>
+              </>
             ) : canRestore && dialog.entry.deletedAt ? (
               <Button
                 variant="secondary"
@@ -419,6 +434,18 @@ export function CashPage() {
           </div>
         </DetailSheet>
       )}
+      {dialog?.kind === 'note' && (
+        <NoteDialog
+          initial={dialog.entry.note ?? ''}
+          busy={busy}
+          error={actionError}
+          onClose={closeDialog}
+          onSave={(note) => {
+            const id = dialog.entry.id
+            void run(() => updateAdvanceNote(id, note))
+          }}
+        />
+      )}
       {dialog?.kind === 'delete' && (
         <Modal
           title={tc.delete}
@@ -447,5 +474,44 @@ export function CashPage() {
         </Modal>
       )}
     </div>
+  )
+}
+
+/** Podotchet izohini tahrirlash (admin, buxgalter). Summa va sana o'zgarmaydi. */
+function NoteDialog({
+  initial,
+  busy,
+  error,
+  onClose,
+  onSave,
+}: {
+  initial: string
+  busy: boolean
+  error: string | null
+  onClose: () => void
+  onSave: (note: string) => void
+}) {
+  const [note, setNote] = useState(initial)
+  return (
+    <Modal
+      title={t.cash.editNote}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t.common.cancel}
+          </Button>
+          <Button loading={busy} onClick={() => onSave(note)}>
+            {t.common.save}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-muted">{t.cash.editNoteHint}</p>
+        <TextAreaField label={t.cash.note} rows={3} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} />
+        {error && <Notice>{error}</Notice>}
+      </div>
+    </Modal>
   )
 }

@@ -8,8 +8,9 @@ export const SEVERITY_TONE: Record<AlertSeverity, BadgeTone> = {
 }
 
 export const STATUS_TONE: Record<AlertStatus, BadgeTone> = {
-  yangi: 'danger',
-  korildi: 'info',
+  // Holat — jarayon (yangi/ko'rildi), xavf darajasi emas: qizil faqat jiddiylik uchun
+  yangi: 'info',
+  korildi: 'neutral',
   yopildi: 'ok',
 }
 

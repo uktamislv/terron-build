@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, Check } from 'lucide-react'
-import { Button, cx, Notice } from '@/components/ui'
+import { Button, choiceClass, cx, Notice } from '@/components/ui'
 import { listNormUsage } from '@/data/normsRepo'
 import { createRequest } from '@/data/requestsRepo'
 import type { Material, NormUsage, ObjectRow, Profile } from '@/data/types'
@@ -18,7 +18,7 @@ import { UnitChips } from '../entry/UnitChips'
 import { loadLastObject, saveLastObject } from '../movement/prefs'
 import { getWebApp, haptic } from '../telegram'
 import { SavedBanner } from '../ui'
-import { useBackButton, useMainButton } from '../useTelegramButtons'
+import { flashMainButtonSaved, useBackButton, useClosingConfirmation, useMainButton } from '../useTelegramButtons'
 import { requestNormState } from '@/lib/requestNorm'
 import { initialUnitId, loadLastEntry, rememberLastEntry } from '../entry/lastEntry'
 import { LastQtyChip } from '../entry/LastQtyChip'
@@ -40,12 +40,15 @@ export function RequestForm({
   profile,
   objects,
   materials,
+  pinnedIds,
   prefill = null,
   onSaved,
 }: {
   profile: Profile
   objects: ObjectRow[]
   materials: Material[]
+  /** Ko'p ishlatiladigan materiallar (to'r tepasida). */
+  pinnedIds?: ReadonlySet<string>
   /** Batch 12 (K): "Tugayotganlar" dan — obyekt, material, miqdor (asosiy birlikda), izoh. */
   prefill?: RequestPrefill | null
   onSaved: () => void
@@ -141,6 +144,7 @@ export function RequestForm({
         note,
       })
       haptic.success()
+      flashMainButtonSaved()
       saveLastObject(objectId)
       rememberLastEntry(profile.id, materialId, unitId, result.qtyInput)
       setPrefilled(false)
@@ -177,6 +181,7 @@ export function RequestForm({
   const canGoBack = step === 'details' || (step === 'object' && Boolean(objectId)) || (step === 'material' && manyObjects)
   useBackButton(canGoBack ? onBack : null)
   useMainButton(tr.save, step === 'details' ? onMain : null, false, saving)
+  useClosingConfirmation(Boolean(materialId) || qty.trim() !== '' || note.trim() !== '')
   const insideTelegram = getWebApp() !== null
 
   return (
@@ -199,7 +204,7 @@ export function RequestForm({
         object && <ObjectBar object={object} onChange={manyObjects ? () => setPickingObject(true) : null} />
       )}
 
-      {step === 'material' && <MaterialGrid materials={materials} onPick={pickMaterial} />}
+      {step === 'material' && <MaterialGrid materials={materials} pinnedIds={pinnedIds} onPick={pickMaterial} />}
 
       {step === 'details' && material && (
         <section className="flex flex-col gap-4" aria-label={material.name}>
@@ -207,6 +212,7 @@ export function RequestForm({
           {prefilled && <Notice tone="info">{t.tg.auto.prefilled}</Notice>}
           <QtyField
             label={tm.qty}
+            suffix={unit?.unit ?? null}
             value={qty}
             error={fieldErrors.qty}
             onChange={(v) => {
@@ -267,10 +273,7 @@ export function RequestForm({
                     haptic.select()
                     setNeededBy(o.value)
                   }}
-                  className={cx(
-                    'relative flex min-h-13 flex-col items-start justify-center rounded-xl border px-3 text-left text-sm font-semibold transition-colors',
-                    neededBy === o.value ? 'border-brand bg-ice text-brand' : 'border-line bg-paper text-ink active:bg-ice',
-                  )}
+                  className={cx(choiceClass({ selected: neededBy === o.value, shape: 'stack' }), 'relative')}
                 >
                   {tr.needed[o.key]}
                   {o.value && <span className="tabular block text-xs font-normal text-muted">{formatDate(`${o.value}T12:00:00+05:00`)}</span>}

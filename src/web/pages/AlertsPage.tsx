@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Building2, Check, Package, ShieldCheck, TriangleAlert, X } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
-import { Badge, Button, EmptyState, EntryRow, FilterBar, Modal, Notice, PageHeader, Pager, RetryNotice, Spinner } from '@/components/ui'
+import { Badge, Button, EmptyState, EntryRow, FilterBar, Modal, Notice, PageHeader, Pager, RetryNotice, Spinner, TextAreaField } from '@/components/ui'
 import {
   ALERTS_PAGE_SIZE,
   CLOSE_NOTE_MAX,
@@ -244,6 +244,8 @@ export function AlertsPage() {
   const canManage = me ? can(me.role, 'manage_alerts') : false
   const [closing, setClosing] = useState<Alert | null>(null)
   const [closeNote, setCloseNote] = useState('')
+  // Sabab majburiy (baza: alert_close_note_required) — bo'sh yuborilmaydi
+  const [closeNoteError, setCloseNoteError] = useState(false)
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
 
   useEffect(() => {
@@ -292,6 +294,10 @@ export function AlertsPage() {
 
   const confirmClose = async () => {
     if (!closing) return
+    if (!closeNote.trim()) {
+      setCloseNoteError(true)
+      return
+    }
     const ok = await act(closing.id, (id) => closeAlert(id, closeNote))
     if (ok) setClosing(null)
   }
@@ -317,6 +323,7 @@ export function AlertsPage() {
         onClose={(a) => {
           setActionError(null)
           setCloseNote('')
+          setCloseNoteError(false)
           setClosing(a)
         }}
         exportSlot={
@@ -354,20 +361,21 @@ export function AlertsPage() {
               title={ta.types[closing.type]}
               meta={<span className="text-sm text-ink">{alertDetailText(closing)}</span>}
             />
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="alert-close-note" className="text-sm font-medium text-ink">
-                {tp.closeNote}
-              </label>
-              <textarea
-                id="alert-close-note"
-                rows={3}
-                maxLength={CLOSE_NOTE_MAX}
-                value={closeNote}
-                onChange={(e) => setCloseNote(e.target.value)}
-                className="min-h-11 rounded-xl border border-line bg-paper px-3 py-2 text-base outline-none focus:border-brand focus:ring-3 focus:ring-brand/15"
-              />
-              <p className="text-xs text-muted">{tp.closeNoteHint}</p>
-            </div>
+            <TextAreaField
+              id="alert-close-note"
+              label={tp.closeNote}
+              rows={3}
+              maxLength={CLOSE_NOTE_MAX}
+              value={closeNote}
+              required
+              aria-required="true"
+              hint={tp.closeNoteHint}
+              error={closeNoteError ? tp.closeNoteRequired : null}
+              onChange={(e) => {
+                setCloseNote(e.target.value)
+                setCloseNoteError(false)
+              }}
+            />
             {actionError && <Notice>{actionError}</Notice>}
           </div>
         </Modal>

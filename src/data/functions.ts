@@ -26,3 +26,25 @@ export async function invokeFunction<T>(name: string, body: Record<string, unkno
   }
   return { ok: false, status: 0, body: null, network: true }
 }
+
+/** `photo-hash` Edge Function javobi: 200 `{ sha256, duplicate? }`. */
+export interface PhotoHashResult {
+  sha256: string
+  duplicate?: boolean
+}
+
+export type PhotoHashTable = 'movements' | 'purchases'
+
+/**
+ * Saqlangan yozuv rasmi xeshini serverda hisoblatish (`photo-hash`: Storage'dan o'qiydi va
+ * `svc_set_photo_hash` bilan yozadi — takroriy rasm qoidasi shu yerda ishlaydi). Klient xeshi
+ * yuborilmaydi (server e'tiborsiz qoldiradi).
+ *
+ * "Yubor va unut": hech qachon xato tashlamaydi va foydalanuvchini kutdirmaydi — natija faqat
+ * test/diagnostika uchun (`null` — xato yoki tarmoq).
+ */
+export function requestPhotoHash(table: PhotoHashTable, id: string): Promise<PhotoHashResult | null> {
+  return invokeFunction<PhotoHashResult>('photo-hash', { table, id })
+    .then((res) => (res.ok ? res.data : null))
+    .catch(() => null)
+}

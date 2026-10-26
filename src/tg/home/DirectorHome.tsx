@@ -159,7 +159,7 @@ export function DirectorHomeView({
           <StatTile
             testId="tg-alerts"
             icon={<TriangleAlert strokeWidth={1.75} />}
-            tone={s.alerts_serious_open > 0 ? 'danger' : 'warn'}
+            tone={s.alerts_serious_open > 0 ? 'danger' : s.alerts_open > 0 ? 'warn' : 'ok'}
             live
             label={tt.alertsOpen}
             value={formatQty(String(s.alerts_open))}
@@ -212,6 +212,8 @@ export function DirectorHomeView({
                 key={a.id}
                 as="li"
                 testId="tg-alert"
+                // Bosilganda — shu ogohlantirish bosh ekran tepasida (AlertDeepLink)
+                to={`/tg?alert=${a.id}`}
                 kind={SEVERITY_KIND[a.severity]}
                 icon={<TriangleAlert className="size-[18px]" strokeWidth={1.75} />}
                 title={t.alertTexts.types[a.type]}

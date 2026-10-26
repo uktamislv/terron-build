@@ -1,5 +1,11 @@
 import {
   ArchiveRestore,
+  BadgeAlert,
+  FilePen,
+  KeyRound,
+  PencilLine,
+  SlidersHorizontal,
+  WalletCards,
   ArrowLeftRight,
   ClipboardList,
   CopyX,
@@ -64,5 +70,17 @@ export function AlertTypeIcon({ type }: { type: AlertType }) {
       return <TimerOff {...p} />
     case 'podotchet_manfiy':
       return <HandCoins {...p} />
+    case 'yozuv_ozgartirildi':
+      return <FilePen {...p} />
+    case 'yozuv_tuzatildi':
+      return <PencilLine {...p} />
+    case 'sozlama_ozgardi':
+      return <SlidersHorizontal {...p} />
+    case 'login_ozgardi':
+      return <KeyRound {...p} />
+    case 'podotchet_belgisi':
+      return <WalletCards {...p} />
+    case 'sotuvchi_stir_farqi':
+      return <BadgeAlert {...p} />
   }
 }

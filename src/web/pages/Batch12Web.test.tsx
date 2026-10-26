@@ -14,6 +14,7 @@ import type { Alert, AlertType, Purchase } from '@/data/types'
 import { ALERT_TYPES } from '@/data/types'
 import { t } from '@/i18n'
 import { makeObject, makeProfile } from '@/test/fixtures'
+import { plain } from '@/test/text'
 import { alertDetailText } from '../alerts/alertDetails'
 import { AlertTypeIcon } from '../alerts/AlertTypeIcon'
 import { IssueAdvanceDialog } from '../cash/IssueAdvanceDialog'
@@ -83,8 +84,10 @@ describe('Sozlamalar', () => {
     expect(fromForm(base)).toEqual({ ok: true, value: companiesRepo.DEFAULT_COMPANY_SETTINGS })
     const bad = fromForm({ ...base, cashMaxDays: '0', duplicateWindowMinutes: '1441', requestOverbuyPct: '1000.5', photoRequiredAmount: '0' })
     expect(bad).toEqual({ ok: false, errors: { cashMaxDays: true, duplicateWindowMinutes: true, requestOverbuyPct: true, photoRequiredAmount: true } })
-    const off = fromForm({ ...base, duplicateWindowMinutes: '0', photoRequiredAmount: '1 500 000' })
-    expect(off.ok && off.value).toMatchObject({ duplicateWindowMinutes: 0, photoRequiredAmount: '1500000' })
+    // Audit (B2): takroriy yozuv oynasi 1..1440 (0 — endi yo'q)
+    expect(fromForm({ ...base, duplicateWindowMinutes: '0' }).ok).toBe(false)
+    const ok = fromForm({ ...base, duplicateWindowMinutes: '1', photoRequiredAmount: '1 500 000' })
+    expect(ok.ok && ok.value).toMatchObject({ duplicateWindowMinutes: 1, photoRequiredAmount: '1500000' })
   })
 
   it('forma: o‘qiydi, tekshiradi va saqlaydi', async () => {
@@ -197,7 +200,7 @@ describe('Yangi alert turlari', () => {
     [alert('kirim_manbasiz', { reason: 'open_purchase', qty_base: 150, base_unit: 'kg' }), td.unsourcedOpenPurchase('150 kg')],
     [alert('kirim_manbasiz', { reason: 'no_source', qty_base: 2.5, base_unit: 'm³' }), td.unsourcedNoSource('2,5 m³')],
     [alert('kirim_manbasiz', { reason: 'unlinked_candidate', qty_base: 50 }), td.unsourcedCandidate('50 kg')],
-    [alert('manfiy_qoldiq', { stock_after: -20, qty_base: 50, unit: 'kg', movement_type: 'chiqim' }), td.negativeStock('-20 kg', '50 kg')],
+    [alert('manfiy_qoldiq', { stock_after: -20, qty_base: 50, unit: 'kg', movement_type: 'chiqim' }), td.negativeStock('−20 kg', '50 kg')],
     [alert('takroriy_yozuv', { kind: 'record', table: 'purchases', window_minutes: 10 }), td.duplicateEntryWindow('Xarid', '10')],
     [alert('takroriy_yozuv', { kind: 'photo', table: 'movements', first_table: 'purchases' }), td.duplicatePhoto('Harakat')],
     [alert('joylashuv_farqi', { distance_m: 1250, radius_m: 300, accuracy_m: 20 }), td.locationFar('1 250', '300') + td.locationAccuracy('20')],
@@ -211,9 +214,9 @@ describe('Yangi alert turlari', () => {
       td.requestOverbuy('1 000 kg', '1 300 kg', '30'),
     ],
     [alert('podotchet_muddati', { profile_name: 'Ali', balance: 500000, days_open: 20, max_days: 14 }), td.cashOverdue('Ali', '500 000 so‘m', '20')],
-    [alert('podotchet_manfiy', { profile_name: 'Vali', balance: -10000 }), td.cashNegative('Vali', '-10 000 so‘m')],
+    [alert('podotchet_manfiy', { profile_name: 'Vali', balance: -10000 }), td.cashNegative('Vali', '−10 000 so‘m')],
   ])('%#: details → matn', (a, expected) => {
-    expect(alertDetailText(a)).toBe(expected)
+    expect(plain(alertDetailText(a))).toBe(expected)
   })
 })
 

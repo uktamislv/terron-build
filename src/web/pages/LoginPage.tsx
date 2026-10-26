@@ -43,7 +43,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+    <div className="flex min-h-dvh items-center justify-center bg-canvas px-4 py-10">
       <div className="w-full max-w-[400px]">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
           <BrandMark className="size-14" />

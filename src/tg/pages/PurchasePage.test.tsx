@@ -181,7 +181,6 @@ describe('/tg/purchase — haydovchi, bitta obyekt', () => {
       totalAmount: '1250000',
       supplierId: null,
       receiptPhotoPath: null,
-      receiptPhotoSha256: null,
       note: '',
       buyerId: 'p-haydovchi',
       purchasedAt: null,
@@ -189,7 +188,9 @@ describe('/tg/purchase — haydovchi, bitta obyekt', () => {
       receipt: null,
       geo: { status: 'unavailable' },
     })
-    expect(await screen.findByText(/Xarid saqlandi: 3 qop Sement · 1 250 000 so‘m/)).toBeInTheDocument()
+    // Tasdiq: asosiy matn va summa — alohida qatorlarda
+    const banner = (await screen.findByText(/Xarid saqlandi: 3 qop Sement/)).closest('[role="status"]') as HTMLElement
+    expect(within(banner).getByText('1 250 000 so‘m')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByTestId('cash-balance')).toHaveTextContent('Qo‘limda: 750 000 so‘m'))
     expect(cashRepo.getMyBalance).toHaveBeenCalledTimes(2)
     // Keyingi yozuv uchun material tanlash
@@ -200,7 +201,7 @@ describe('/tg/purchase — haydovchi, bitta obyekt', () => {
     vi.mocked(cashRepo.getMyBalance).mockReset().mockResolvedValue(balance('-150000'))
     open()
     const el = await screen.findByTestId('cash-balance')
-    expect(el).toHaveTextContent('-150 000 so‘m')
+    expect(el).toHaveTextContent('\u2212150 000 so‘m')
     expect(el).toHaveAttribute('data-negative', 'true')
     expect(el.querySelector('[data-negative]')).toHaveClass('text-danger')
   })
@@ -249,7 +250,7 @@ describe('/tg/purchase — haydovchi, bitta obyekt', () => {
     const box = screen.getByTestId('base-qty')
     expect(box).toHaveTextContent('= 150 kg')
     expect(box).toHaveAttribute('data-emphasized', 'true')
-    expect(within(box).getByText('150')).toHaveClass('text-4xl')
+    expect(within(box).getByText('150')).toHaveClass('text-hero')
   })
 
   it('summa bo‘sh yoki noto‘g‘ri — xato, saqlanmaydi', async () => {

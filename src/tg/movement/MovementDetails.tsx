@@ -1,6 +1,6 @@
 // Kirim/chiqim: tanlangan material uchun forma (taqdimot komponenti — holat sahifada, MovementPage).
 import type { ReactNode } from 'react'
-import { Button, Notice } from '@/components/ui'
+import { Button, Notice, RetryNotice } from '@/components/ui'
 import type { Material, MaterialUnit, OpenPurchase } from '@/data/types'
 import type { DraftErrorCode, EntryType, MovementWarning } from '@/domain/movements'
 import { t } from '@/i18n'
@@ -10,10 +10,8 @@ import { DuplicateWarning } from '../entry/DuplicateWarning'
 import type { LastEntry } from '../entry/lastEntry'
 import { LastQtyChip } from '../entry/LastQtyChip'
 import { PhotoErrorBox, PhotoField, type PickedPhoto } from '../entry/PhotoPicker'
-import { MaterialHeader, NoteField } from '../entry/QtyField'
-import { bigInputClass } from '../entry/styles'
+import { BigNumberInput, MaterialHeader, NoteField } from '../entry/QtyField'
 import { UnitChips } from '../entry/UnitChips'
-import { LoadError } from '../ui'
 import { LinkedPurchases } from './LinkedPurchases'
 
 const tm = t.tg.movement
@@ -47,6 +45,8 @@ export interface MovementDetailsProps {
   onCancelDuplicate?: () => void
   /** Admin: "Shu yerni obyekt joyi qilish" va boshqa qo'shimchalar. */
   extra?: ReactNode
+  /** "Bugun / Kecha / Boshqa sana" (standart — bugun, qo'shimcha bosishsiz). */
+  dateField?: ReactNode
   note: string
   photo: { photo: PickedPhoto | null; notice: string | null; error: string | null; preparing: boolean }
   saving: boolean
@@ -70,28 +70,24 @@ export function MovementDetails(p: MovementDetailsProps) {
     <section className="flex flex-col gap-4" aria-label={material.name}>
       <MaterialHeader name={material.name} onChange={p.onChangeMaterial} />
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="movement-qty" className="text-sm font-medium text-ink">
-          {tm.qty}
-        </label>
-        <input
-          id="movement-qty"
-          inputMode="decimal"
-          autoComplete="off"
-          placeholder="0"
-          value={p.qty}
-          aria-invalid={p.qtyError ? true : undefined}
-          onChange={(e) => p.onQty(e.target.value)}
-          className={bigInputClass(Boolean(p.qtyError))}
-        />
-        {p.qtyError && <p className="text-sm text-danger">{tm.errors.qty[p.qtyError]}</p>}
-      </div>
+      <BigNumberInput
+        id="movement-qty"
+        label={tm.qty}
+        value={p.qty}
+        onChange={p.onQty}
+        suffix={p.unit?.unit ?? null}
+        error={p.qtyError ? tm.errors.qty[p.qtyError] : null}
+      />
       {p.qty.trim() === '' && p.onUseLast && (
         <LastQtyChip last={p.lastEntry ?? null} units={material.units} onUse={p.onUseLast} />
       )}
 
-      <UnitChips units={material.units} selectedId={p.unitId} onPick={p.onUnit} />
-      {p.unitError && <p className="text-sm text-danger">{tm.errors.unit}</p>}
+      <UnitChips units={material.units} selectedId={p.unitId} onPick={p.onUnit} errorId={p.unitError ? 'movement-unit-error' : undefined} />
+      {p.unitError && (
+        <p id="movement-unit-error" role="alert" className="text-sm text-danger">
+          {tm.errors.unit}
+        </p>
+      )}
 
       {p.qtyBase !== null && (
         <BaseQtyBox qtyBase={p.qtyBase} unit={p.unit} baseUnit={material.base_unit}>
@@ -113,6 +109,8 @@ export function MovementDetails(p: MovementDetailsProps) {
           onSelect={p.onSelectLinked}
         />
       )}
+
+      {p.dateField}
 
       <PhotoField
         label={tm.photo}
@@ -137,7 +135,7 @@ export function MovementDetails(p: MovementDetailsProps) {
           onCancel={() => p.onCancelDuplicate?.()}
         />
       )}
-      {p.saveError && <LoadError message={p.saveError} onRetry={p.onSave} />}
+      {p.saveError && <RetryNotice message={p.saveError} onRetry={p.onSave} />}
       {p.photo.error && (
         <PhotoErrorBox message={p.photo.error} busy={p.saving} onRetry={p.onSave} onWithoutPhoto={p.photoRequiredReason ? null : p.onSaveWithoutPhoto} />
       )}

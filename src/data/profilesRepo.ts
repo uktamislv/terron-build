@@ -7,7 +7,7 @@ import type { Profile } from './types'
 
 // telegram_chat_id ataylab o'qilmaydi — UI'ga kerak emas.
 export const PROFILE_COLUMNS =
-  'id, company_id, auth_user_id, login_kind, role, full_name, phone, telegram_user_id, is_active, created_by, created_at, updated_at, deleted_at'
+  'id, company_id, auth_user_id, login_kind, role, full_name, phone, telegram_user_id, is_active, created_by, created_at, updated_at, deleted_at, telegram_blocked_at, notify_workflow'
 
 // profiles da 23505 — firma ichida telefon band; 23514 — telefon formati (E.164 check)
 const PROFILE_ERRORS = { '23505': 'phone_taken', '23514': 'phone_format' } as const
@@ -84,6 +84,15 @@ export async function updateProfile(id: string, patch: ProfilePatch): Promise<Pr
 
 export function setProfileActive(id: string, isActive: boolean): Promise<Profile> {
   return updateProfile(id, { isActive })
+}
+
+/**
+ * Ish oqimi xabarlari (so'rov, o'tkazma, xarid) — o'z profilida yoqish/o'chirish (`profiles_update_self`,
+ * faqat `notify_workflow` ustuni). Qiymat o'zgarmasa server 0 qator qaytaradi — bu xato emas.
+ */
+export async function setMyNotifyWorkflow(profileId: string, enabled: boolean): Promise<void> {
+  const { error } = await getSupabase().from('profiles').update({ notify_workflow: enabled }).eq('id', profileId)
+  if (error) throw toRepoError(error, PROFILE_ERRORS)
 }
 
 /** Soft delete — yozuv tarixda qoladi va tiklanadi. */

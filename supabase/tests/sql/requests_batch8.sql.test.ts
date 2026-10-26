@@ -265,7 +265,7 @@ describe('qoida 4: normadan oshish', () => {
   it('qo`lda yopilgan alert bir xil raqamlarda qayta yaratilmaydi; sarf o`zgarsa — yangi', async () => {
     const r = await as('admin', async (tx) => {
       await chiqim(tx, A.ids.obj1!, '1100')
-      await tx.query(`update public.alerts set status = 'yopildi' where type = 'normadan_oshish'`)
+      await tx.query(`update public.alerts set status = 'yopildi', close_note = 'Tekshirildi' where type = 'normadan_oshish'`)
       await sys(tx, () => tx.query(`select private.evaluate_norm($1, $2, $3)`, [A.id, A.ids.obj1, A.ids.m1]))
       const same = (await alertsOf(tx, 'normadan_oshish')).map((a) => a.status)
       await chiqim(tx, A.ids.obj1!, '1')
@@ -326,14 +326,14 @@ describe('qoida 4: normadan oshish', () => {
     expect(r.map((a) => [a.status, a.details.not_in_estimate])).toEqual([['yangi', true]])
   })
 
-  it('prorab chiqimi ham baholanadi (alert tizim nomidan, prorab alertni ko`rmaydi)', async () => {
+  it('prorab chiqimi ham baholanadi (alert tizim nomidan; audit D3: prorab o`z obyektining sayt alertlarini ko`radi)', async () => {
     const r = await as('prorab', async (tx) => {
       await chiqim(tx, A.ids.obj1!, '1500')
-      const visible = await scalar<number>(tx, `select count(*)::int from public.alerts`)
+      const visible = await scalar<string[]>(tx, `select coalesce(array_agg(distinct type::text order by type::text), '{}') from public.alerts`)
       const all = await sys(tx, () => alertsOf(tx, 'normadan_oshish'))
       return { visible, all: all.length }
     })
-    expect(r).toEqual({ visible: 0, all: 1 })
+    expect(r).toEqual({ visible: ['manfiy_qoldiq', 'normadan_oshish'], all: 1 })
   })
 })
 
@@ -665,7 +665,7 @@ describe('o`tkazmalar', () => {
       const a = await create(tx, A.ids.obj1!, A.ids.obj2!, '3') // 150
       await tx.query(`select public.receive_transfer($1, '2.5', 'yo''lda yo''qoldi')`, [a]) // 125
       const b = await create(tx, A.ids.obj1!, A.ids.obj2!, '1') // 50
-      await tx.query(`select public.receive_transfer($1, ' 1.2 ')`, [b]) // 60
+      await tx.query(`select public.receive_transfer($1, ' 1.2 ', 'Ortiqcha keldi')`, [b]) // 60 (audit B14: admin, izoh bilan)
       const al = await alertsOf(tx, 'otkazma_farqi')
       const outbox = await sys(tx, () =>
         rows<{ payload: Row }>(tx, `select payload from public.notification_outbox where alert_id = $1`, [al[0]!.id]),
@@ -887,6 +887,9 @@ describe('inventarizatsiya', () => {
       more_count: 0,
       not_counted: [],
       not_counted_more: 0,
+      // audit_fixes A3: sanash davomidagi harakatlar
+      movements_during_count: [],
+      movements_during_count_total: 0,
     })
   })
 
@@ -1109,7 +1112,7 @@ describe('review: Y1 / O5 — tekshiruvchi kutilgan qoldiqni ko`rmaydi', () => {
       const [al] = await sys(tx, () => alertsOf(tx, 'inventarizatsiya_kamomadi', `inventory_count_id = $1`, [c]))
       return { sub, tek, det, al: al! }
     })
-    expect(r.sub).toEqual({ has_shortage: true, not_counted_count: 1 })
+    expect(r.sub).toEqual({ has_shortage: true, not_counted_count: 1, movements_during_count: 0 })
     expect(r.tek).toBe('42501:inventory_details_forbidden')
     expect(r.det).toEqual([
       { material_id: A.ids.m1, qty_counted: '66.666650', qty_expected: '100.000000', diff: '-33.333350', shortage_value: '40000.02' },
@@ -1135,7 +1138,7 @@ describe('review: Y1 / O5 — tekshiruvchi kutilgan qoldiqni ko`rmaydi', () => {
       const [al] = await alertsOf(tx, 'inventarizatsiya_kamomadi', `inventory_count_id = $1`, [c])
       return { sub, d: al!.details }
     })
-    expect(r.sub).toEqual({ has_shortage: true, not_counted_count: 1 })
+    expect(r.sub).toEqual({ has_shortage: true, not_counted_count: 1, movements_during_count: 0 })
     expect(r.d).toMatchObject({
       items: [],
       more_count: 0,

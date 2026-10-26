@@ -96,8 +96,17 @@ describe('telegramSignIn', () => {
   it('403 → inactive, 401 → invalid', async () => {
     fake.invoke.mockResolvedValueOnce({ data: null, error: httpError(403, { error: 'inactive' }) })
     expect(await telegramSignIn('init')).toBe('inactive')
-    fake.invoke.mockResolvedValueOnce({ data: null, error: httpError(401, { error: 'invalid_init_data' }) })
+    fake.invoke.mockResolvedValueOnce({ data: null, error: httpError(401, { error: 'unauthorized' }) })
     expect(await telegramSignIn('init')).toBe('invalid')
+  })
+
+  it('invalid_init_data / init_data_replayed → reopen; role_web_only → web_only', async () => {
+    fake.invoke.mockResolvedValueOnce({ data: null, error: httpError(401, { error: 'invalid_init_data' }) })
+    expect(await telegramSignIn('init')).toBe('reopen')
+    fake.invoke.mockResolvedValueOnce({ data: null, error: httpError(401, { error: 'init_data_replayed' }) })
+    expect(await telegramSignIn('init')).toBe('reopen')
+    fake.invoke.mockResolvedValueOnce({ data: null, error: httpError(403, { error: 'role_web_only' }) })
+    expect(await telegramSignIn('init')).toBe('web_only')
   })
 
   it('bo‘sh initData → invalid, server chaqirilmaydi', async () => {

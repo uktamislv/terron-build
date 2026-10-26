@@ -301,6 +301,8 @@ const ZERO_SUMMARY = {
   cash_issued_sum: '0.00',
   cash_returned_sum: '0.00', // Batch 12
   cash_on_hand_total: '0.00',
+  cash_outstanding_sum: '0.00', // audit_fixes A10
+  cash_owed_to_staff_sum: '0.00',
   alerts_open: 0,
   alerts_serious_open: 0,
   alerts_new_in_period: 0,
@@ -323,6 +325,9 @@ describe('dashboard_summary', () => {
     cash_returned_sum: '0.00', // Batch 12
     // haydovchi 1 000 000 − 600 000; prorab 300 000 − 100 000; taminotchi −250 000.50 − 999
     cash_on_hand_total: '349000.50',
+    // audit_fixes A10: musbat va manfiy balanslar alohida
+    cash_outstanding_sum: '600000.00',
+    cash_owed_to_staff_sum: '250999.50',
     alerts_open: 2,
     alerts_serious_open: 1,
     alerts_new_in_period: 3, // a1, a3 (yopilgan), a6 (yopilgan); belgi va o`chirilgan yo`q
@@ -367,7 +372,7 @@ describe('dashboard_summary', () => {
     expect([d13.kirim_count, d13.purchases_count, d13.purchases_sum]).toEqual([1, 1, '999.00'])
   })
 
-  it('prorab: faqat a`zo obyekt (o1) + o`z xaridi, alertlar 0, o`z podotcheti', async () => {
+  it('prorab: faqat a`zo obyekt (o1) + o`z xaridi, obyekt alertlari (D3), o`z podotcheti', async () => {
     expect(await summary('prorab', '2026-01-10', '2026-01-12')).toEqual({
       ...ZERO_SUMMARY,
       kirim_count: 1,
@@ -375,6 +380,9 @@ describe('dashboard_summary', () => {
       purchases_count: 2,
       purchases_sum: '700000.00',
       cash_on_hand_total: '200000.00',
+      cash_outstanding_sum: '200000.00',
+      // audit_fixes D3: prorab o'z obyektining normadan_oshish alertini ko'radi (a6)
+      alerts_new_in_period: 1,
       unreceived_purchases_count: 1,
       pending_transfers_count: 1,
       pending_requests_count: 1,
@@ -520,7 +528,7 @@ describe('dashboard_daily', () => {
     const p = await daily('prorab', '2026-01-10', '2026-01-12')
     expect(p.map((r) => [r.kirim_count, r.chiqim_count, r.purchases_sum, r.alerts_count])).toEqual([
       [1, 1, '600000.00', 0],
-      [0, 0, '0.00', 0],
+      [0, 0, '0.00', 1], // audit_fixes D3: a6 (normadan_oshish, o1)
       [0, 0, '100000.00', 0],
     ])
     const t = await daily('tekshiruvchi', '2026-01-10', '2026-01-12')

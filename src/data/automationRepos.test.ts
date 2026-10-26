@@ -18,7 +18,12 @@ import { t } from '@/i18n'
 
 type Call = [string, ...unknown[]]
 
-const fake = vi.hoisted(() => ({ calls: [] as [string, ...unknown[]][], results: [] as unknown[] }))
+const fake = vi.hoisted(() => ({
+  calls: [] as [string, ...unknown[]][],
+  results: [] as unknown[],
+  /** `profile_directory` qatorlari (ismlar ikkinchi so'rovda). */
+  people: [] as { id: string; company_id?: string; full_name: string; role: string; is_active?: boolean }[],
+}))
 
 function fakeQuery(calls: Call[], result: () => unknown): unknown {
   const q: unknown = new Proxy(
@@ -44,6 +49,7 @@ vi.mock('./supabaseClient', () => ({
   getSupabase: () => ({
     from: (table: string) => {
       fake.calls.push(['from', table])
+      if (table === 'profile_directory') return fakeQuery(fake.calls, () => ({ data: fake.people, error: null }))
       return fakeQuery(fake.calls, () => fake.results.shift())
     },
     rpc: (fn: string, args: unknown) => {
@@ -57,6 +63,7 @@ vi.mock('./functions', () => ({ invokeFunction: vi.fn() }))
 beforeEach(() => {
   fake.calls.length = 0
   fake.results.length = 0
+  fake.people.length = 0
 })
 
 const arg = (method: string) => fake.calls.find((c) => c[0] === method)?.[1]
@@ -84,7 +91,7 @@ describe('geo yordamchilari', () => {
 })
 
 describe('movementsRepo / purchasesRepo — Batch 12 ustunlari', () => {
-  it('createMovement: geo va rasm xeshi (rasm bo‘lsa)', async () => {
+  it('createMovement: geo; rasm xeshi klientdan yuborilmaydi (server — photo-hash)', async () => {
     fake.results.push({ data: { id: 'm1', object: null, material: null, creator: null }, error: null })
     await createMovement({
       id: 'm1',
@@ -95,16 +102,16 @@ describe('movementsRepo / purchasesRepo — Batch 12 ustunlari', () => {
       unitId: 'u',
       qtyInput: '1',
       photoPath: 'c/2026/10/a.jpg',
-      photoSha256: SHA,
       geo: { status: 'denied' },
     })
-    expect(arg('insert')).toMatchObject({ photo_sha256: SHA, geo_status: 'denied', geo_lat: null, geo_lng: null })
+    expect(arg('insert')).toMatchObject({ photo_path: 'c/2026/10/a.jpg', geo_status: 'denied', geo_lat: null, geo_lng: null })
+    expect(arg('insert')).not.toHaveProperty('photo_sha256')
     expect(String(arg('select'))).toContain('geo_lat::text')
   })
 
   it('createMovement: rasmsiz — xesh yuborilmaydi; geo berilmasa (veb) — ustunlar yo‘q', async () => {
     fake.results.push({ data: { id: 'm1', object: null, material: null, creator: null }, error: null })
-    await createMovement({ id: 'm1', companyId: 'c', type: 'chiqim', objectId: 'o', materialId: 'mat', unitId: 'u', qtyInput: '1', photoSha256: SHA })
+    await createMovement({ id: 'm1', companyId: 'c', type: 'chiqim', objectId: 'o', materialId: 'mat', unitId: 'u', qtyInput: '1' })
     const row = arg('insert') as Record<string, unknown>
     expect(row).not.toHaveProperty('photo_sha256')
     expect(row).not.toHaveProperty('geo_status')
@@ -124,7 +131,6 @@ describe('movementsRepo / purchasesRepo — Batch 12 ustunlari', () => {
       requestId: 'rq',
       receipt: { fiscalSign: '248429044289', terminalId: 'UZ1', receiptNo: '643', verified: false, total: null, sellerTin: '12 345 678' },
       receiptPhotoPath: null,
-      receiptPhotoSha256: SHA,
       geo: { status: 'unavailable' },
     })
     expect(arg('insert')).toMatchObject({

@@ -1,51 +1,24 @@
 // Mini App ekranlari uchun umumiy kichik bo'laklar (UI to'plami ustida).
 import type { ReactNode } from 'react'
-import { ChevronLeft, CircleCheck, Search } from 'lucide-react'
-import { cx, Notice } from '@/components/ui'
-import { t } from '@/i18n'
+import { Check, ChevronLeft, CircleCheck, Star } from 'lucide-react'
+import { choiceClass, cx } from '@/components/ui'
 
-/** Saqlash tasdig'i: ✓ belgisi va matn (role="status"). */
-export function SavedBanner({ children }: { children: ReactNode }) {
+/** Saqlash tasdig'i: belgi, matn va ixtiyoriy ikkinchi qator (obyekt, summa) — role="status". */
+export function SavedBanner({ children, meta }: { children: ReactNode; meta?: ReactNode }) {
   return (
     <div role="status" className="flex animate-pop-in items-start gap-3 rounded-xl border border-ok/25 bg-ok-bg px-4 py-3 text-ok">
       <CircleCheck aria-hidden className="mt-0.5 size-5 shrink-0" strokeWidth={2} />
-      <p className="font-semibold">{children}</p>
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <p className="font-semibold">{children}</p>
+        {meta && <p className="tabular text-sm">{meta}</p>}
+      </div>
     </div>
   )
 }
 
-/** Yuklash xatosi va "Qayta urinish" (Notice ichida). */
-export function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <Notice>
-      {message}{' '}
-      <button type="button" className="ml-1 inline-flex min-h-11 items-center px-1 font-semibold underline" onClick={onRetry}>
-        {t.common.retry}
-      </button>
-    </Notice>
-  )
-}
-
-/** Bo'lim sarlavhasi (kichik, kulrang emas — ink). */
+/** Bo'lim sarlavhasi (20 px — design-system: bo'lim/kartochka sarlavhasi). */
 export function SectionTitle({ children, className }: { children: ReactNode; className?: string }) {
-  return <h2 className={cx('text-base font-semibold text-ink', className)}>{children}</h2>
-}
-
-/** Qidiruv maydoni (16 px, belgi bilan). */
-export function SearchBox({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="relative">
-      <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-5 -translate-y-1/2 text-muted" strokeWidth={1.75} />
-      <input
-        type="search"
-        aria-label={label}
-        placeholder={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="min-h-12 w-full rounded-xl border border-line bg-paper pr-3 pl-11 text-base outline-none placeholder:text-muted/70 focus:border-brand focus:ring-3 focus:ring-brand/15"
-      />
-    </div>
-  )
+  return <h2 className={cx('text-xl font-semibold text-ink', className)}>{children}</h2>
 }
 
 /** Katta material plitkasi: nom (2 qatorgacha), ostida birlik yoki holat. */
@@ -53,26 +26,31 @@ export function MaterialTile({
   name,
   sub,
   done = false,
+  pinned = false,
   onClick,
 }: {
   name: string
   sub: ReactNode
-  /** Sanalgan / tanlangan — yashil chegara. */
+  /** Sanalgan — yashil chegara va belgi. */
   done?: boolean
+  /** Ko'p ishlatiladigan (to'r tepasida) — ko'k chegara va yulduzcha. */
+  pinned?: boolean
   onClick: () => void
 }) {
   return (
     <button
       type="button"
       data-counted={done ? 'true' : undefined}
+      data-pinned={pinned ? 'true' : undefined}
       onClick={onClick}
-      className={cx(
-        'flex min-h-[76px] flex-col items-start justify-between gap-1 rounded-xl border bg-paper px-3 py-2.5 text-left transition-colors active:bg-ice',
-        done ? 'border-ok/45 bg-ok-bg/60' : 'border-line hover:border-brand/40',
-      )}
+      className={choiceClass({ selected: done, shape: 'tile', tone: 'ok', highlight: pinned })}
     >
       <span className="line-clamp-2 text-base leading-snug font-semibold text-ink">{name}</span>
-      <span className={cx('text-xs', done ? 'font-semibold text-ok' : 'text-muted')}>{sub}</span>
+      <span className={cx('flex items-center gap-1 text-xs', done ? 'font-semibold text-ok' : 'text-muted')}>
+        {done && <Check aria-hidden className="size-3.5" strokeWidth={2.5} />}
+        {pinned && !done && <Star aria-hidden className="size-3.5 fill-brand text-brand" strokeWidth={1.75} />}
+        {sub}
+      </span>
     </button>
   )
 }
@@ -88,14 +66,5 @@ export function BackLink({ label, onClick }: { label: string; onClick: () => voi
       <ChevronLeft aria-hidden className="size-5" strokeWidth={2} />
       {label}
     </button>
-  )
-}
-
-/** Kartadagi "nom — qiymat" qatorlari (dl). */
-export function DetailList({ children }: { children: ReactNode }) {
-  return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 rounded-xl border border-line bg-paper p-4 text-sm [&>dd]:text-ink [&>dt]:text-muted">
-      {children}
-    </dl>
   )
 }

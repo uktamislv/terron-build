@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Gauge } from 'lucide-react'
-import { Badge, EmptyState, Qty, RetryNotice, Spinner } from '@/components/ui'
+import { Badge, type Column, cx, DataTable, EmptyState, EntryRow, Qty, RetryNotice, Spinner } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
 import { listNormUsage } from '@/data/normsRepo'
 import type { Material, NormUsage } from '@/data/types'
@@ -61,7 +61,33 @@ export function NormUsageTable({ objectId }: { objectId: string }) {
   }, [rows, materials])
 
   const qty = (v: string, unit: string, danger = false) => <Qty value={v} unit={unit} size="sm" tone={danger ? 'danger' : undefined} />
-  const th = 'sticky top-0 border-b border-line bg-canvas px-3 py-2.5 text-xs font-semibold whitespace-nowrap text-muted first:pl-4 last:pr-4'
+  const pctOf = (r: Row) => r.usage_pct ?? usagePct(r.consumed_qty_base, r.allowed_qty_base)
+  const statusBadge = (r: Row) =>
+    r.status === 'over' ? <Badge tone="danger">{tn.over}</Badge> : r.status === 'not_in_estimate' ? <Badge tone="warn">{tn.notInEstimate}</Badge> : null
+
+  const columns: Column<Row>[] = [
+    {
+      key: 'name',
+      header: tn.colMaterial,
+      cell: (r) => (
+        <span className="flex flex-wrap items-center gap-2">
+          {/* Nom qizil faqat normadan oshganda; smetada yo'q — belgi bilan */}
+          <span className={cx('font-medium', r.status === 'over' ? 'text-danger' : 'text-ink')}>{r.name}</span>
+          {statusBadge(r)}
+        </span>
+      ),
+    },
+    { key: 'norm', header: tn.colNorm, align: 'right', cell: (r) => qty(r.norm_qty_base, r.unit) },
+    { key: 'allowed', header: tn.colAllowed, align: 'right', cell: (r) => qty(r.allowed_qty_base, r.unit) },
+    { key: 'consumed', header: tn.colConsumed, align: 'right', cell: (r) => qty(r.consumed_qty_base, r.unit, r.status === 'over') },
+    {
+      key: 'remaining',
+      header: tn.colRemaining,
+      align: 'right',
+      cell: (r) => qty(r.remaining_qty_base, r.unit, isNegative(r.remaining_qty_base)),
+    },
+    { key: 'usage', header: tn.colUsage, className: 'min-w-40', cell: (r) => <NormProgress pct={pctOf(r)} label={r.name} /> },
+  ]
 
   return (
     <section aria-label={tn.title} className="flex flex-col rounded-2xl border border-line bg-paper">
@@ -71,7 +97,7 @@ export function NormUsageTable({ objectId }: { objectId: string }) {
             <Gauge className="size-5" strokeWidth={1.75} />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-ink md:text-lg">{tn.title}</h2>
+            <h2 className="text-xl font-semibold text-ink">{tn.title}</h2>
             <p className="text-sm text-muted">{tn.hint}</p>
           </div>
         </div>
@@ -88,60 +114,34 @@ export function NormUsageTable({ objectId }: { objectId: string }) {
         {!rows && !error && <Spinner />}
         {rows && view.length === 0 && <EmptyState compact icon={<Gauge strokeWidth={1.5} />} title={tn.empty} />}
         {view.length > 0 && (
-          <div className="overflow-x-auto rounded-xl border border-line">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr>
-                  <th scope="col" className={`${th} text-left`}>
-                    {tn.colMaterial}
-                  </th>
-                  <th scope="col" className={`${th} text-right`}>
-                    {tn.colNorm}
-                  </th>
-                  <th scope="col" className={`${th} text-right`}>
-                    {tn.colAllowed}
-                  </th>
-                  <th scope="col" className={`${th} text-right`}>
-                    {tn.colConsumed}
-                  </th>
-                  <th scope="col" className={`${th} text-right`}>
-                    {tn.colRemaining}
-                  </th>
-                  <th scope="col" className={`${th} min-w-40 text-left`}>
-                    {tn.colUsage}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {view.map((r) => {
-                  const bad = r.status !== 'ok'
-                  return (
-                    <tr
-                      key={r.material_id}
-                      data-testid="norm-row"
-                      data-status={r.status}
-                      className="border-b border-line/70 transition-colors last:border-0 hover:bg-ice/35"
-                    >
-                      <td className="px-3 py-2.5 pl-4">
-                        <span className="flex flex-wrap items-center gap-2">
-                          <span className={`font-medium ${bad ? 'text-danger' : 'text-ink'}`}>{r.name}</span>
-                          {r.status === 'over' && <Badge tone="danger">{tn.over}</Badge>}
-                          {r.status === 'not_in_estimate' && <Badge tone="warn">{tn.notInEstimate}</Badge>}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-right">{qty(r.norm_qty_base, r.unit)}</td>
-                      <td className="px-3 py-2.5 text-right">{qty(r.allowed_qty_base, r.unit)}</td>
-                      <td className="px-3 py-2.5 text-right">{qty(r.consumed_qty_base, r.unit, bad)}</td>
-                      <td className="px-3 py-2.5 text-right">{qty(r.remaining_qty_base, r.unit, isNegative(r.remaining_qty_base))}</td>
-                      <td className="px-3 py-2.5 pr-4">
-                        <NormProgress pct={r.usage_pct ?? usagePct(r.consumed_qty_base, r.allowed_qty_base)} label={r.name} />
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption={tn.title}
+            columns={columns}
+            rows={view}
+            rowKey={(r) => r.material_id}
+            rowTestId="norm-row"
+            rowData={(r) => ({ 'data-status': r.status })}
+            renderMobile={(r) => (
+              <EntryRow
+                kind={r.status === 'over' ? 'danger' : r.status === 'not_in_estimate' ? 'warn' : 'neutral'}
+                icon={false}
+                title={<span className={r.status === 'over' ? 'text-danger' : undefined}>{r.name}</span>}
+                badge={statusBadge(r)}
+                meta={
+                  <>
+                    <span>
+                      {tn.colAllowed}: {qty(r.allowed_qty_base, r.unit)}
+                    </span>
+                    <span>
+                      {tn.colRemaining}: {qty(r.remaining_qty_base, r.unit, isNegative(r.remaining_qty_base))}
+                    </span>
+                    <NormProgress pct={pctOf(r)} label={r.name} />
+                  </>
+                }
+                trailing={qty(r.consumed_qty_base, r.unit, r.status === 'over')}
+              />
+            )}
+          />
         )}
       </div>
     </section>

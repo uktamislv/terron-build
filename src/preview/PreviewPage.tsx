@@ -47,7 +47,7 @@ function Screen({ view }: { view: PreviewView }) {
 
 function MobileFrame({ view }: { view: PreviewView }) {
   return (
-    <div className="flex min-h-screen flex-col items-center gap-3 bg-[#dfe5ef] p-6">
+    <div className="flex min-h-dvh flex-col items-center gap-3 bg-line p-6">
       <p className="text-sm font-semibold text-ink">
         {view.title} · 390 px
       </p>
@@ -75,7 +75,7 @@ function Index() {
       <header className="flex items-center gap-3">
         <BrandMark className="size-10" />
         <div>
-          <h1 className="text-[28px] font-semibold text-ink">{t.ui.preview}</h1>
+          <h1 className="text-page font-semibold text-ink">{t.ui.preview}</h1>
           <p className="text-sm text-muted">{t.app.name} — /__preview?view=…</p>
         </div>
       </header>

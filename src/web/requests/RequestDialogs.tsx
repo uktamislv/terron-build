@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { ClipboardList } from 'lucide-react'
-import { Button, EntryRow, Modal, Notice, Qty, Spinner } from '@/components/ui'
+import { Button, choiceClass, EntryRow, Modal, Notice, Qty, Spinner, TextAreaField } from '@/components/ui'
 import { listPurchases } from '@/data/purchasesRepo'
 import { DECISION_NOTE_MAX } from '@/data/requestsRepo'
 import type { MaterialRequest, Purchase } from '@/data/types'
@@ -45,26 +45,18 @@ export function RejectDialog({
     <Modal title={tp.rejectTitle} onClose={onCancel}>
       <div className="flex flex-col gap-4">
         <RequestSummary r={request} />
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={id} className="text-sm font-medium text-ink">
-            {tp.rejectReason}
-          </label>
-          <textarea
-            id={id}
-            rows={3}
-            maxLength={DECISION_NOTE_MAX}
-            value={reason}
-            onChange={(e) => {
-              setReason(e.target.value)
-              setMissing(false)
-            }}
-            aria-invalid={missing || undefined}
-            className={`min-h-11 rounded-xl border bg-paper px-3 py-2 text-base outline-none focus:border-brand focus:ring-3 focus:ring-brand/15 ${
-              missing ? 'border-danger' : 'border-line'
-            }`}
-          />
-          {missing && <p className="text-xs text-danger">{tp.rejectReasonRequired}</p>}
-        </div>
+        <TextAreaField
+          id={id}
+          label={tp.rejectReason}
+          rows={3}
+          maxLength={DECISION_NOTE_MAX}
+          value={reason}
+          error={missing ? tp.rejectReasonRequired : null}
+          onChange={(e) => {
+            setReason(e.target.value)
+            setMissing(false)
+          }}
+        />
         {error && <Notice>{error}</Notice>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onCancel}>
@@ -121,9 +113,7 @@ export function PurchasedDialog({
   const option = (value: string, label: string, sub?: string) => (
     <label
       key={value || 'none'}
-      className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 ${
-        selected === value ? 'border-brand bg-ice' : 'border-line hover:bg-canvas'
-      }`}
+      className={choiceClass({ selected: selected === value, shape: 'row', label: true, emphasis: false })}
     >
       <input type="radio" className="size-5 accent-brand" name={name} value={value} checked={selected === value} onChange={() => setSelected(value)} />
       <span className="flex flex-col">

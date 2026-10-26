@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useCallback, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Bug, CircleHelp, KeyRound, LogOut, Menu, X } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
@@ -36,14 +36,18 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
   const { profile, signOut } = useAuth()
   const nav = profile ? webNavForRole(profile.role) : []
   const aside = useRef<HTMLElement>(null)
+  const asideId = useId()
 
   return (
-    <div className="flex min-h-screen bg-canvas [--header-h:3.5rem] lg:[--header-h:0px]">
+    <div className="flex min-h-dvh bg-canvas [--header-h:3.5rem] lg:[--header-h:0px]">
       <aside
         ref={aside}
+        id={asideId}
         tabIndex={-1}
         className={cx(
           'fixed inset-y-0 left-0 z-40 flex w-72 flex-col bg-navy text-white outline-none transition-[transform,visibility] duration-200 print:hidden',
+          // Navy fonda ko'k halqa ko'rinmaydi — oq halqa
+          '[&_:focus-visible]:outline-white',
           'lg:sticky lg:top-0 lg:z-30 lg:h-screen lg:w-[76px] lg:translate-x-0 xl:w-64',
           open ? 'visible translate-x-0 shadow-float' : 'invisible -translate-x-full lg:visible',
         )}
@@ -82,7 +86,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
                 <>
                   <span
                     aria-hidden
-                    className={cx('absolute top-2 bottom-2 -left-3 w-1 rounded-r-full', isActive ? 'bg-[#7FA2FF]' : 'bg-transparent')}
+                    className={cx('absolute top-2 bottom-2 -left-3 w-1 rounded-r-full', isActive ? 'bg-brand-300' : 'bg-transparent')}
                   />
                   {webNavIcons[item.key]}
                   <span
@@ -181,6 +185,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
           <IconButton
             label={t.common.openMenu}
             aria-expanded={open}
+            aria-controls={asideId}
             icon={<Menu className="size-6" strokeWidth={1.75} />}
             className="text-ink"
             onClick={() => setOpen(true)}
@@ -188,7 +193,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
           <BrandMark className="size-7 shrink-0" />
           <span className="truncate text-base font-semibold text-ink">{t.app.name}</span>
         </header>
-        <main className="w-full max-w-[1280px] flex-1 px-4 py-4 md:px-6 md:py-6 lg:px-8 lg:py-8 print:max-w-none print:p-0">
+        <main className="w-full max-w-7xl flex-1 px-4 py-4 md:px-6 md:py-6 lg:px-8 lg:py-8 print:max-w-none print:p-0">
           {children ?? <Outlet />}
         </main>
       </div>

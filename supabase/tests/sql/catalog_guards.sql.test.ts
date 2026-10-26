@@ -515,7 +515,7 @@ describe('5. materialni o`chirish / nofaol qilish', () => {
       purchase: inactive,
       transfer: inactive,
       request: inactive,
-      transferOut: 'OK:1',
+      transferOut: '42501:movement_rpc_only', // audit_fixes A4: o'tkazma harakati faqat RPC orqali
       inventory: 'OK:1',
       estimate: 'OK:1',
       oldNote: 'OK:1',

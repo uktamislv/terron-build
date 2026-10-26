@@ -124,6 +124,7 @@ describe('rolga qarab menyu', () => {
     expect(nav.getAllByRole('link').map((a) => a.textContent)).toEqual([
       t.web.nav.dashboard,
       t.web.nav.movements,
+      t.web.nav.estimates,
       t.web.nav.requests,
     ])
   })

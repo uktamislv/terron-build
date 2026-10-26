@@ -352,7 +352,7 @@ describe('B: manfiy_qoldiq va transfer_insufficient_stock', () => {
     })
     expect(r.a1).toHaveLength(1)
     expect(r.a1[0]).toMatchObject({ severity: 'ogohlantirish', object_id: A.ids.obj3, material_id: A.ids.m1, movement_id: r.c1 })
-    expect(r.a1[0]!.details).toEqual({ stock_after: -10, qty_base: 10, unit: 'kg', movement_type: 'chiqim' })
+    expect(r.a1[0]!.details).toEqual({ stock_after: -10, qty_base: 10, unit: 'kg', movement_type: 'chiqim', movement_deleted: false })
     expect(r.a2).toHaveLength(1)
     expect(r.a2[0]).toMatchObject({ movement_id: r.c2 })
     expect(r.a2[0]!.details).toMatchObject({ stock_after: -15, qty_base: 5 })
@@ -442,7 +442,7 @@ describe('C: takroriy_yozuv', () => {
     })
   })
 
-  it('oyna: aynan 10 daqiqa — takror; 10 daqiqa + 1 s — yo`q; oyna 0 — qoida o`chiq', async () => {
+  it('oyna: aynan 10 daqiqa — takror; 10 daqiqa + 1 s — yo`q; oyna 0 — endi ruxsat yo`q (audit B2)', async () => {
     const run = async (gapSec: number, windowMin = 10): Promise<number> =>
       as('prorab', async (tx) => {
         if (windowMin !== 10) {
@@ -455,7 +455,11 @@ describe('C: takroriy_yozuv', () => {
       })
     expect(await run(600)).toBe(1)
     expect(await run(601)).toBe(0)
-    expect(await run(0, 0)).toBe(0)
+    // audit_fixes B2: 0 (qoida o'chiq) — CHECK 1..1440
+    const zero = await as('admin', (tx) =>
+      sys(tx, () => res(tx, `update public.companies set duplicate_window_minutes = 0 where id = $1`, [A.id])),
+    )
+    expect(zero).toBe('23514:')
   })
 
   it('xarid: shu xaridor, miqdor va summa — record; boshqa summa — yo`q', async () => {
@@ -471,22 +475,34 @@ describe('C: takroriy_yozuv', () => {
     expect(r.a[0]!.details).toMatchObject({ kind: 'record', table: 'purchases', first_id: r.p1, total_amount: 12000, movement_type: null })
   })
 
-  it('rasm xeshi: format — photo_sha256_invalid; katta harf normallashadi; boshqa yozuvda — photo (ogohlantirish, outbox)', async () => {
+  // audit_fixes B5: klient yuborgan xesh e'tiborsiz (null); xeshni faqat svc_set_photo_hash yozadi.
+  it('rasm xeshi: klient qiymati e`tiborsiz; svc — format (photo_sha256_invalid), katta harf normallashadi; boshqa yozuvda — photo (ogohlantirish, outbox)', async () => {
     const r = await as('admin', async (tx) => {
-      const bad = await res(tx, `insert into public.movements (company_id, type, object_id, material_id, unit_id, qty_input, unit_input, qty_base, photo_path, photo_sha256)
+      const clientBad = await res(tx, `insert into public.movements (company_id, type, object_id, material_id, unit_id, qty_input, unit_input, qty_base, photo_path, photo_sha256)
         values ($1, 'kirim', $2, $3, $4, 1, '-', 0, $5, 'xyz')`, [A.id, A.ids.obj1, A.ids.m1, kgId, photoPath()])
       const k = await mv(tx, 'kirim', A.ids.obj1!, '1', { extra: { photo_path: photoPath(), photo_sha256: sha('A') } })
+      const clientStored = await scalar<string | null>(tx, `select photo_sha256 from public.movements where id = $1`, [k])
+      const bad = await sys(tx, () => res(tx, `select public.svc_set_photo_hash('movements', $1, 'xyz')`, [k]))
+      const set = await sys(tx, () => scalar<boolean>(tx, `select public.svc_set_photo_hash('movements', $1, $2)`, [k, sha('A')]))
       const stored = await scalar<string>(tx, `select photo_sha256 from public.movements where id = $1`, [k])
-      // rasmsiz xesh saqlanmaydi (P3) — va takroriy rasm alerti ham yo'q
+      // rasmsiz yozuv — xesh yozilmaydi (false)
       const noPath = await mv(tx, 'kirim', A.ids.obj1!, '2', { extra: { photo_sha256: sha('a') } })
+      const noPathSet = await sys(tx, () => scalar<boolean>(tx, `select public.svc_set_photo_hash('movements', $1, $2)`, [noPath, sha('a')]))
       const noPathSha = await scalar<string | null>(tx, `select photo_sha256 from public.movements where id = $1`, [noPath])
       const p = await purchase(tx, P('admin'), {
         obj: A.ids.obj1!, qty: '1', total: '10', extra: { receipt_photo_path: photoPath(), receipt_photo_sha256: ` ${sha('a')} ` },
       })
+      const beforeSvc = (await alertsOf(tx, 'takroriy_yozuv', `details ->> 'kind' = 'photo'`)).length
+      await sys(tx, () => tx.query(`select public.svc_set_photo_hash('purchases', $1, $2)`, [p, ` ${sha('A')} `]))
       const a = await alertsOf(tx, 'takroriy_yozuv', `details ->> 'kind' = 'photo'`)
-      return { bad, k, stored, noPathSha, p, a, ob: a[0] ? await outboxOf(tx, a[0].id) : [] }
+      return { clientBad, clientStored, bad, set, k, stored, noPathSet, noPathSha, p, beforeSvc, a, ob: a[0] ? await outboxOf(tx, a[0].id) : [] }
     })
+    expect(r.clientBad).toBe('OK:1')
+    expect(r.clientStored).toBeNull()
     expect(r.bad).toBe('23514:photo_sha256_invalid')
+    expect(r.set).toBe(true)
+    expect(r.noPathSet).toBe(false)
+    expect(r.beforeSvc).toBe(0)
     expect(r.stored).toBe(sha('a'))
     expect(r.noPathSha).toBeNull()
     expect(r.a).toHaveLength(1)
@@ -763,7 +779,7 @@ describe('G: chek', () => {
     expect(r.upd).toBe('5000.00')
   })
 
-  it('P2-1: keshda seller_tin va total null bo`lsa ham — tasdiqlangan; klient STIR saqlanadi', async () => {
+  it('P2-1: keshda seller_tin va total null bo`lsa ham — endi tasdiqlanmaydi (audit B6); klient STIR saqlanadi', async () => {
     const r = await as('taminotchi', async (tx) => {
       const me = P('taminotchi')
       await sys(tx, () =>
@@ -774,7 +790,8 @@ describe('G: chek', () => {
       })
       return one(tx, `select receipt_verified, receipt_total::text, seller_tin from public.purchases where id = $1`, [p])
     })
-    expect(r).toEqual({ receipt_verified: true, receipt_total: '700.00', seller_tin: '302222222' })
+    // audit_fixes B6: keshda summa, qator va chek sanasi yo'q — tasdiqlanmaydi (STIR baribir saqlanadi)
+    expect(r).toEqual({ receipt_verified: false, receipt_total: '700.00', seller_tin: '302222222' })
   })
 
   it('P2-2: ko`p qatorli chek (payload.items > 1) — chek_farqi yo`q (jami taqqoslanmaydi)', async () => {

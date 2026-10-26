@@ -9,7 +9,7 @@ import { ToastProvider } from '@/components/ui'
 import { t } from '@/i18n'
 import type { TgNavKey, WebNavKey } from '@/domain/roles'
 import { TgAuthGate } from '@/tg/TgAuthGate'
-import { RequireTgNav, TgIndex, TgLayout } from '@/tg/TgLayout'
+import { RequireTgExtra, RequireTgNav, TgIndex, TgLayout } from '@/tg/TgLayout'
 import { tgNavItems } from '@/tg/nav'
 import { WebLayout } from '@/web/WebLayout'
 import { RequireAuth, RequireNav } from '@/web/guards'
@@ -42,6 +42,8 @@ const RequestPage = page(() => import('@/tg/pages/RequestPage'), 'RequestPage')
 const InventoryPage = page(() => import('@/tg/pages/InventoryPage'), 'InventoryPage')
 const MinePage = page(() => import('@/tg/pages/MinePage'), 'MinePage')
 const TgHelpPage = page(() => import('@/tg/pages/TgHelpPage'), 'TgHelpPage')
+const StockPage = page(() => import('@/tg/pages/StockPage'), 'StockPage')
+const ApprovalsPage = page(() => import('@/tg/pages/ApprovalsPage'), 'ApprovalsPage')
 
 // Tayyor veb sahifalar; qolganlari hozircha "Tez orada"
 const webPages: Partial<Record<WebNavKey, ComponentType>> = {
@@ -144,6 +146,12 @@ export const routes: RouteObject[] = [
           })),
           // Yordam — har bir rol uchun (pastki menyu emas, sarlavhadagi "?")
           { path: 'help', element: render(TgHelpPage, t.help.title) },
+          // Bosh ekrandan ochiladigan bo'limlar (pastki menyuda emas)
+          { path: 'stock', element: <RequireTgExtra extraKey="stock">{render(StockPage, t.tg.stock.title)}</RequireTgExtra> },
+          {
+            path: 'approvals',
+            element: <RequireTgExtra extraKey="approvals">{render(ApprovalsPage, t.tg.approvals.title)}</RequireTgExtra>,
+          },
           { path: '*', element: <NotFound homePath="/tg" /> },
         ],
       },

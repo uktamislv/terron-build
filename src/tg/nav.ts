@@ -1,4 +1,4 @@
-import { tgNavFor, type Role, type TgNavKey } from '@/domain/roles'
+import { tgBottomNavFor, tgNavFor, type Role, type TgNavKey } from '@/domain/roles'
 import { t } from '@/i18n'
 
 export interface TgNavItem {
@@ -19,6 +19,12 @@ export const tgNavItems: Record<TgNavKey, TgNavItem> = {
   mine: { key: 'mine', to: '/tg/mine', label: t.tg.nav.mine, shortLabel: t.tg.navShort.mine ?? t.tg.nav.mine },
 }
 
+/** Rolga ochiq barcha bandlar (ruxsat tekshiruvi). */
 export function tgNavForRole(role: Role): TgNavItem[] {
   return tgNavFor(role).map((key) => tgNavItems[key])
+}
+
+/** Pastki menyu (≤ 5 band). */
+export function tgBottomNavForRole(role: Role): TgNavItem[] {
+  return tgBottomNavFor(role).map((key) => tgNavItems[key])
 }

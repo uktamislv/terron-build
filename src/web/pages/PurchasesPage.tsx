@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ChevronRight, History, Receipt, RotateCcw, ShoppingCart, Trash2 } from 'lucide-react'
+import { ChevronRight, History, PencilLine, Plus, Receipt, RotateCcw, ShoppingCart, Trash2 } from 'lucide-react'
+import { CorrectionForm } from '@/components/corrections/CorrectionForm'
 import { useAuth } from '@/auth/authContext'
 import {
   ActionMenu,
@@ -23,9 +24,11 @@ import {
 import { DEFAULT_COMPANY_SETTINGS, getCompanySettings } from '@/data/companiesRepo'
 import { listMaterials } from '@/data/materialsRepo'
 import { listObjects } from '@/data/objectsRepo'
-import { listProfiles } from '@/data/profilesRepo'
+import { listDirectory } from '@/data/profileDirectory'
 import { listAllPurchases, listPurchases, PURCHASES_PAGE_SIZE, restorePurchase, softDeletePurchase, type PurchaseFilters } from '@/data/purchasesRepo'
-import type { Material, ObjectRow, Profile, Purchase } from '@/data/types'
+import { listSuppliers } from '@/data/suppliersRepo'
+import type { Material, ObjectRow, PersonRef, Purchase, Supplier } from '@/data/types'
+import { adminCorrection } from '@/domain/corrections'
 import { can } from '@/domain/roles'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
@@ -38,6 +41,7 @@ import { useHistoryHref } from '../history/useHistoryHref'
 import { purchasesSheet } from '../exports'
 import { paramDate, paramId } from '../urlFilters'
 import { dayStartIso, nextDayStartIso } from '../movements/movementFilters'
+import { AddPurchaseDialog } from '../purchases/AddPurchaseDialog'
 import { PurchaseDetailDialog } from '../purchases/PurchaseDetailDialog'
 import { ReceiptBadge } from '../purchases/ReceiptBadge'
 import { QrBadge } from '../purchases/QrBadge'
@@ -54,6 +58,7 @@ export interface PurchaseFilterForm {
   objectId: string
   materialId: string
   buyerId: string
+  supplierId: string
   from: string
   to: string
   includeDeleted: boolean
@@ -63,6 +68,7 @@ const EMPTY: PurchaseFilterForm = {
   objectId: '',
   materialId: '',
   buyerId: '',
+  supplierId: '',
   from: '',
   to: '',
   includeDeleted: false,
@@ -73,6 +79,7 @@ function toFilters(f: PurchaseFilterForm, canSeeDeleted: boolean): PurchaseFilte
     objectId: f.objectId || undefined,
     materialId: f.materialId || undefined,
     buyerId: f.buyerId || undefined,
+    supplierId: f.supplierId || undefined,
     from: dayStartIso(f.from),
     to: nextDayStartIso(f.to),
     includeDeleted: canSeeDeleted && f.includeDeleted ? true : undefined,
@@ -105,7 +112,9 @@ export interface PurchasesViewProps {
   onFilter: (patch: Partial<PurchaseFilterForm>) => void
   objects: ObjectRow[]
   materials: Material[]
-  profiles: Profile[]
+  profiles: PersonRef[]
+  /** Sotuvchi filtri (bo'sh — filtr ko'rsatilmaydi). */
+  suppliers?: Supplier[]
   canDelete: boolean
   canSeeDeleted: boolean
   thresholdPct: string
@@ -118,6 +127,10 @@ export interface PurchasesViewProps {
   onDelete?: (p: Purchase) => void
   onRestore?: (p: Purchase) => void
   exportSlot?: ReactNode
+  /** "Xarid qo'shish" tugmasi (ta'minotchi, admin). */
+  addSlot?: ReactNode
+  /** Amal natijasi (masalan "Xarid saqlandi") — filtrlar ostida. */
+  notice?: ReactNode
 }
 
 /** Xaridlar: sarlavha, filtrlar, jadval (telefonda yuk xati qatorlari). Ma'lumot props orqali. */
@@ -131,6 +144,7 @@ export function PurchasesView({
   objects,
   materials,
   profiles,
+  suppliers = [],
   canDelete,
   canSeeDeleted,
   thresholdPct,
@@ -143,6 +157,8 @@ export function PurchasesView({
   onDelete,
   onRestore,
   exportSlot,
+  addSlot,
+  notice,
 }: PurchasesViewProps) {
   const all = { value: '', label: to.all }
   const filters: FilterDef[] = [
@@ -170,6 +186,18 @@ export function PurchasesView({
       onChange: (v) => onFilter({ buyerId: v }),
       options: [all, ...profiles.map((p) => ({ value: p.id, label: p.full_name }))],
     },
+    ...(suppliers.length > 0
+      ? [
+          {
+            kind: 'select' as const,
+            key: 'supplier',
+            label: tp.filterSupplier,
+            value: form.supplierId,
+            onChange: (v: string) => onFilter({ supplierId: v }),
+            options: [all, ...suppliers.map((s) => ({ value: s.id, label: s.name }))],
+          },
+        ]
+      : []),
     {
       kind: 'dateRange',
       key: 'date',
@@ -240,8 +268,20 @@ export function PurchasesView({
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title={tp.title} icon={<ShoppingCart strokeWidth={1.75} />} actions={exportSlot} />
+      <PageHeader
+        title={tp.title}
+        icon={<ShoppingCart strokeWidth={1.75} />}
+        actions={
+          (exportSlot || addSlot) && (
+            <>
+              {exportSlot}
+              {addSlot}
+            </>
+          )
+        }
+      />
       <FilterBar label={to.filters} filters={filters} onClear={() => onFilter(EMPTY)} />
+      {notice}
 
       {error && <RetryNotice message={error} onRetry={onRetry ?? (() => undefined)} />}
       {actionError && <Notice>{actionError}</Notice>}
@@ -354,7 +394,12 @@ export function PurchasesView({
   )
 }
 
-type Dialog = { kind: 'detail'; purchase: Purchase } | { kind: 'delete'; purchase: Purchase } | null
+type Dialog =
+  | { kind: 'detail'; purchase: Purchase }
+  | { kind: 'delete'; purchase: Purchase }
+  | { kind: 'correct'; purchase: Purchase }
+  | { kind: 'add' }
+  | null
 
 /** Xaridlar jadvali: filtrlar, qabul holati, alert belgilari, tafsilot. Ko'rinish RLS bilan cheklanadi. */
 export function PurchasesPage() {
@@ -362,7 +407,9 @@ export function PurchasesPage() {
   const purchaseHistoryHref = useHistoryHref()
   const [objects, setObjects] = useState<ObjectRow[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
-  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [profiles, setProfiles] = useState<PersonRef[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [savedText, setSavedText] = useState<string | null>(null)
   const [params] = useSearchParams()
   // Bosh sahifa havolalari: ?from=...&to=...&object=...
   const [form, setForm] = useState<PurchaseFilterForm>(() => ({
@@ -389,6 +436,10 @@ export function PurchasesPage() {
   const canDelete = role ? can(role, 'restore_records') : false
   const canSeeDeleted = canDelete || role === 'direktor'
   const canSeeAlerts = role ? can(role, 'view_alerts') : false
+  // Veb "Xarid qo'shish" — ta'minotchi va admin (CLAUDE.md: ta'minotchi veb panelda ishlaydi)
+  const canCreate = role === 'taminotchi' || role === 'admin' || role === 'super_admin'
+  // Admin tuzatishi (correct_entry) — istalgan vaqtda, bog'lanmagan xaridda
+  const canCorrect = role === 'admin' || role === 'super_admin'
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
   const closeDialog = useCallback(() => setDialog(null), [])
@@ -401,8 +452,11 @@ export function PurchasesPage() {
     listMaterials()
       .then((list) => alive && setMaterials(list))
       .catch(() => undefined)
-    listProfiles()
+    listDirectory()
       .then((list) => alive && setProfiles(list))
+      .catch(() => undefined)
+    listSuppliers()
+      .then((list) => alive && setSuppliers(list))
       .catch(() => undefined)
     if (companyId) {
       getCompanySettings(companyId)
@@ -471,6 +525,7 @@ export function PurchasesPage() {
         objects={objects}
         materials={materials}
         profiles={profiles}
+        suppliers={suppliers}
         canDelete={canDelete}
         canSeeDeleted={canSeeDeleted}
         thresholdPct={threshold}
@@ -483,7 +538,50 @@ export function PurchasesPage() {
         onDelete={(p) => setDialog({ kind: 'delete', purchase: p })}
         onRestore={(p) => void run(() => restorePurchase(p.id))}
         exportSlot={<ExportButton run={runExport} />}
+        addSlot={
+          canCreate && (
+            <Button icon={<Plus aria-hidden className="size-5" strokeWidth={1.75} />} onClick={() => setDialog({ kind: 'add' })}>
+              {tp.add}
+            </Button>
+          )
+        }
+        notice={savedText && <Notice tone="ok">{savedText}</Notice>}
       />
+      {dialog?.kind === 'add' && (
+        <AddPurchaseDialog
+          onClose={closeDialog}
+          onSaved={(p) => {
+            setDialog(null)
+            setSavedText(tp.added(p.material_name ?? ''))
+            reload()
+          }}
+        />
+      )}
+      {dialog?.kind === 'correct' && (
+        <Modal title={t.correction.title} onClose={closeDialog}>
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-muted">{t.correction.adminHint}</p>
+            <CorrectionForm
+              target={{
+                table: 'purchases',
+                id: dialog.purchase.id,
+                materialId: dialog.purchase.material_id,
+                materialName: dialog.purchase.material_name,
+                qtyInput: dialog.purchase.qty_input,
+                unitId: dialog.purchase.unit_id,
+                totalAmount: dialog.purchase.total_amount,
+                note: dialog.purchase.note,
+              }}
+              onCancel={closeDialog}
+              onDone={() => {
+                setDialog(null)
+                setSavedText(t.correction.saved)
+                reload()
+              }}
+            />
+          </div>
+        </Modal>
+      )}
 
       {dialog?.kind === 'detail' && (
         <PurchaseDetailDialog
@@ -496,6 +594,23 @@ export function PurchasesPage() {
             (canDelete || Boolean(purchaseHistoryHref('purchases', dialog.purchase.id))) && (
               <>
                 <HistoryLink table="purchases" id={dialog.purchase.id} className="flex-1 sm:flex-none" />
+                {canCorrect &&
+                  adminCorrection({
+                    table: 'purchases',
+                    createdBy: dialog.purchase.created_by,
+                    createdAt: dialog.purchase.created_at,
+                    deletedAt: dialog.purchase.deleted_at,
+                    linkedReceipts: dialog.purchase.receipt ? dialog.purchase.receipt.receipt_count : null,
+                  }) && (
+                    <Button
+                      variant="secondary"
+                      className="flex-1 sm:flex-none"
+                      icon={<PencilLine aria-hidden className="size-5" strokeWidth={1.75} />}
+                      onClick={() => setDialog({ kind: 'correct', purchase: dialog.purchase })}
+                    >
+                      {t.correction.action}
+                    </Button>
+                  )}
                 {canDelete &&
                   (dialog.purchase.deleted_at ? (
                     <Button

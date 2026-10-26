@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import * as authRepo from '@/data/authRepo'
+import * as functions from '@/data/functions'
 import * as materialsRepo from '@/data/materialsRepo'
 import * as movementsRepo from '@/data/movementsRepo'
 import * as objectsRepo from '@/data/objectsRepo'
@@ -44,6 +45,7 @@ vi.mock('@/data/materialsRepo', async (importOriginal) => ({
   listMaterials: vi.fn(),
 }))
 vi.mock('@/data/movementsRepo', () => ({ createMovement: vi.fn(), listMyMovements: vi.fn(async () => []) }))
+vi.mock('@/data/functions', () => ({ requestPhotoHash: vi.fn(async () => null), invokeFunction: vi.fn() }))
 vi.mock('@/data/companiesRepo', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/data/companiesRepo')>()),
   getCompanySettings: vi.fn(async () => {
@@ -216,7 +218,7 @@ describe('Batch 12 (C) — takroriy yozuv', () => {
     expect(movementsRepo.createMovement).not.toHaveBeenCalled()
   })
 
-  it('rasm tanlansa — SHA-256 xeshi (64 hex) yuboriladi', async () => {
+  it('rasm tanlansa — klient xeshi yuborilmaydi; saqlangandan keyin photo-hash (fonda) chaqiriladi', async () => {
     open()
     await pickMaterial('Sement')
     typeQty('2')
@@ -228,9 +230,9 @@ describe('Batch 12 (C) — takroriy yozuv', () => {
     await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalled())
     const arg = vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0]
     expect(arg?.photoPath).toBe('c/2026/10/abc.jpg')
-    // sha256("xyz")
-    expect(arg?.photoSha256).toBe('3608bca1e44ea6c4d268eb6db02260269892c0b42b86bbf1e77a6fa16c3c9282')
+    expect(arg).not.toHaveProperty('photoSha256')
     expect(photosRepo.uploadPhoto).toHaveBeenCalled()
+    await waitFor(() => expect(functions.requestPhotoHash).toHaveBeenCalledWith('movements', 'mv-new'))
   })
 })
 

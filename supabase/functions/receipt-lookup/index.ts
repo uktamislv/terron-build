@@ -8,9 +8,10 @@
 // Kesh: o'qish — chaqiruvchi JWT'si bilan (RLS: o'z firmasi), yozish — service_role RPC
 // `svc_upsert_receipt_lookup` (firma va profil shu yerda aniqlangan).
 
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2.118.0'
 import {
   FETCH_TIMEOUT_MS,
+  SlidingWindowLimiter,
   MAX_RESPONSE_BYTES,
   coerceReceiptData,
   handleReceiptLookup,
@@ -70,6 +71,9 @@ async function fetchPage(url: string): Promise<FetchResult> {
 }
 
 const deps: ReceiptLookupDeps = {
+  // Profil bo'yicha 20 / 10 daqiqa (izolyat xotirasida — cheklov: izolyatlar o'rtasida umumiy emas).
+  limiter: new SlidingWindowLimiter(),
+  now: () => Date.now(),
   getAuthUserIdFromJwt,
   getActiveProfile: async (authUserId) => {
     const p = await activeProfileByAuthUserId(authUserId)

@@ -60,6 +60,8 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
       request_overbuy_pct: 'pct',
       alert_remind_hours: 'qty',
       forecast_days_warn: 'qty',
+      quiet_hours_start: 'text',
+      quiet_hours_end: 'text',
       timezone: 'text',
       is_active: 'bool',
     },
@@ -75,6 +77,8 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
       telegram_user_id: 'text',
       telegram_chat_id: 'text',
       is_active: 'bool',
+      telegram_blocked_at: 'datetime',
+      notify_workflow: 'bool',
     },
   },
   objects: {
@@ -197,6 +201,7 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
       unit_id: 'ref_unit',
       price_per_base: 'money',
       note: 'text',
+      counted_at: 'datetime',
     },
   },
   estimates: {

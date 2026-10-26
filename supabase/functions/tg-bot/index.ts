@@ -57,6 +57,16 @@ const deps: TgBotDeps = {
   linkTelegram,
   sendMessage: (chatId, text, replyMarkup) => telegramSendMessage(botToken, chatId, text, replyMarkup),
   markAlertSeen,
+  markChatBlocked: async (chatId, blocked) => {
+    const { error } = await getAdminClient().rpc('svc_mark_chat_blocked', { p_chat_id: chatId, p_blocked: blocked })
+    if (!error) return
+    // RPC hali qo'shilmagan (PGRST202) — faqat log, webhook ishlashda davom etadi.
+    if (error.code === 'PGRST202') {
+      log('warn', "tg-bot: svc_mark_chat_blocked hali yo'q — bloklash holati yozilmadi", { blocked })
+      return
+    }
+    throw new Error(`svc_mark_chat_blocked: ${error.message}`)
+  },
   answerCallbackQuery: (callbackQueryId, text, showAlert) =>
     botCall('answerCallbackQuery', {
       callback_query_id: callbackQueryId,

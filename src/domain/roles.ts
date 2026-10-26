@@ -45,6 +45,12 @@ export type WebNavKey =
 
 export type TgNavKey = 'home' | 'movement' | 'purchase' | 'request' | 'inventory' | 'mine'
 
+/** Mini App qo'shimcha bo'limlari (pastki menyuda emas — bosh ekrandan ochiladi). */
+export type TgExtraKey = 'stock' | 'approvals'
+
+/** Pastki menyuda ko'pi bilan shuncha band (telefon kengligi). */
+export const TG_BOTTOM_MAX = 5
+
 /** Barcha veb bandlar — barqaror tartib (yon menyudagi tartib). */
 const WEB_ORDER: readonly WebNavKey[] = [
   'dashboard',
@@ -71,7 +77,8 @@ const WEB_NAV: Record<Role, readonly WebNavKey[]> = {
   direktor: ['dashboard', 'movements', 'purchases', 'cash', 'estimates', 'requests', 'alerts', 'history'],
   buxgalter: ['dashboard', 'materials', 'movements', 'purchases', 'cash', 'estimates', 'alerts'],
   taminotchi: ['dashboard', 'materials', 'purchases', 'requests'],
-  prorab: ['dashboard', 'movements', 'requests'],
+  // Prorab: smeta (faqat ko'rish) va norma sarfi
+  prorab: ['dashboard', 'movements', 'estimates', 'requests'],
   omborchi: ['dashboard', 'movements'],
   haydovchi: [],
   // Ko'r-ko'rona sanash: tekshiruvchi qoldiq va harakatlarni ko'rmaydi (Batch 8)
@@ -79,8 +86,8 @@ const WEB_NAV: Record<Role, readonly WebNavKey[]> = {
 }
 
 const TG_NAV: Record<Role, readonly TgNavKey[]> = {
-  super_admin: ['home', 'movement', 'purchase', 'inventory', 'mine'],
-  admin: ['home', 'movement', 'purchase', 'inventory', 'mine'],
+  super_admin: ['home', 'movement', 'purchase', 'request', 'inventory', 'mine'],
+  admin: ['home', 'movement', 'purchase', 'request', 'inventory', 'mine'],
   direktor: ['home', 'mine'],
   buxgalter: ['mine'],
   taminotchi: ['purchase', 'mine'],
@@ -99,9 +106,51 @@ export function webNavFor(role: Role): WebNavKey[] {
   return ordered(WEB_ORDER, WEB_NAV[role] ?? [])
 }
 
-/** Mini App pastki menyu bandlari (yangi massiv; tartib `TG_ORDER` bo'yicha). */
+/** Mini App'da rolga ochiq bandlar (yangi massiv; tartib `TG_ORDER` bo'yicha). */
 export function tgNavFor(role: Role): TgNavKey[] {
   return ordered(TG_ORDER, TG_NAV[role] ?? [])
+}
+
+/** 5 tadan ko'p bo'lsa — pastki menyudan birinchi navbatda shu bandlar bosh ekranga o'tadi. */
+const TG_BOTTOM_OVERFLOW: readonly TgNavKey[] = ['inventory', 'request', 'purchase']
+
+/**
+ * Pastki menyu bandlari (≤ `TG_BOTTOM_MAX`). Sig'maganlari (`tgOverflowFor`) bosh ekrandagi
+ * "Bo'limlar" blokidan ochiladi — ruxsat `tgNavFor` bo'yicha o'zgarmaydi.
+ */
+export function tgBottomNavFor(role: Role): TgNavKey[] {
+  const all = tgNavFor(role)
+  const hidden = new Set<TgNavKey>()
+  for (const key of TG_BOTTOM_OVERFLOW) {
+    if (all.length - hidden.size <= TG_BOTTOM_MAX) break
+    // "Bosh" bo'lmasa, sig'magan bandni ochadigan joy yo'q — yashirilmaydi
+    if (all.includes(key) && all.includes('home')) hidden.add(key)
+  }
+  return all.filter((k) => !hidden.has(k))
+}
+
+/** Pastki menyuga sig'magan bandlar (bosh ekranda havola sifatida). */
+export function tgOverflowFor(role: Role): TgNavKey[] {
+  const bottom = tgBottomNavFor(role)
+  return tgNavFor(role).filter((k) => !bottom.includes(k))
+}
+
+const TG_EXTRA: Record<Role, readonly TgExtraKey[]> = {
+  super_admin: ['stock', 'approvals'],
+  admin: ['stock', 'approvals'],
+  direktor: [],
+  buxgalter: [],
+  taminotchi: [],
+  prorab: ['stock'],
+  omborchi: ['stock'],
+  haydovchi: [],
+  // Ko'r-ko'rona sanash: tekshiruvchi qoldiqni ko'rmaydi
+  tekshiruvchi: [],
+}
+
+/** Bosh ekrandan ochiladigan qo'shimcha bo'limlar: "Qoldiq", "So'rovlarni tasdiqlash". */
+export function tgExtraFor(role: Role): TgExtraKey[] {
+  return [...(TG_EXTRA[role] ?? [])]
 }
 
 export type Action =
@@ -148,4 +197,15 @@ const ACTIONS: Record<Action, readonly Role[]> = {
 
 export function can(role: Role, action: Action): boolean {
   return ACTIONS[action]?.includes(role) ?? false
+}
+
+/** Himoyalangan profil rollari (docs/audit-fixes.md B2, `profile_protected`). */
+export const PROTECTED_PROFILE_ROLES: readonly Role[] = ['admin', 'direktor']
+
+/**
+ * Admin (super_admin emas) admin/direktor profilining rolini, telefonini va faolligini o'zgartira
+ * olmaydi — o'zinikini ham. UI shu holda bu boshqaruvlarni yashiradi (server ham rad etadi).
+ */
+export function isProtectedProfile(actorRole: Role, targetRole: Role): boolean {
+  return actorRole !== 'super_admin' && PROTECTED_PROFILE_ROLES.includes(targetRole)
 }

@@ -1,6 +1,13 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { handleTgAuth, TG_AUTH_MAX_AGE_SEC, type TgAuthDeps, type TgProfile } from './logic.ts'
+import {
+  handleTgAuth,
+  InitDataReplayGuard,
+  REPLAY_GRACE_MS,
+  TG_AUTH_MAX_AGE_SEC,
+  type TgAuthDeps,
+  type TgProfile,
+} from './logic.ts'
 import { signInitDataForTest } from '../_shared/telegramAuth.testing.ts'
 import type { AuthEvent, AuthUserInfo, CreateAuthUserInput, LoginKind } from '../_shared/authUsers.ts'
 
@@ -42,6 +49,9 @@ interface FakeOpts {
   throwOnFind?: boolean
   jwtUser?: Record<string, string>
   auditThrows?: boolean
+  replayGuard?: InitDataReplayGuard
+  /** Soat (ms) — standart NOW_SEC * 1000. */
+  nowMs?: () => number
 }
 
 function fake(opts: FakeOpts = {}) {
@@ -58,7 +68,8 @@ function fake(opts: FakeOpts = {}) {
   let createCount = 0
   const deps: TgAuthDeps = {
     env: { botToken: 'botToken' in opts ? opts.botToken : TOKEN },
-    now: () => NOW_SEC * 1000,
+    now: opts.nowMs ?? (() => NOW_SEC * 1000),
+    ...(opts.replayGuard ? { replayGuard: opts.replayGuard } : {}),
     findProfileByTelegramId: async (id) => {
       if (opts.throwOnFind) throw new Error('db down')
       findCount++
@@ -135,12 +146,12 @@ describe('tg-auth: initData', () => {
     expect((await handleTgAuth({ initData: tampered }, fake().deps)).status).toBe(401)
   })
 
-  it('muddat 1 soat: 59 daqiqalik — OK, 1 soatdan eski — 401', async () => {
-    expect(TG_AUTH_MAX_AGE_SEC).toBe(3600)
-    const fresh = await handleTgAuth({ initData: await initDataFor(TG_ID, NOW_SEC - 3540) }, fake().deps)
+  it('muddat 15 daqiqa: 14 daqiqalik — OK, 15 daqiqadan eski — 401', async () => {
+    expect(TG_AUTH_MAX_AGE_SEC).toBe(900)
+    const fresh = await handleTgAuth({ initData: await initDataFor(TG_ID, NOW_SEC - 840) }, fake().deps)
     expect(fresh.status).toBe(200)
-    const old = await handleTgAuth({ initData: await initDataFor(TG_ID, NOW_SEC - 3600 - 10) }, fake().deps)
-    expect(old.status).toBe(401)
+    const old = await handleTgAuth({ initData: await initDataFor(TG_ID, NOW_SEC - 900 - 10) }, fake().deps)
+    expect(old).toEqual({ status: 401, body: { error: 'invalid_init_data' } })
   })
 
   it('imzosiz satr → 401', async () => {
@@ -361,5 +372,68 @@ describe('tg-auth: bog\'lash poygasi va xatolar', () => {
     expect(r).toEqual({ status: 500, body: { error: 'internal' } })
     expect(JSON.stringify(f.calls.logs)).not.toContain(initData)
     expect(JSON.stringify(f.calls.logs)).not.toContain(TOKEN)
+  })
+})
+
+describe('tg-auth: audit — super_admin va initData takrori', () => {
+  it('super_admin → 403 role_web_only, sessiya berilmaydi', async () => {
+    const f = fake({ profile: profile({ role: 'super_admin', auth_user_id: 'au-1' }), authEmails: { 'au-1': 'a@x.uz' } })
+    const r = await handleTgAuth({ initData: await initDataFor() }, f.deps)
+    expect(r).toEqual({ status: 403, body: { error: 'role_web_only' } })
+    expect(f.calls.session).toHaveLength(0)
+    expect(f.calls.create).toHaveLength(0)
+  })
+
+  it('admin, direktor — ruxsat', async () => {
+    for (const role of ['admin', 'direktor']) {
+      const r = await handleTgAuth({ initData: await initDataFor() }, fake({ profile: profile({ role }) }).deps)
+      expect(r.status).toBe(200)
+    }
+  })
+
+  it('bir xil initData: grace ichida takror — OK; graceʼdan keyin — 401 init_data_replayed', async () => {
+    const guard = new InitDataReplayGuard()
+    let now = NOW_SEC * 1000
+    const initData = await initDataFor()
+    const first = await handleTgAuth({ initData }, fake({ replayGuard: guard, nowMs: () => now }).deps)
+    expect(first.status).toBe(200)
+    now += REPLAY_GRACE_MS - 1
+    expect((await handleTgAuth({ initData }, fake({ replayGuard: guard, nowMs: () => now }).deps)).status).toBe(200)
+    now += 2
+    const f = fake({ replayGuard: guard, nowMs: () => now })
+    const replay = await handleTgAuth({ initData }, f.deps)
+    expect(replay).toEqual({ status: 401, body: { error: 'init_data_replayed' } })
+    expect(f.calls.session).toHaveLength(0)
+    expect(f.calls.create).toHaveLength(0)
+  })
+
+  it('takror, lekin shu akkauntning amaldagi sessiyasi bilan — rad etilmaydi (yangi sessiya yo’q)', async () => {
+    const guard = new InitDataReplayGuard()
+    let now = NOW_SEC * 1000
+    const initData = await initDataFor()
+    const opts = { profile: profile({ auth_user_id: 'au-1' }), authEmails: { 'au-1': 'a@x.uz' }, jwtUser: { tok: 'au-1' } }
+    expect((await handleTgAuth({ initData }, fake({ ...opts, replayGuard: guard, nowMs: () => now }).deps)).status).toBe(200)
+    now += 60_000
+    const r = await handleTgAuth({ initData, access_token: 'tok' }, fake({ ...opts, replayGuard: guard, nowMs: () => now }).deps)
+    expect(r.status).toBe(200)
+    expect((r.body as { session: unknown }).session).toBeNull()
+  })
+
+  it('boshqa initData (yangi hash) — ruxsat; need_contact guardʼni band qilmaydi', async () => {
+    const guard = new InitDataReplayGuard()
+    const a = await handleTgAuth({ initData: await initDataFor(TG_ID, NOW_SEC - 60) }, fake({ replayGuard: guard }).deps)
+    const b = await handleTgAuth({ initData: await initDataFor(TG_ID, NOW_SEC - 30) }, fake({ replayGuard: guard }).deps)
+    expect([a.status, b.status]).toEqual([200, 200])
+    await handleTgAuth({ initData: await initDataFor(TG_ID, NOW_SEC - 20) }, fake({ replayGuard: guard, profile: null }).deps)
+    expect(guard.size).toBe(2)
+  })
+
+  it('InitDataReplayGuard: muddati o‘tgan yozuv qayta ishlatiladi; LRU chegarasi', () => {
+    const g = new InitDataReplayGuard(3)
+    expect(g.use('a', 0, 1000)).toBe(true)
+    expect(g.use('a', 20_000, 100_000)).toBe(true) // avvalgisi muddati o'tgan — yangi yozuv
+    expect(g.use('a', 40_000, 100_000)).toBe(false) // muddat ichida, grace'dan keyin — takror
+    for (const k of ['b', 'c', 'd', 'e']) g.use(k, 0, 10_000_000)
+    expect(g.size).toBe(3)
   })
 })

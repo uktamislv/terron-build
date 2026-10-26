@@ -9,7 +9,7 @@ import { EmptyState, PageHeader, Spinner } from '@/components/ui'
 import { listRecentAlerts } from '@/data/alertsRepo'
 import { listBalances } from '@/data/cashRepo'
 import { listObjects } from '@/data/objectsRepo'
-import { listProfiles } from '@/data/profilesRepo'
+import { listDirectory } from '@/data/profileDirectory'
 import {
   getDashboardDaily,
   getDashboardSummary,
@@ -31,6 +31,7 @@ import { CashCard, DailyCard, DashboardLayout, NormCard, RecentAlertsCard, Spend
 import { PeriodBar } from '../dashboard/PeriodBar'
 import { dashboardSearch, isoToUz, readDashboardQuery, type DashboardQuery } from '../dashboard/query'
 import { ExportButton } from '../ExportButton'
+import { InspectorCounts } from '../dashboard/InspectorCounts'
 
 const tr = t.reports
 
@@ -64,7 +65,14 @@ export function DashboardPage() {
     return (
       <div className="flex flex-col gap-5">
         <PageHeader title={tr.title} icon={<LayoutDashboard strokeWidth={1.75} />} />
-        {sections.size === 0 ? <EmptyState icon={<ClipboardCheck strokeWidth={1.5} />} title={tr.inspectorNote} /> : <Spinner />}
+        {sections.size > 0 ? (
+          <Spinner />
+        ) : role === 'tekshiruvchi' ? (
+          // Tekshiruvchi: oxirgi sanashlari holati bilan (bo'sh sahifa emas)
+          <InspectorCounts profileId={profile.id} />
+        ) : (
+          <EmptyState icon={<ClipboardCheck strokeWidth={1.5} />} title={tr.inspectorNote} />
+        )}
       </div>
     )
 
@@ -170,7 +178,7 @@ function SpendSection({ range, rangeKey }: { range: { from: string; to: string; 
 
 function CashSection() {
   const cash = useLoad(async () => {
-    const [balances, profiles] = await Promise.all([listBalances(), listProfiles().catch(() => [])])
+    const [balances, profiles] = await Promise.all([listBalances(), listDirectory().catch(() => [])])
     return cashChartRows(balances, profiles)
   }, 'cash')
   return <CashCard state={cash} />

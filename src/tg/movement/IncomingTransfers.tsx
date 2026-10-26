@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight, PackageOpen } from 'lucide-react'
-import { Button, EntryRow, Notice, Qty, SkeletonRows } from '@/components/ui'
+import { Button, DetailRows, EntryRow, Notice, Qty, RetryNotice, SkeletonRows } from '@/components/ui'
 import { listIncomingTransfers, receiveTransfer } from '@/data/transfersRepo'
 import type { Transfer } from '@/data/types'
 import { cmp } from '@/domain/decimal'
@@ -8,11 +8,11 @@ import type { DraftErrorCode } from '@/domain/movements'
 import { unitLabel, validateQtyInput } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
-import { formatDateTime, formatQty } from '@/lib/format'
+import { formatDateTime, formatQty, formatQtyUnit } from '@/lib/format'
 import { NoteField, QtyField } from '../entry/QtyField'
 import { getWebApp, haptic } from '../telegram'
-import { BackLink, DetailList, SavedBanner, SectionTitle } from '../ui'
-import { useBackButton, useMainButton } from '../useTelegramButtons'
+import { BackLink, SavedBanner, SectionTitle } from '../ui'
+import { flashMainButtonSaved, useBackButton, useMainButton } from '../useTelegramButtons'
 
 const ti = t.tg.incoming
 
@@ -57,6 +57,7 @@ function ReceiveForm({ transfer, onDone }: { transfer: Transfer; onDone: (text: 
       const same = cmp(p.value, transfer.qty_input) === 0
       await receiveTransfer(transfer.id, same ? null : p.value, note)
       haptic.success()
+      flashMainButtonSaved()
       onDone(ti.received(formatQty(p.value), unit, transfer.material_name ?? ''))
     } catch (err) {
       haptic.error()
@@ -74,30 +75,28 @@ function ReceiveForm({ transfer, onDone }: { transfer: Transfer; onDone: (text: 
   return (
     <section aria-label={transfer.material_name ?? ti.title} className="flex flex-col gap-4">
       <p className="text-xl leading-tight font-semibold text-ink">{transfer.material_name}</p>
-      <DetailList>
-          <dt>{ti.from}</dt>
-          <dd>{transfer.from_object_name ?? ti.otherObject}</dd>
-          <dt>{ti.to}</dt>
-          <dd>{transfer.to_object_name ?? '—'}</dd>
-          <dt>{ti.sent}</dt>
-          <dd data-testid="incoming-sent" className="tabular font-semibold">
-            {formatQty(transfer.qty_input)} {unit}
-            {transfer.base_unit && (
-              <span className="font-normal text-muted">
-                {' '}
-                (= {formatQty(transfer.qty_base)} {transfer.base_unit})
+      <DetailRows
+        className="rounded-xl border border-line bg-paper px-4"
+        items={[
+          { label: ti.from, value: transfer.from_object_name ?? ti.otherObject },
+          { label: ti.to, value: transfer.to_object_name ?? '—' },
+          {
+            label: ti.sent,
+            value: (
+              <span data-testid="incoming-sent" className="tabular inline-flex flex-col items-end font-semibold">
+                <span>{formatQtyUnit(transfer.qty_input, unit)}</span>
+                {transfer.base_unit && (
+                  <span className="text-xs font-normal text-muted">= {formatQtyUnit(transfer.qty_base, transfer.base_unit)}</span>
+                )}
               </span>
-            )}
-          </dd>
-          {transfer.created_by_name && (
-            <>
-              <dt>{ti.sentBy}</dt>
-              <dd>{transfer.created_by_name}</dd>
-            </>
-          )}
-      </DetailList>
+            ),
+          },
+          transfer.created_by_name ? { label: ti.sentBy, value: transfer.created_by_name } : null,
+        ]}
+      />
       <QtyField
-        label={`${ti.receivedQty}, ${unit}`}
+        label={ti.receivedQty}
+        suffix={unit}
         value={qty}
         error={qtyError}
         onChange={(v) => {
@@ -201,7 +200,7 @@ export function IncomingTransfers({
   return (
     <div className="flex flex-col gap-4">
       <BackLink label={selected ? t.common.back : ti.back} onClick={back} />
-      <SectionTitle className="text-xl">{ti.title}</SectionTitle>
+      <SectionTitle>{ti.title}</SectionTitle>
       {doneText && (
         <SavedBanner>{doneText}</SavedBanner>
       )}
@@ -209,7 +208,7 @@ export function IncomingTransfers({
         <ReceiveForm key={selected.id} transfer={selected} onDone={onDone} />
       ) : (
         <>
-          {error && <Notice>{error}</Notice>}
+          {error && <RetryNotice message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
           {!rows && !error && <SkeletonRows rows={2} />}
           {rows && rows.length === 0 && <p className="text-sm text-muted">{ti.empty}</p>}
           {rows && rows.length > 0 && (

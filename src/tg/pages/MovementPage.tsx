@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@/auth/authContext'
-import { Notice, PageHeader, SkeletonRows } from '@/components/ui'
+import { Notice, RetryNotice, SkeletonRows } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
+import { requestPhotoHash } from '@/data/functions'
 import { createMovement, listMyMovements } from '@/data/movementsRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { listOpenPurchases } from '@/data/openPurchasesRepo'
@@ -25,6 +26,9 @@ import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatQty } from '@/lib/format'
 import { uuid } from '@/lib/uuid'
+import { entryDateFor } from '@/domain/entryDate'
+import { DateChips } from '../entry/DateChips'
+import { TODAY_CHOICE, type DateChipsValue } from '../entry/dateChoice'
 import { MaterialGrid } from '../entry/MaterialGrid'
 import { initialUnitId, loadLastEntry, rememberLastEntry } from '../entry/lastEntry'
 import { ObjectLocationButton } from '../entry/ObjectLocationButton'
@@ -37,8 +41,9 @@ import { EntryTypeSwitch } from '../movement/EntryTypeSwitch'
 import { MovementDetails } from '../movement/MovementDetails'
 import { loadEntryType, loadLastObject, saveEntryType, saveLastObject } from '../movement/prefs'
 import { getWebApp, haptic } from '../telegram'
-import { LoadError, SavedBanner } from '../ui'
-import { useBackButton, useMainButton } from '../useTelegramButtons'
+import { SavedBanner } from '../ui'
+import { pinnedMaterialIds } from '../entry/useRankedMaterials'
+import { flashMainButtonSaved, useBackButton, useClosingConfirmation, useMainButton } from '../useTelegramButtons'
 
 const tm = t.tg.movement
 const ta = t.tg.auto
@@ -64,6 +69,9 @@ export function MovementPage() {
   const [unitId, setUnitId] = useState<string | null>(null)
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
+  // Yozuv sanasi: standart "Bugun" (server now()) — qo'shimcha bosish yo'q
+  const [entryDate, setEntryDate] = useState<DateChipsValue>(TODAY_CHOICE)
+  const [dateError, setDateError] = useState<string | null>(null)
   // Ixtiyoriy rasm: yuklangan yo'l eslab qolinadi — qayta urinishda qayta yuklanmaydi
   const photo = usePhotoDraft()
   const preparingPhoto = photo.preparing
@@ -76,7 +84,7 @@ export function MovementPage() {
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [savedText, setSavedText] = useState<string | null>(null)
+  const [savedText, setSavedText] = useState<{ text: string; meta: string } | null>(null)
   // Kelayotgan o'tkazmalar ro'yxati ochiq — forma yashiriladi
   const [incomingOpen, setIncomingOpen] = useState(false)
   // Batch 12 (C): o'zimning oxirgi yozuvlarim — takroriy yozuvni saqlashdan oldin aniqlash uchun
@@ -130,6 +138,8 @@ export function MovementPage() {
     () => (materials ? rankMaterials(materials, usage, new Date().toISOString()) : []),
     [materials, usage],
   )
+  // Ko'p ishlatiladiganlar — material to'rining tepasida ajratib ko'rsatiladi
+  const pinned = useMemo(() => pinnedMaterialIds(ranked, usage), [ranked, usage])
 
   const material = materials?.find((m) => m.id === materialId) ?? null
   const unit = material?.units.find((u) => u.id === unitId) ?? null
@@ -259,6 +269,8 @@ export function MovementPage() {
     setDuplicate(false)
     setFieldErrors({})
     setDraftId(uuid())
+    setEntryDate(TODAY_CHOICE)
+    setDateError(null)
     geo.reset()
   }
 
@@ -266,11 +278,16 @@ export function MovementPage() {
     async (opts: { withoutPhoto?: boolean; confirmDuplicate?: boolean } = {}) => {
       // Sinxron qulf: MainButton va oddiy tugma tez-tez bosilsa ham bitta so'rov
       if (savingRef.current || !profile || preparingPhoto) return
-      const draft = { type, objectId, materialId, unitId, qtyInput: qty }
       const nowIso = new Date().toISOString()
+      const occurredAt = entryDateFor(entryDate.choice, entryDate.other, nowIso, isAdmin)
+      const draft = { type, objectId, materialId, unitId, qtyInput: qty, occurredAt: occurredAt ?? null }
       const result = validateMovementDraft(draft, { nowIso, isAdmin })
-      if (!result.ok || !objectId || !materialId || !unitId) {
+      if (occurredAt === undefined) {
+        setDateError(entryDate.choice === 'other' && !entryDate.other ? t.tg.date.errRequired : tm.errors.occurredAt)
+      }
+      if (!result.ok || occurredAt === undefined || !objectId || !materialId || !unitId) {
         setFieldErrors(result.ok ? {} : result.errors)
+        if (!result.ok && result.errors.occurredAt) setDateError(tm.errors.occurredAt)
         haptic.error()
         return
       }
@@ -319,23 +336,27 @@ export function MovementPage() {
           qtyInput: result.qtyInput,
           note,
           photoPath,
-          photoSha256: photoPath ? (photo.photo?.sha256 ?? null) : null,
           geo: geoFix,
+          // "Bugun" — sana yuborilmaydi (server now())
+          ...(occurredAt ? { occurredAt } : {}),
           ...(purchaseId ? { purchaseId } : {}),
         })
+        // Rasm xeshi — serverda, fonda (xato foydalanuvchiga ta'sir qilmaydi)
+        if (photoPath) void requestPhotoHash('movements', row.id)
         haptic.success()
+        flashMainButtonSaved()
         saveLastObject(objectId)
         rememberLastEntry(profile.id, materialId, unitId, result.qtyInput)
         setRecent((list) => [row, ...list.filter((m) => m.id !== row.id)].slice(0, RECENT_LIMIT))
-        setSavedText(
-          tm.saved(
+        setSavedText({
+          text: tm.saved(
             t.movements.types[row.type === 'chiqim' ? 'chiqim' : 'kirim'],
             formatQty(row.qty_input),
             unitLabel({ unit: row.unit_input, variant: row.unit_variant }),
             row.material_name ?? material?.name ?? '',
-            row.object_name ?? object?.name ?? '',
           ),
-        )
+          meta: row.object_name ?? object?.name ?? '',
+        })
         resetEntry()
       } catch (err) {
         haptic.error()
@@ -348,7 +369,7 @@ export function MovementPage() {
     },
     // resetEntry — faqat setState va photo.reset (photo deps ichida)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [profile, preparingPhoto, type, objectId, materialId, unitId, qty, photo, linkedPurchaseId, draftId, note, material, object, isAdmin, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, geo],
+    [profile, preparingPhoto, type, objectId, materialId, unitId, qty, photo, linkedPurchaseId, draftId, note, material, object, isAdmin, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, geo, entryDate],
   )
 
   const onMainButton = useCallback(() => {
@@ -382,14 +403,14 @@ export function MovementPage() {
     preparingPhoto || photoMissing,
     saving,
   )
+  // Qoralamada ma'lumot bor — Telegram yopishdan oldin so'raydi
+  useClosingConfirmation(Boolean(materialId) || qty.trim() !== '' || note.trim() !== '')
   const insideTelegram = getWebApp() !== null
 
   if (!profile) return null
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title={tm.title} />
-
       {objects && objects.length > 0 && (
         <IncomingTransfers objectIds={objects.map((o) => o.id)} open={incomingOpen} onOpenChange={setIncomingOpen} />
       )}
@@ -397,9 +418,9 @@ export function MovementPage() {
         <>
           <EntryTypeSwitch value={type} onChange={chooseType} />
 
-          {savedText && <SavedBanner>{savedText}</SavedBanner>}
+          {savedText && <SavedBanner meta={savedText.meta}>{savedText.text}</SavedBanner>}
 
-          {loadError && <LoadError message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />}
+          {loadError && <RetryNotice message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />}
           {!loadError && (!objects || !materials) && <SkeletonRows rows={3} />}
           {objects && objects.length === 0 && <Notice tone="warn">{tm.noObjects}</Notice>}
 
@@ -411,7 +432,7 @@ export function MovementPage() {
                 object && <ObjectBar object={object} onChange={manyObjects ? () => setPickingObject(true) : null} />
               )}
 
-              {step === 'material' && <MaterialGrid materials={ranked} onPick={chooseMaterial} />}
+              {step === 'material' && <MaterialGrid materials={ranked} pinnedIds={pinned} onPick={chooseMaterial} />}
 
               {step === 'details' && material && (
                 <MovementDetails
@@ -445,6 +466,17 @@ export function MovementPage() {
                   duplicateMinutes={duplicate ? settings.duplicateWindowMinutes : null}
                   onConfirmDuplicate={saveDuplicate}
                   onCancelDuplicate={() => setDuplicate(false)}
+                  dateField={
+                    <DateChips
+                      value={entryDate}
+                      isAdmin={isAdmin}
+                      error={dateError}
+                      onChange={(next) => {
+                        setEntryDate(next)
+                        setDateError(null)
+                      }}
+                    />
+                  }
                   extra={
                     isAdmin && object ? (
                       <ObjectLocationButton

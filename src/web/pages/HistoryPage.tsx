@@ -17,8 +17,8 @@ import {
   type DeletedRecord,
   type RefNames,
 } from '@/data/historyRepo'
-import { listProfiles } from '@/data/profilesRepo'
-import type { Profile } from '@/data/types'
+import { listDirectory } from '@/data/profileDirectory'
+import type { PersonRef } from '@/data/types'
 import { can } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
@@ -107,7 +107,7 @@ export function HistoryPage() {
   const [params, setParams] = useSearchParams()
   const todayIso = useMemo(() => tashkentIsoDate(), [])
   const query = useMemo(() => readHistoryQuery(params, todayIso), [params, todayIso])
-  const profiles = useLoad<Profile[]>(listProfiles, 'profiles', Boolean(me))
+  const profiles = useLoad<PersonRef[]>(listDirectory, 'profiles', Boolean(me))
 
   const setQuery = useCallback(
     (patch: HistoryPatch) => setParams(historySearch({ ...query, ...patch }), { replace: true }),
@@ -143,7 +143,7 @@ function HistoryBody({
 }: {
   query: HistoryQuery
   todayIso: string
-  profiles: Profile[]
+  profiles: PersonRef[]
   canRestore: boolean
   onQuery: (patch: HistoryPatch) => void
   onRestored: (table: string) => void

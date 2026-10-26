@@ -150,7 +150,7 @@ const purchases: Purchase[] = [
 ]
 
 function PurchasesPreview() {
-  const [form, setForm] = useState<PurchaseFilterForm>({ objectId: '', materialId: '', buyerId: '', from: '', to: '', includeDeleted: false })
+  const [form, setForm] = useState<PurchaseFilterForm>({ objectId: '', materialId: '', buyerId: '', supplierId: '', from: '', to: '', includeDeleted: false })
   return (
     <PurchasesView
       rows={purchases}

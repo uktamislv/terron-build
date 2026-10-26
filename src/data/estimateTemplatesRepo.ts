@@ -1,10 +1,10 @@
 import { toRepoError } from './errors'
+import { directoryNames } from './profileDirectory'
 import { getSupabase } from './supabaseClient'
 import type { EstimateImportTemplate } from './types'
 
 const TEMPLATE_COLUMNS =
-  'id, company_id, name, header_signature, mapping, sheet_name, header_row, last_used_at, updated_at, ' +
-  'creator:profiles!estimate_import_templates_created_by_fkey(full_name)'
+  'id, company_id, name, header_signature, mapping, sheet_name, header_row, last_used_at, updated_at, created_by'
 
 export interface TemplateInput {
   companyId: string
@@ -30,10 +30,12 @@ export async function findTemplateBySignature(
     .maybeSingle()
   if (error) throw toRepoError(error)
   if (!data) return null
-  const { creator, ...rest } = data as unknown as Omit<EstimateImportTemplate, 'created_by_name'> & {
-    creator: { full_name: string } | null
+  const { created_by, ...rest } = data as unknown as Omit<EstimateImportTemplate, 'created_by_name'> & {
+    created_by: string | null
   }
-  return { ...rest, created_by_name: creator?.full_name ?? null }
+  // Ism — profile_directory dan (admin bo'lmaganlar profiles dan faqat o'zini ko'radi); xato — ismsiz
+  const names = await directoryNames([created_by]).catch(() => new Map<string, { full_name: string }>())
+  return { ...rest, created_by_name: created_by ? (names.get(created_by)?.full_name ?? null) : null }
 }
 
 /**

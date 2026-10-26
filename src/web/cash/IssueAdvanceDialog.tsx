@@ -1,7 +1,7 @@
 import { useId, useState, type FormEvent } from 'react'
-import { Button, Modal, Notice, TextField } from '@/components/ui'
+import { Button, DateField, Modal, Notice, TextAreaField, TextField } from '@/components/ui'
 import { issueAdvance } from '@/data/cashRepo'
-import type { CashAdvance, CashAdvanceKind, Profile } from '@/data/types'
+import type { CashAdvance, CashAdvanceKind, PersonRef } from '@/data/types'
 import { formatSumInput, parseSumInput } from '@/domain/cash'
 import { cmp } from '@/domain/decimal'
 import { t } from '@/i18n'
@@ -24,7 +24,7 @@ export function IssueAdvanceDialog({
   onStale,
 }: {
   companyId: string
-  recipients: Profile[]
+  recipients: PersonRef[]
   /** "O'chirish va qayta berish" — oldingi yozuv qiymatlari bilan. */
   initial?: { recipientId: string; amount: string; note?: string | null }
   /** Batch 12 (I): `qaytarildi` — odam ortiqcha pulni qaytardi ("Qaytarish"). */
@@ -104,26 +104,8 @@ export function IssueAdvanceDialog({
           error={errors.amount ? tc.errAmount : null}
           onChange={(e) => setAmount(formatSumInput(e.target.value))}
         />
-        <TextField
-          label={tc.issuedAt}
-          type="date"
-          value={date}
-          max={today}
-          error={errors.date ? tc.errDate : null}
-          onChange={(e) => setDate(e.target.value)}
-        />
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={noteId} className="text-sm font-medium text-ink">
-            {tc.note}
-          </label>
-          <textarea
-            id={noteId}
-            rows={2}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="min-h-11 rounded-xl border border-line bg-paper px-3 py-2 text-base outline-none focus:border-brand focus:ring-3 focus:ring-brand/15"
-          />
-        </div>
+        <DateField label={tc.issuedAt} value={date} max={today} error={errors.date ? tc.errDate : null} onChange={setDate} />
+        <TextAreaField id={noteId} label={tc.note} value={note} onChange={(e) => setNote(e.target.value)} />
         <p className="text-xs text-muted">{tc.amountLockedHint}</p>
         {error && <Notice>{error}</Notice>}
         {mismatch && (

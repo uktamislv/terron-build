@@ -1,6 +1,7 @@
 import { isPkeyConflict, toRepoError } from './errors'
 import { EXPORT_MAX_ROWS, fetchAll } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
+import { directoryNames } from './profileDirectory'
 import { getSupabase } from './supabaseClient'
 import type { CashAdvance, CashAdvanceKind, CashBalance } from './types'
 
@@ -8,13 +9,10 @@ const BALANCE_COLUMNS =
   'company_id, profile_id, issued_total::text, returned_total::text, spent_total::text, balance::text, last_issued_at, last_spent_at'
 
 const ADVANCE_SELECT =
-  'id, company_id, recipient_id, kind, amount::text, issued_at, note, created_by, created_at, deleted_at, ' +
-  'recipient:profiles!cash_advances_recipient_fkey(full_name), ' +
-  'creator:profiles!cash_advances_created_by_fkey(full_name)'
+  'id, company_id, recipient_id, kind, amount::text, issued_at, note, created_by, created_at, deleted_at'
 
 const SPENT_SELECT =
   'id, buyer_id, total_amount::text, purchased_at, note, deleted_at, ' +
-  'buyer:profiles!purchases_buyer_fkey(full_name), ' +
   'material:materials!purchases_material_fkey(name), ' +
   'object:objects!purchases_object_fkey(name)'
 
@@ -66,14 +64,21 @@ export interface NewAdvance {
   kind?: CashAdvanceKind
 }
 
-type RawAdvance = Omit<CashAdvance, 'recipient_name' | 'created_by_name'> & {
-  recipient: { full_name: string } | null
-  creator: { full_name: string } | null
+type RawAdvance = Omit<CashAdvance, 'recipient_name' | 'created_by_name'>
+
+function normalizeAdvance(raw: RawAdvance, names?: Map<string, { full_name: string }>): CashAdvance {
+  return {
+    ...raw,
+    recipient_name: names?.get(raw.recipient_id)?.full_name ?? null,
+    created_by_name: raw.created_by ? (names?.get(raw.created_by)?.full_name ?? null) : null,
+  }
 }
 
-function normalizeAdvance(raw: RawAdvance): CashAdvance {
-  const { recipient, creator, ...rest } = raw
-  return { ...rest, recipient_name: recipient?.full_name ?? null, created_by_name: creator?.full_name ?? null }
+/** Ismlar — `profile_directory` dan (admin bo'lmaganlar `profiles` dan faqat o'zini ko'radi). */
+async function advancesWithNames(rows: RawAdvance[]): Promise<CashAdvance[]> {
+  if (rows.length === 0) return []
+  const names = await directoryNames(rows.flatMap((r) => [r.recipient_id, r.created_by]))
+  return rows.map((r) => normalizeAdvance(r, names))
 }
 
 /** Pul berish (podotchet). Idempotent: `cash_advances_pkey` 23505 — saqlangan qator qaytariladi. */
@@ -96,11 +101,20 @@ export async function issueAdvance(input: NewAdvance): Promise<CashAdvance> {
         .select(ADVANCE_SELECT)
         .eq('id', input.id)
         .maybeSingle()
-      if (existing) return normalizeAdvance(existing as unknown as RawAdvance)
+      if (existing) return (await advancesWithNames([existing as unknown as RawAdvance]))[0] as CashAdvance
     }
     throw toRepoError(error)
   }
-  return normalizeAdvance(data as unknown as RawAdvance)
+  return (await advancesWithNames([data as unknown as RawAdvance]))[0] as CashAdvance
+}
+
+/**
+ * Izohni o'zgartirish (admin, buxgalter). Summa va sana o'zgarmaydi (`cash_amount_locked`) —
+ * faqat `note` yuboriladi.
+ */
+export async function updateAdvanceNote(id: string, note: string | null): Promise<void> {
+  const clean = note?.trim().slice(0, 1000)
+  return updateById('cash_advances', id, { note: clean ? clean : null })
 }
 
 /** Tarix yozuvi: berilgan pul, qaytarilgan pul yoki xaridga sarflangan pul. */
@@ -136,7 +150,6 @@ interface RawSpent {
   purchased_at: string
   note: string | null
   deleted_at: string | null
-  buyer: { full_name: string } | null
   material: { name: string } | null
   object: { name: string } | null
 }
@@ -164,7 +177,7 @@ export async function listCashHistory(
   ])
   if (issued.error) throw toRepoError(issued.error)
   if (spent.error) throw toRepoError(spent.error)
-  const entries = mergeHistory(
+  const entries = await mergeHistory(
     (issued.data ?? []) as unknown as RawAdvance[],
     (spent.data ?? []) as unknown as RawSpent[],
   )
@@ -172,9 +185,10 @@ export async function listCashHistory(
   return entries.slice(0, CASH_HISTORY_LIMIT)
 }
 
-function mergeHistory(issued: RawAdvance[], spent: RawSpent[]): CashHistoryEntry[] {
+async function mergeHistory(issued: RawAdvance[], spent: RawSpent[]): Promise<CashHistoryEntry[]> {
+  const names = await directoryNames([...issued.flatMap((r) => [r.recipient_id, r.created_by]), ...spent.map((p) => p.buyer_id)])
   const entries: CashHistoryEntry[] = [
-    ...issued.map(normalizeAdvance).map(
+    ...issued.map((r) => normalizeAdvance(r, names)).map(
       (a): CashHistoryEntry => ({
         kind: a.kind === 'qaytarildi' ? 'returned' : 'issued',
         id: a.id,
@@ -192,7 +206,7 @@ function mergeHistory(issued: RawAdvance[], spent: RawSpent[]): CashHistoryEntry
         kind: 'spent',
         id: p.id,
         profileId: p.buyer_id,
-        profileName: p.buyer?.full_name ?? null,
+        profileName: names.get(p.buyer_id)?.full_name ?? null,
         amount: p.total_amount,
         at: p.purchased_at,
         note: p.note,
@@ -254,4 +268,20 @@ export function softDeleteAdvance(id: string): Promise<void> {
 /** Tiklash — faqat admin (baza `restore_admin_only`). */
 export function restoreAdvance(id: string): Promise<void> {
   return updateById('cash_advances', id, { deleted_at: null })
+}
+
+/**
+ * "Yozuvlarim" (Telegram ilovasi): `recipient` — menga berilgan / mendan qaytarilgan pul;
+ * `creator` — men bergan (buxgalter, admin). Yangisi birinchi, o'chirilmaganlar.
+ */
+export async function listMyAdvances(profileId: string, as: 'recipient' | 'creator', limit = 50): Promise<CashAdvance[]> {
+  const { data, error } = await getSupabase()
+    .from('cash_advances')
+    .select(ADVANCE_SELECT)
+    .eq(as === 'recipient' ? 'recipient_id' : 'created_by', profileId)
+    .is('deleted_at', null)
+    .order('issued_at', { ascending: false })
+    .limit(limit)
+  if (error) throw toRepoError(error)
+  return advancesWithNames((data ?? []) as unknown as RawAdvance[])
 }

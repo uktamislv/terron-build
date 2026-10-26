@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent } from 'react'
-import { Button, Modal, Notice, TextField } from '@/components/ui'
+import { Button, choiceClass, Modal, Notice, TextField } from '@/components/ui'
 import { createMaterial, updateMaterial } from '@/data/materialsRepo'
 import type { Material } from '@/data/types'
 import { t } from '@/i18n'
@@ -67,10 +67,7 @@ export function MaterialFormDialog({
     }
   }
 
-  const chip = (selected: boolean) =>
-    `flex min-h-11 items-center justify-center rounded-xl border px-3 text-sm font-medium ${
-      selected ? 'border-brand bg-brand text-white' : 'border-line bg-paper text-ink hover:bg-canvas'
-    }`
+  const chip = (selected: boolean) => choiceClass({ selected, shape: 'box' })
 
   return (
     <Modal title={material ? t.materials.editTitle : t.materials.addTitle} onClose={onClose}>

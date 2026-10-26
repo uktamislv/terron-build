@@ -1,6 +1,7 @@
 import { isUuid } from '@/lib/uuid'
 import { RepoError, toRepoError } from './errors'
-import { inChunks } from './fetchAll'
+import { fetchAll, inChunks } from './fetchAll'
+import { attachNames } from './profileDirectory'
 import { getSupabase } from './supabaseClient'
 import type { Transfer, TransferStatus } from './types'
 
@@ -13,8 +14,7 @@ const TRANSFER_SELECT =
   `${TRANSFER_COLUMNS}, ` +
   'from_object:objects!transfers_from_object_fkey(name), ' +
   'to_object:objects!transfers_to_object_fkey(name), ' +
-  'material:materials!transfers_material_fkey(name, base_unit), ' +
-  'creator:profiles!transfers_created_by_fkey(full_name)'
+  'material:materials!transfers_material_fkey(name, base_unit)'
 
 export const TRANSFERS_PAGE_SIZE = 50
 export const CANCEL_REASON_MAX = 500
@@ -41,19 +41,23 @@ type RawTransfer = Omit<Transfer, 'from_object_name' | 'to_object_name' | 'mater
   from_object: { name: string } | null
   to_object: { name: string } | null
   material: { name: string; base_unit: string } | null
-  creator: { full_name: string } | null
 }
 
 function normalize(raw: RawTransfer): Transfer {
-  const { from_object, to_object, material, creator, ...rest } = raw
+  const { from_object, to_object, material, ...rest } = raw
   return {
     ...rest,
     from_object_name: from_object?.name ?? null,
     to_object_name: to_object?.name ?? null,
     material_name: material?.name ?? null,
     base_unit: material?.base_unit ?? null,
-    created_by_name: creator?.full_name ?? null,
+    created_by_name: null,
   }
+}
+
+/** Yuborgan ismi — `profile_directory` dan. */
+function withNames(rows: Transfer[]): Promise<Transfer[]> {
+  return attachNames(rows, [['created_by', 'created_by_name']])
 }
 
 function clean(value: string | null | undefined, max = 1000): string | null {
@@ -101,7 +105,8 @@ export async function cancelTransfer(id: string, reason: string): Promise<void> 
 export async function getTransferById(id: string): Promise<Transfer> {
   const { data, error } = await getSupabase().from('transfers').select(TRANSFER_SELECT).eq('id', id).single()
   if (error) throw toRepoError(error)
-  return normalize(data as unknown as RawTransfer)
+  const [row] = await withNames([normalize(data as unknown as RawTransfer)])
+  return row as Transfer
 }
 
 /** O'tkazmalar (veb): filtrlar, yangisi birinchi, 50 tadan sahifa. */
@@ -122,7 +127,30 @@ export async function listTransfers(
     .order('id')
     .range(start, start + TRANSFERS_PAGE_SIZE - 1)
   if (error) throw toRepoError(error)
-  return { rows: ((data ?? []) as unknown as RawTransfer[]).map(normalize), total: count ?? 0 }
+  return { rows: await withNames(((data ?? []) as unknown as RawTransfer[]).map(normalize)), total: count ?? 0 }
+}
+
+/** Eksport: joriy filtr bo'yicha barcha o'tkazmalar (1000 tadan, ≤ 50 000). */
+export async function listAllTransfers(filters: TransferFilters = {}, signal?: AbortSignal): Promise<Transfer[]> {
+  if (filters.objectId && !isUuid(filters.objectId)) throw new RepoError('invalid_value', 'objectId is not a uuid')
+  const raws = await fetchAll<RawTransfer>(
+    async (req) => {
+      let q = getSupabase()
+        .from('transfers')
+        .select(TRANSFER_SELECT, req.first ? { count: 'exact' } : undefined)
+        .is('deleted_at', null)
+        .lte('created_at', req.before)
+      if (filters.status) q = q.eq('status', filters.status)
+      if (filters.objectId) q = q.or(`from_object_id.eq.${filters.objectId},to_object_id.eq.${filters.objectId}`)
+      let ranged = q.order('created_at', { ascending: false }).order('id').range(req.from, req.to)
+      if (req.signal) ranged = ranged.abortSignal(req.signal)
+      const { data, error, count } = await ranged
+      if (error) throw toRepoError(error)
+      return { rows: (data ?? []) as unknown as RawTransfer[], total: count ?? null }
+    },
+    { signal },
+  )
+  return withNames(raws.map(normalize))
 }
 
 /** Shu obyektlarga kelayotgan (hali qabul qilinmagan) o'tkazmalar, eskisi birinchi. */
@@ -140,7 +168,7 @@ export async function listIncomingTransfers(objectIds: string[]): Promise<Transf
     return (part ?? []) as unknown as RawTransfer[]
   })
   // Bo'laklar birlashtirilgach — eskisi birinchi
-  return data.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)).map(normalize)
+  return withNames(data.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)).map(normalize))
 }
 
 /** Men yuborgan o'tkazmalar (Mini App "Mening yozuvlarim"). */
@@ -153,7 +181,7 @@ export async function listMyTransfers(profileId: string, limit = 50): Promise<Tr
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) throw toRepoError(error)
-  return ((data ?? []) as unknown as RawTransfer[]).map(normalize)
+  return withNames(((data ?? []) as unknown as RawTransfer[]).map(normalize))
 }
 
 /** "Qayerga" ro'yxati (RPC `transfer_target_objects`): firmaning faol obyektlari (id, nom). */

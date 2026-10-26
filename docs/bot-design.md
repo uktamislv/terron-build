@@ -16,7 +16,8 @@ Xabarlar to'g'ridan-to'g'ri triggerdan yuborilmaydi — avval navbatga (outbox) 
 - Unique: `(alert_id)` (alert bo'yicha bitta), `(company_id, report_date) where kind = 'daily_report'`.
 - **Har qabul qiluvchi bo'yicha holat:** `delivered_chat_ids` — yetkazilgan chatlar; qayta urinishda faqat qolganlarga yuboriladi. `sent_count = cardinality(delivered_chat_ids)`. Qator `sent` bo'ladi faqat hozirgi har bir qabul qiluvchi yetkazilgan yoki yetib bo'lmaydigan (403 / 400 "chat not found") bo'lsa.
 - Qayta urinish: `attempts` < 6, kechikish `2^attempts` daqiqa (2, 4, 8, 16, 32); 6 dan keyin `failed`. `attempts` claim paytida oshadi. Telegram 429 va vaqt byudjeti — `retry_after` soniyadan keyin, urinish hisoblanmaydi.
-- **Doimiy xato → darhol `failed`:** bot tokeni noto'g'ri (Telegram 401 / 404 — shu chaqiruvdagi qolgan qatorlar ham), yaroqsiz payload (xabar yasalmadi). Soni kunlik hisobotda (`failed_count`); veb paneldagi ko'rsatkich — Batch 9.
+- **Doimiy xato → darhol `failed`:** yaroqsiz payload (xabar yasalmadi) va Telegram 400 xabarning o'zi uchun (masalan "can't parse entities", "message is too long" — shu qator; boshqa qatorlar davom etadi). Soni kunlik hisobotda (`failed_count`); veb paneldagi ko'rsatkich — Batch 9.
+- **Bot tokeni yaroqsiz / bekor qilingan (401 / 404) — `failed` EMAS** (audit tuzatishi): shu chaqiruvdagi hamma qolgan qatorlar `retry_after = 600` s bilan keyinga, urinish hisoblanmaydi — token almashtirilgach xabarlar yo'qolmaydi. Darhol qayta yuborish SQL'i — `docs/telegram-bot-setup.md` §7.
 - 10 daqiqadan ko'p `sending` da qolgan qator (funksiya yiqilgan) qayta olinadi; urinishlari tugagan bo'lsa — `failed` (`stuck_in_sending`).
 - **Audit istisnosi:** tizim jurnali — `audit_log` trigger, `created_by`, soft delete yo'q (yozuvchi faqat security definer funksiyalar, foydalanuvchi o'zgartira olmaydi). DELETE / TRUNCATE baribir bloklanadi, eski qatorlar saqlanadi.
 - **Yetkazish kafolati — "kamida bir marta":** xabar yo'qolmaydi, lekin kamdan-kam takrorlanishi mumkin (Telegram qabul qilgan, natija bazaga yozilmay qolgan — masalan funksiya shu orada yiqilgan; qator 10 daqiqadan keyin qayta olinadi va o'sha chatga yana yuboriladi).
@@ -79,16 +80,20 @@ Bitta joyda: `supabase/functions/_shared/notifyMessages.ts` (sof TS, testlar bil
 - Migratsiya: `supabase/migrations/20261030000001_notifications.sql` (baza tafsilotlari — `docs/db-design.md`, "Telegram bildirishnomalari").
 - Edge Function: `supabase/functions/tg-dispatch/{logic,index}.ts`, `verify_jwt = false`.
   - `x-dispatch-secret` yo'q / noto'g'ri → 401 (sarlavha yo'q bo'lsa baza chaqirilmaydi); Vault'da sir yo'q → 500.
-  - `svc_claim_notifications(20)` → xabarlar rejasi (digest) → har xabar uchun `svc_notification_recipients` → yetkazilmagan chatlarga `sendMessage` (`parse_mode: 'HTML'`, link preview o'chiq, `miniAppKeyboard(MINI_APP_URL)`, 5 s timeout) → `svc_complete_notification(p_id, p_ok, p_delivered, p_error, p_retry_after_sec, p_final)`.
-  - 403 (bot bloklangan, akkaunt o'chirilgan) va 400 "chat not found" — qabul qiluvchi o'tkazib yuboriladi, xato emas.
+  - **Darhol javob (audit tuzatishi):** sir tekshirilgach funksiya `202 {"accepted":true}` qaytaradi va yuborish siklini `EdgeRuntime.waitUntil` ichida fonda davom ettiradi — pg_net 5 s timeout'i siklni uzmaydi. `EdgeRuntime` bo'lmasa (lokal) — sinxron, `200 { processed, sent, failed }`.
+  - `svc_claim_notifications(20)` → xabarlar rejasi (digest) → har xabar uchun `svc_outbox_recipients(p_outbox_id)` (Batch 12; kind bo'yicha qabul qiluvchilar) → yetkazilmagan chatlarga `sendMessage` (`parse_mode: 'HTML'`, link preview o'chiq, 5 s timeout) → `svc_complete_notification(p_id, p_ok, p_delivered, p_error, p_retry_after_sec, p_final[, p_blocked_chat_ids])`.
+  - 403 (bot bloklangan, akkaunt o'chirilgan) va 400 "chat not found" / "user not found" / "PEER_ID_INVALID" — qabul qiluvchi o'tkazib yuboriladi, xato emas; bu chat id'lar `p_blocked_chat_ids bigint[]` bilan yuboriladi — faqat `tg-dispatch/logic.ts` dagi `COMPLETE_SENDS_BLOCKED_CHAT_IDS = true` bo'lganda (DB parametrni qo'shgach yoqiladi; RPC eski bo'lsa PGRST202 → parametrsiz qayta chaqiriladi).
+  - Boshqa 400 → xabar yaroqsiz: shu qator darhol `failed`, qolgan qabul qiluvchilarga yuborilmaydi.
+  - 401 / 404 → bot tokeni yaroqsiz: qolgan qatorlar `retry_after = 600` (failed emas).
   - 429 → joriy qator (yetkazilganlari yozilib) va shu chaqiruvda qolgan qatorlar `retry_after` bilan keyinga.
   - Vaqt byudjeti: sikl ~50 s dan oshsa, qolgan qatorlar `retry_after = 1` bilan qaytariladi.
-  - Javob: `{ processed, sent, failed }` (`failed` — shu chaqiruvda `sent` bo'lmagan qatorlar: qayta urinishga ketganlar ham).
+  - Xabar 4096 dan uzun bo'lsa butun qatorlar olib tashlanadi; bitta qator ham sig'masa — HTML teglar olib tashlanib kesiladi (yarim teg / entity qolmaydi).
+  - Natija (sinxron rejimda javob, fon rejimida log): `{ processed, sent, failed }` (`failed` — shu chaqiruvda `sent` bo'lmagan qatorlar: qayta urinishga ketganlar ham).
 - Uyg'otish (`private.wake_dispatch`) bir tranzaksiyada bir marta; pg_net so'rovi commit'dan keyin ketadi, xatosi alert INSERT ni buzmaydi.
 
 ### Deploy
 
 1. `supabase db push` (yoki MCP `apply_migration`) — `20261030000001_notifications.sql`. Oldin Database → Extensions: `pg_net`, `pg_cron`, `supabase_vault` yoqilganini tekshiring (migratsiya `create extension if not exists` qiladi).
 2. `supabase functions deploy tg-dispatch --no-verify-jwt`. Secrets (Batch 2 dan bor): `TELEGRAM_BOT_TOKEN`, `MINI_APP_URL`; `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — avtomatik.
-3. Tekshiruv: `select jobname, schedule from cron.job;` — `terron-dispatch`, `terron-daily-report`; `select count(*) from vault.secrets where name = 'tg_dispatch_secret';` = 1; `select private.wake_dispatch();` → `select status_code, content from net._http_response order by id desc limit 1;` — 200 `{"processed":0,...}`.
+3. Tekshiruv: `select jobname, schedule from cron.job;` — `terron-dispatch`, `terron-daily-report`; `select count(*) from vault.secrets where name = 'tg_dispatch_secret';` = 1; `select private.wake_dispatch();` → `select status_code, content from net._http_response order by id desc limit 1;` — 202 `{"accepted":true}` (yuborish fonda; natija — funksiya loglarida "tg-dispatch: tugadi").
 4. Direktor/admin Mini App orqali Telegram'ni bog'lagan bo'lishi kerak (`profiles.telegram_chat_id`), aks holda xabar `sent_count = 0` bilan yopiladi.

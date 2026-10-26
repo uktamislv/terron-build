@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, type ChangeEvent } from 'react'
 import { Camera, Image as ImageIcon, LoaderCircle, Trash2 } from 'lucide-react'
-import { Button, Notice } from '@/components/ui'
+import { Badge, Button, Notice } from '@/components/ui'
 import { t } from '@/i18n'
 
 const tm = t.tg.movement
@@ -17,8 +17,6 @@ export interface PickedPhoto {
   /** Siqilgan va tekshirilgan rasm (yuklashga tayyor). */
   blob: Blob
   name: string
-  /** Batch 12 (C): asl faylning SHA-256 (hex); WebCrypto yo'q — null. */
-  sha256?: string | null
 }
 
 /**
@@ -136,11 +134,14 @@ export function PhotoField({
   return (
     <div className="flex flex-col gap-1.5">
       <span className="flex items-center gap-2 text-sm font-medium text-ink">
+        <Camera aria-hidden className="size-4 text-muted" strokeWidth={1.75} />
         {label}
-        {requiredReason && (
-          <span data-testid="photo-required" className="rounded-lg bg-danger-bg px-2 py-0.5 text-xs font-semibold text-danger">
-            {t.tg.auto.photoRequired}
-          </span>
+        {requiredReason ? (
+          <Badge tone="warn" className="font-semibold">
+            <span data-testid="photo-required">{t.tg.auto.photoRequired}</span>
+          </Badge>
+        ) : (
+          <span className="font-normal text-muted">{t.ui.optional}</span>
         )}
       </span>
       {requiredReason && !photo && <p className="text-sm text-danger">{requiredReason}</p>}

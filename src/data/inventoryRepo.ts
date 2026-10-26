@@ -1,5 +1,6 @@
 import { isPkeyConflict, toRepoError } from './errors'
 import { inChunks } from './fetchAll'
+import { attachNames } from './profileDirectory'
 import { getSupabase } from './supabaseClient'
 import type { InventoryCount, InventoryCountItem, InventoryDetailRow, InventoryStatus } from './types'
 
@@ -7,8 +8,7 @@ const COUNT_COLUMNS =
   'id, company_id, object_id, status, counted_at, note, applied_at, applied_by, created_by, created_at, updated_at'
 const COUNT_SELECT =
   `${COUNT_COLUMNS}, ` +
-  'object:objects!inventory_counts_object_fkey(name), ' +
-  'creator:profiles!inventory_counts_created_by_fkey(full_name)'
+  'object:objects!inventory_counts_object_fkey(name)'
 // `qty_expected` SO'RALMAYDI: tekshiruvchiga ustun yopiq (42501) — ko'r-ko'rona sanash. Natija — RPC'lar orqali.
 const ITEM_SELECT =
   'id, inventory_count_id, material_id, qty_counted::text, qty_input::text, unit_id, updated_at, ' +
@@ -18,7 +18,6 @@ export const COUNTS_PAGE_SIZE = 50
 
 type RawCount = Omit<InventoryCount, 'object_name' | 'created_by_name' | 'item_count'> & {
   object: { name: string } | null
-  creator: { full_name: string } | null
 }
 
 type RawItem = Omit<InventoryCountItem, 'material_name' | 'base_unit' | 'qty_expected'> & {
@@ -26,8 +25,13 @@ type RawItem = Omit<InventoryCountItem, 'material_name' | 'base_unit' | 'qty_exp
 }
 
 function normalizeCount(raw: RawCount, itemCount = 0): InventoryCount {
-  const { object, creator, ...rest } = raw
-  return { ...rest, object_name: object?.name ?? null, created_by_name: creator?.full_name ?? null, item_count: itemCount }
+  const { object, ...rest } = raw
+  return { ...rest, object_name: object?.name ?? null, created_by_name: null, item_count: itemCount }
+}
+
+/** Kiritgan ismi — `profile_directory` dan. */
+function withNames(rows: InventoryCount[]): Promise<InventoryCount[]> {
+  return attachNames(rows, [['created_by', 'created_by_name']])
 }
 
 function normalizeItem(raw: RawItem): InventoryCountItem {
@@ -75,14 +79,15 @@ export async function listCounts(
   if (error) throw toRepoError(error)
   const raws = (data ?? []) as unknown as RawCount[]
   const counts = await itemCounts(raws.map((r) => r.id))
-  return { rows: raws.map((r) => normalizeCount(r, counts.get(r.id) ?? 0)), total: count ?? 0 }
+  return { rows: await withNames(raws.map((r) => normalizeCount(r, counts.get(r.id) ?? 0))), total: count ?? 0 }
 }
 
 export async function getCount(id: string): Promise<InventoryCount> {
   const { data, error } = await getSupabase().from('inventory_counts').select(COUNT_SELECT).eq('id', id).single()
   if (error) throw toRepoError(error)
   const counts = await itemCounts([id])
-  return normalizeCount(data as unknown as RawCount, counts.get(id) ?? 0)
+  const [row] = await withNames([normalizeCount(data as unknown as RawCount, counts.get(id) ?? 0)])
+  return row as InventoryCount
 }
 
 /** Hisob qatorlari (o'chirilmaganlar), material nomi bo'yicha. Kutilgan qoldiqsiz (`qty_expected` = null). */

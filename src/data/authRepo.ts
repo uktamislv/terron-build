@@ -10,7 +10,11 @@ import type { AuthSession, Profile } from './types'
 export type SignInError = 'not_configured' | 'invalid_login' | 'invalid_credentials' | 'network' | 'unknown'
 export type SignInResult = { ok: true } | { ok: false; error: SignInError }
 
-export type TelegramSignInStatus = 'ok' | 'need_contact' | 'inactive' | 'invalid'
+/**
+ * `reopen` — initData eskirgan yoki takroriy (`invalid_init_data`, `init_data_replayed`): ilovani yopib,
+ * qayta ochish kerak. `web_only` — rol Mini App uchun emas (`role_web_only`, masalan super_admin).
+ */
+export type TelegramSignInStatus = 'ok' | 'need_contact' | 'inactive' | 'invalid' | 'reopen' | 'web_only'
 
 export const MIN_PASSWORD_LENGTH = 8
 
@@ -113,6 +117,9 @@ export async function telegramSignIn(initData: string): Promise<TelegramSignInSt
 
   if (!result.ok) {
     if (result.network) throw new RepoError('network')
+    const code = result.body?.error
+    if (code === 'role_web_only') return 'web_only'
+    if (code === 'invalid_init_data' || code === 'init_data_replayed') return 'reopen'
     if (result.status === 403) return 'inactive'
     if (result.status === 401) return 'invalid'
     throw new RepoError('unknown', result.body?.error)

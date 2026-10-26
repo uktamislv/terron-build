@@ -1,4 +1,4 @@
-import { toRepoError } from './errors'
+import { RepoError, toRepoError } from './errors'
 import { chunkOpts, fetchAll, type ChunkOpts } from './fetchAll'
 import { updateById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
@@ -84,10 +84,39 @@ export function markAlertSeen(id: string): Promise<void> {
 
 export const CLOSE_NOTE_MAX = 500
 
-/** "Yopish" — faqat admin; ixtiyoriy sabab. `closed_by` / `closed_at` ni baza trigger'i yozadi. */
-export function closeAlert(id: string, note?: string | null): Promise<void> {
-  const clean = note?.trim().slice(0, CLOSE_NOTE_MAX)
-  return updateById('alerts', id, { status: 'yopildi', close_note: clean ? clean : null })
+/**
+ * "Yopish" — faqat admin; sabab majburiy (baza `alert_close_note_required`). `closed_by` / `closed_at`
+ * ni baza trigger'i yozadi.
+ */
+export function closeAlert(id: string, note: string): Promise<void> {
+  const clean = note.trim().slice(0, CLOSE_NOTE_MAX)
+  if (!clean) return Promise.reject(new RepoError('alert_close_note_required'))
+  return updateById('alerts', id, { status: 'yopildi', close_note: clean })
+}
+
+/**
+ * Prorab/omborchi a'zo obyektlarining ogohlantirishlari (docs/audit-fixes.md D3, faqat o'qish).
+ * RLS faqat shu turlarni ko'rsatadi; boshqa rollar uchun ham xavfsiz.
+ */
+export const SITE_ALERT_TYPES: readonly AlertType[] = [
+  'normadan_oshish',
+  'manfiy_qoldiq',
+  'otkazma_farqi',
+  'smetadan_ortiq_sorov',
+  'smetasiz_chiqim',
+]
+
+export async function listSiteAlerts(limit = 10): Promise<Alert[]> {
+  const { data, error } = await getSupabase()
+    .from('alerts')
+    .select(ALERT_SELECT)
+    .in('type', SITE_ALERT_TYPES as AlertType[])
+    .in('status', ['yangi', 'korildi'])
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw toRepoError(error)
+  return ((data ?? []) as unknown as RawAlert[]).map(normalize)
 }
 
 /**
