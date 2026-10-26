@@ -42,9 +42,9 @@ describe('validateUserForm', () => {
 })
 
 describe('validateLoginForm', () => {
-  it('email ixtiyoriy, parol ≥ 10', () => {
-    expect(validateLoginForm('', '1234567890')).toEqual({})
-    expect(validateLoginForm('yomon', '123456789')).toEqual({ email: 'invalid', password: 'invalid' })
+  it('email ixtiyoriy, parol ≥ 8', () => {
+    expect(validateLoginForm('', '12345678')).toEqual({})
+    expect(validateLoginForm('yomon', '1234567')).toEqual({ email: 'invalid', password: 'invalid' })
     expect(validateLoginForm('a@b.uz', 'uzun-parol')).toEqual({})
   })
 })

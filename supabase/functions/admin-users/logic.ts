@@ -59,7 +59,7 @@ export interface AdminUsersDeps extends AuthAdminDeps {
  */
 export const PROTECTED_ROLES: readonly string[] = ['admin', 'direktor']
 
-export const MIN_PASSWORD_LEN = 10
+export const MIN_PASSWORD_LEN = 8
 /** bcrypt 72 baytdan keyingisini e'tiborsiz qoldiradi — ortig'ini rad etamiz. */
 export const MAX_PASSWORD_LEN = 72
 

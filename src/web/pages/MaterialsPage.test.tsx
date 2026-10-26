@@ -22,7 +22,7 @@ vi.mock('@/data/authRepo', () => ({
   telegramSignIn: vi.fn(),
   clearLocalSession: vi.fn(async () => undefined),
   changePassword: vi.fn(),
-  MIN_PASSWORD_LENGTH: 10,
+  MIN_PASSWORD_LENGTH: 8,
 }))
 
 vi.mock('@/data/materialsRepo', async (importOriginal) => ({

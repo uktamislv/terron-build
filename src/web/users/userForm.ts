@@ -1,7 +1,6 @@
 // Foydalanuvchi formasi validatsiyasi va yordamchilar (sof funksiyalar).
 import { normalizePhone } from '@shared/phone'
 import { ROLES, isRole, type Role } from '@/domain/roles'
-import { MIN_PASSWORD_LENGTH } from '@/data/authRepo'
 
 /**
  * Obyekt bo'yicha ishlaydigan rollar (docs/db-design.md "Rollar"): prorab, omborchi —
@@ -66,6 +65,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 export function validateLoginForm(email: string, password: string): { email?: 'invalid'; password?: 'invalid' } {
   const errors: { email?: 'invalid'; password?: 'invalid' } = {}
   if (email.trim() && !EMAIL_RE.test(email.trim())) errors.email = 'invalid'
-  if (password.length < MIN_PASSWORD_LENGTH) errors.password = 'invalid'
+  if (password.length < 8) errors.password = 'invalid'
   return errors
 }
