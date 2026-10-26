@@ -56,7 +56,7 @@ Dashboard → **Authentication → Sign In / Providers**:
 
 Authentication → **Policies / Passwords** (Dashboard'da "Password security"):
 
-- **Minimum password length: 10.** (Admin parol berishda ham shu qoidaga tushadi; qisqa parol `weak_password` bilan rad etiladi.)
+- **Minimum password length: 8.** (Admin parol berishda ham shu qoidaga tushadi; qisqa parol `weak_password` bilan rad etiladi.)
 - **Leaked password protection — YOQING** (HaveIBeenPwned ro'yxatidagi parollar rad etiladi; Pro rejada mavjud — Free'da ko'rinmasa, Pro'ga o'tganda yoqing).
 - **Secure password change — YOQING** (parolni almashtirish uchun yaqinda kirgan bo'lish talab qilinadi).
 
