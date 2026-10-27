@@ -57,14 +57,23 @@ export function FullPageSpinner({ label = t.common.loading }: { label?: string }
   )
 }
 
-/** TERRON belgisi: yuk xati varag'i — navy kvadrat ichida uchta qator, oxirgisi ko'k. */
+/**
+ * TERRON belgisi "Nuqtalar": 3×3 nuqta to'ri. Kulrang nuqtalar — tartibsiz ma'lumot,
+ * ko'klari — tizimga kiritilgan yozuvlar; ular birga T harfini hosil qiladi.
+ * Shakl `public/favicon.svg` va `public/bot-avatar.png` bilan bir xil.
+ */
 export function BrandMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 40 40" aria-hidden className={className}>
-      <rect width="40" height="40" rx="10" fill={colors.navy} />
-      <rect x="10" y="11" width="20" height="3.5" rx="1.75" fill={colors.paper} />
-      <rect x="10" y="18.25" width="14" height="3.5" rx="1.75" fill={colors.paper} fillOpacity="0.6" />
-      <rect x="10" y="25.5" width="20" height="3.5" rx="1.75" fill={colors.brand} />
+      <rect width="40" height="40" rx="10" fill={colors.ice} />
+      {[11, 29].map((x) =>
+        [20, 29].map((y) => <circle key={`${x}-${y}`} cx={x} cy={y} r="2.25" fill={colors.lineHover} />),
+      )}
+      {[11, 20, 29].map((x) => (
+        <circle key={`t-${x}`} cx={x} cy="11" r="3" fill={colors.navy} />
+      ))}
+      <circle cx="20" cy="20" r="3" fill={colors.brand} />
+      <circle cx="20" cy="29" r="3" fill={colors.brand} />
     </svg>
   )
 }
