@@ -4,7 +4,7 @@ import { Bug, CircleHelp } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { BugReportForm } from '@/components/bugReport/BugReportForm'
 import { Forbidden } from '@/components/Forbidden'
-import { BottomSheet, BrandMark, cx, IconButton, SheetChromeContext } from '@/components/ui'
+import { BottomSheet, cx, IconButton, SheetChromeContext, Wordmark } from '@/components/ui'
 import { tgExtraFor, type TgExtraKey, type TgNavKey } from '@/domain/roles'
 import { t } from '@/i18n'
 import { tgBottomNavForRole, tgNavForRole } from './nav'
@@ -95,9 +95,8 @@ export function TgLayout({ children }: { children?: ReactNode } = {}) {
             {title ? (
               <h1 className="min-w-0 flex-1 truncate text-xl font-semibold tracking-tight text-ink">{title}</h1>
             ) : (
-              <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold text-navy">
-                <BrandMark className="size-7 shrink-0" />
-                <span className="truncate">{t.app.name}</span>
+              <span className="flex min-w-0 flex-1 items-center">
+                <Wordmark className="text-2xl" />
               </span>
             )}
             <NavLink

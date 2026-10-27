@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '@/auth/authContext'
 import { ProfileErrorScreen } from '@/auth/screens'
 import { Clock, Copy, ExternalLink, LoaderCircle, Monitor, Phone, RefreshCw, Send, ShieldX, WifiOff } from 'lucide-react'
-import { BrandMark, Button, cx, FullPageSpinner, Notice } from '@/components/ui'
+import { Button, cx, FullPageSpinner, Notice, Wordmark } from '@/components/ui'
 import { clearLocalSession, getSession, telegramSignIn, type TelegramSignInStatus } from '@/data/authRepo'
 import { t } from '@/i18n'
 import { botLink, closeApp, getInitData, haptic, isInsideTelegram, openExternalLink, requestContact, stripLaunchParamsFromUrl } from './telegram'
@@ -58,9 +58,8 @@ async function signInOnce(refreshSession: () => Promise<void>): Promise<Telegram
 function Screen({ children, icon, tone = 'default' }: { children: ReactNode; icon?: ReactNode; tone?: 'default' | 'danger' }) {
   return (
     <div className="min-h-app mx-auto flex max-w-md flex-col bg-canvas px-5 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-      <div className="flex items-center gap-2.5">
-        <BrandMark className="size-9" />
-        <span className="text-base font-semibold text-ink">{t.app.name}</span>
+      <div className="flex items-center">
+        <Wordmark className="text-[28px]" />
       </div>
       <div className="flex flex-1 flex-col items-center justify-center gap-4 py-8 text-center [&>button]:w-full [&>a]:w-full">
         {icon && (

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router'
 import { useAuth } from '@/auth/authContext'
 import { Eye, EyeOff } from 'lucide-react'
-import { BrandMark, Button, FullPageSpinner, Notice, TextField } from '@/components/ui'
+import { Button, FullPageSpinner, Notice, TextField, Wordmark } from '@/components/ui'
 import { signInWithPassword, type SignInError } from '@/data/authRepo'
 import { t } from '@/i18n'
 
@@ -46,10 +46,9 @@ export function LoginPage() {
     <div className="flex min-h-dvh items-center justify-center bg-canvas px-4 py-10">
       <div className="w-full max-w-100">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
-          <BrandMark className="size-14" />
           <div>
-            <p className="text-2xl font-semibold tracking-tight text-ink">{t.app.name}</p>
-            <p className="mt-1 text-sm text-muted">{t.app.tagline}</p>
+            <Wordmark className="text-5xl" />
+            <p className="mt-3 text-sm text-muted">{t.app.tagline}</p>
           </div>
         </div>
         <form noValidate onSubmit={onSubmit} className="flex flex-col gap-4 rounded-2xl border border-line bg-paper p-6 sm:p-8">

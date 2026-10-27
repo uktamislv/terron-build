@@ -58,6 +58,25 @@ export function FullPageSpinner({ label = t.common.loading }: { label?: string }
 }
 
 /**
+ * "terron. BUILD" yozuvi (logo). O'lcham — `className` dagi `text-*` dan.
+ * `onDark` — navy fon uchun: "terron" oq, BUILD och ko'k.
+ */
+export function Wordmark({ className, onDark = false }: { className?: string; onDark?: boolean }) {
+  return (
+    <span role="img" aria-label={t.app.name} className={cx('inline-flex items-baseline leading-none whitespace-nowrap', className)}>
+      <span className={cx('font-black tracking-[-0.03em]', onDark ? 'text-white' : 'text-navy')}>terron</span>
+      <span aria-hidden className="ml-[0.05em] inline-block size-[0.24em] rounded-full bg-brand" />
+      <span
+        aria-hidden
+        className={cx('ml-[0.3em] text-[0.38em] font-bold tracking-[0.18em]', onDark ? 'text-brand-300' : 'text-brand')}
+      >
+        BUILD
+      </span>
+    </span>
+  )
+}
+
+/**
  * TERRON belgisi "Nuqtalar": 3×3 nuqta to'ri. Kulrang nuqtalar — tartibsiz ma'lumot,
  * ko'klari — tizimga kiritilgan yozuvlar; ular birga T harfini hosil qiladi.
  * Shakl `public/favicon.svg` va `public/bot-avatar.png` bilan bir xil.

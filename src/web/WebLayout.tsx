@@ -5,7 +5,7 @@ import { useAuth } from '@/auth/authContext'
 import { ChangePasswordForm } from '@/auth/ChangePasswordForm'
 import { BugReportForm } from '@/components/bugReport/BugReportForm'
 import { NotifyWorkflowToggle } from '@/components/NotifyWorkflowToggle'
-import { BrandMark, cx, IconButton, Modal, useOverlay } from '@/components/ui'
+import { BrandMark, cx, IconButton, Modal, useOverlay, Wordmark } from '@/components/ui'
 import { t } from '@/i18n'
 import { webNavForRole } from './nav'
 import { webNavIcons } from './navIcons'
@@ -57,8 +57,8 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
         )}
       >
         <div className="flex h-16 shrink-0 items-center gap-3 px-5 lg:justify-center lg:px-0 xl:justify-start xl:px-5">
-          <BrandMark className="size-9 shrink-0 rounded-lg ring-1 ring-white/15" />
-          <span className="text-base font-semibold tracking-tight lg:hidden xl:inline">{t.app.name}</span>
+          <BrandMark className="hidden size-9 shrink-0 rounded-lg ring-1 ring-white/15 lg:block xl:hidden" />
+          <Wordmark onDark className="text-[28px] lg:hidden xl:inline-flex" />
           {open && (
             <IconButton
               label={t.common.closeMenu}
@@ -208,8 +208,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
             className="text-ink"
             onClick={() => setOpen(true)}
           />
-          <BrandMark className="size-7 shrink-0" />
-          <span className="truncate text-base font-semibold text-ink">{t.app.name}</span>
+          <Wordmark className="ml-1 text-2xl" />
         </header>
         <main className="w-full max-w-7xl flex-1 px-4 py-4 md:px-6 md:py-6 lg:px-8 lg:py-8 print:max-w-none print:p-0">
           {children ?? <Outlet />}
