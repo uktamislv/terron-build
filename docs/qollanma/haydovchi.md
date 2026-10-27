@@ -13,6 +13,11 @@ Siz berilgan pulga material sotib olasiz va har bir xaridni Telegram ilovasida k
 3. Material, miqdor, “Jami summa (chekdagi)” va obyektni tanlang. Kechagi xarid — “Kecha”.
 4. “Saqlash” ni bosing. “Qo‘limda” yangi summani ko‘rsatadi.
 
+### Yoqilg‘i, ovqat va boshqa xarajat
+
+1. Ovqat, yoqilg‘i, transport kabi xarajat: “Xarid” tepasida “Xarajat” → tur tugmasi → summa → “Saqlash”. Obyektga tegishli bo‘lmasa — “Umumiy”. Chek rasmi odatda ixtiyoriy.
+2. Xarajat ham qo‘lingizdagi puldan ayriladi va “Pul tarixi” da ko‘rinadi.
+
 ### Tekshirish
 
 1. “Yozuvlar” da xaridlaringiz, berilgan va qaytarilgan pul.
@@ -37,4 +42,4 @@ Siz berilgan pulga material sotib olasiz va har bir xaridni Telegram ilovasida k
 
 ## Savol bo‘lsa
 
-“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar tizim egasiga boradi.

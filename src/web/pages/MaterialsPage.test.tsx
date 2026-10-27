@@ -328,6 +328,7 @@ describe('/materials — katalog himoyalari (hint kalitlari)', () => {
         category: 'Bog‘lovchi',
         wastePct: '0',
         photoRequired: false,
+        outsideEstimate: false,
       }),
     )
     await waitFor(() => expect(materialsRepo.listMaterials).toHaveBeenCalledTimes(2))

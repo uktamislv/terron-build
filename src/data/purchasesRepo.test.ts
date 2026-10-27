@@ -174,7 +174,7 @@ describe('sharh tuzatishlari (repo)', () => {
     const day = (i: number) => new Date(Date.UTC(2026, 0, 1) + i * 3600_000).toISOString()
     const issued = Array.from({ length: CASH_HISTORY_LIMIT }, (_, i) => ({ id: 'a' + i, recipient_id: 'p', amount: '1', issued_at: day(2 * i) }))
     const spent = Array.from({ length: CASH_HISTORY_LIMIT }, (_, i) => ({ id: 's' + i, buyer_id: 'p', total_amount: '1', purchased_at: day(2 * i + 1) }))
-    fake.results.push({ data: issued, error: null }, { data: spent, error: null })
+    fake.results.push({ data: issued, error: null }, { data: spent, error: null }, { data: [], error: null })
     const rows = await listCashHistory({ includeDeleted: true })
     expect(rows).toHaveLength(CASH_HISTORY_LIMIT)
     // eng yangisi — oxirgi xarid (2*199+1 soat)
@@ -184,13 +184,32 @@ describe('sharh tuzatishlari (repo)', () => {
     expect(fake.calls.filter((c) => c[0] === 'is')).toEqual([])
   })
 
-  it('listCashHistory: odatda o‘chirilganlar ikkala manbada ham chiqarilmaydi', async () => {
-    fake.results.push({ data: [], error: null }, { data: [], error: null })
+  it('listCashHistory: odatda o‘chirilganlar uchala manbada ham chiqarilmaydi', async () => {
+    fake.results.push({ data: [], error: null }, { data: [], error: null }, { data: [], error: null })
     await listCashHistory({})
     expect(fake.calls.filter((c) => c[0] === 'is')).toEqual([
       ['is', 'deleted_at', null],
       ['is', 'deleted_at', null],
+      ['is', 'deleted_at', null],
     ])
+  })
+
+  it('listCashHistory: podotchet xarajatlar "sarflandi" (source = expense), tur nomi va to‘lovchi bilan', async () => {
+    fake.people.push({ id: 'p', full_name: 'Ali', role: 'haydovchi' })
+    fake.results.push(
+      { data: [], error: null },
+      { data: [{ id: 's1', buyer_id: 'p', total_amount: '100', purchased_at: '2026-11-01T05:00:00Z', material: { name: 'Sement' }, object: null }], error: null },
+      {
+        data: [{ id: 'e1', payer_id: 'p', amount: '41000', spent_at: '2026-11-02T05:00:00Z', note: null, deleted_at: null, category: { name: 'Oziq-ovqat' }, object: null }],
+        error: null,
+      },
+    )
+    const rows = await listCashHistory({ profileId: 'p' })
+    expect(fake.calls).toContainEqual(['from', 'expenses'])
+    expect(fake.calls).toContainEqual(['eq', 'payer_id', 'p'])
+    expect(fake.calls.filter((c) => c[0] === 'eq' && c[1] === 'payment_source')).toHaveLength(2)
+    expect(rows[0]).toMatchObject({ kind: 'spent', source: 'expense', id: 'e1', amount: '41000', materialName: 'Oziq-ovqat', profileName: 'Ali' })
+    expect(rows[1]).toMatchObject({ kind: 'spent', source: 'purchase', id: 's1' })
   })
 
   it('closeAlert: sabab qirqiladi (500); bo‘sh — so‘rovsiz alert_close_note_required; closed_by yuborilmaydi', async () => {

@@ -22,6 +22,7 @@ import { axisNumber, PALETTE, type CashPoint, type DailyPoint, type EstimateSpen
 
 
 const tc = t.reports.charts
+const te = t.expenses
 const AXIS = { fontSize: 12, fill: colors.muted }
 
 interface TipProps<T> {
@@ -122,16 +123,20 @@ export function NormChart({ data }: { data: NormPoint[] }) {
 function SpendTip({ active, payload }: TipProps<SpendPoint>) {
   const p = active ? payload?.[0]?.payload : undefined
   if (!p) return null
+  const split = p.expense !== 0
   return (
     <TipBox title={p.label}>
-      <TipRow color={p.other ? PALETTE.muted : PALETTE.dark} label={tc.dailySum} value={formatSum(p.valueText)} />
+      {split && <TipRow color={p.other ? PALETTE.muted : PALETTE.dark} label={te.segmentMaterial} value={formatSum(p.materialText)} />}
+      {split && <TipRow color={PALETTE.expense} label={te.segmentExpense} value={formatSum(p.expenseText)} />}
+      <TipRow color={p.other ? PALETTE.muted : PALETTE.dark} label={split ? te.spendTotalCard : tc.dailySum} value={formatSum(p.valueText)} />
       <p className="text-muted">{t.reports.countUnit(formatQty(String(p.count)))}</p>
     </TipBox>
   )
 }
 
-/** Xarajat taqsimoti: top 8 + "Boshqa". */
+/** Xarajat taqsimoti: top 8 + "Boshqa". Boshqa xarajat bo'lsa — ustma-ust: material xaridi (navy) va boshqa xarajat. */
 export function SpendChart({ data }: { data: SpendPoint[] }) {
+  const split = data.some((p) => p.expense !== 0)
   return (
     <ResponsiveContainer width="100%" height={barHeight(data.length)}>
       <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, bottom: 0, left: 4 }}>
@@ -139,11 +144,13 @@ export function SpendChart({ data }: { data: SpendPoint[] }) {
         <XAxis type="number" tick={AXIS} tickFormatter={axisNumber} axisLine={false} tickLine={false} />
         <YAxis type="category" dataKey="label" tick={AXIS} width={110} axisLine={false} tickLine={false} />
         <Tooltip content={<SpendTip />} cursor={{ fill: PALETTE.light }} />
-        <Bar dataKey="value" name={tc.dailySum} maxBarSize={22} radius={[0, 3, 3, 0]}>
+        {split && <Legend wrapperStyle={{ fontSize: 12 }} />}
+        <Bar dataKey={split ? 'material' : 'value'} name={split ? te.segmentMaterial : tc.dailySum} stackId="spend" fill={PALETTE.dark} maxBarSize={22}>
           {data.map((p) => (
             <Cell key={p.key} fill={p.other ? PALETTE.muted : PALETTE.dark} />
           ))}
         </Bar>
+        {split && <Bar dataKey="expense" name={te.segmentExpense} stackId="spend" fill={PALETTE.expense} maxBarSize={22} radius={[0, 3, 3, 0]} />}
       </BarChart>
     </ResponsiveContainer>
   )
@@ -200,12 +207,17 @@ function EstimateSpendTip({ active, payload }: TipProps<EstimateSpendPoint>) {
   return (
     <TipBox title={p.name}>
       <TipRow color={PALETTE.light} label={tc.estimateSum} value={p.estimateText === null ? tc.noEstimate : formatSum(p.estimateText)} />
+      <TipRow color={PALETTE.dark} label={te.segmentMaterial} value={formatSum(p.materialText)} />
+      <TipRow color={PALETTE.expense} label={te.segmentExpense} value={formatSum(p.expenseText)} />
       <TipRow color={p.over ? PALETTE.danger : PALETTE.dark} label={tc.spentSum} value={formatSum(p.spentText)} />
     </TipBox>
   )
 }
 
-/** Smeta va haqiqiy — obyekt bo'yicha pul: smeta jami (och) va davrdagi xaridlar (navy; smetadan oshsa — qizil). */
+/**
+ * Smeta va haqiqiy — obyekt bo'yicha pul: smeta jami (och) va davrdagi xarajat — material xaridi (navy; jami
+ * smetadan oshsa — qizil) va boshqa xarajat ustma-ust.
+ */
 export function EstimateSpendChart({ data }: { data: EstimateSpendPoint[] }) {
   return (
     <ResponsiveContainer width="100%" height={barHeight(data.length)}>
@@ -216,11 +228,12 @@ export function EstimateSpendChart({ data }: { data: EstimateSpendPoint[] }) {
         <Tooltip content={<EstimateSpendTip />} cursor={{ fill: PALETTE.light }} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         <Bar dataKey="estimate" name={tc.estimateSum} fill={PALETTE.light} stroke={PALETTE.brand} maxBarSize={14} />
-        <Bar dataKey="spent" name={tc.spentSum} fill={PALETTE.dark} maxBarSize={14}>
+        <Bar dataKey="material" name={te.segmentMaterial} stackId="spent" fill={PALETTE.dark} maxBarSize={14}>
           {data.map((p) => (
             <Cell key={p.objectId} fill={p.over ? PALETTE.danger : PALETTE.dark} />
           ))}
         </Bar>
+        <Bar dataKey="expense" name={te.segmentExpense} stackId="spent" fill={PALETTE.expense} maxBarSize={14} />
       </BarChart>
     </ResponsiveContainer>
   )

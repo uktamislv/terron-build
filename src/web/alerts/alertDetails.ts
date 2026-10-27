@@ -21,6 +21,9 @@ import type { Alert } from '@/data/types'
 import { parseDec } from '@/domain/decimal'
 import { t } from '@/i18n'
 import { formatDate, formatDateTime, formatQty, formatQtyUnit, formatSum } from '@/lib/format'
+import { expenseAlertLine, expenseLimitText, isExpenseAlert } from './expenseAlerts'
+
+export { expenseAlertHref, expenseAlertLine } from './expenseAlerts'
 
 const td = t.alertsPage.details
 
@@ -39,8 +42,10 @@ function qty(value: string, unit: string | null): string {
   return formatQtyUnit(value, unit)
 }
 
-export function alertDetailText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): string {
+export function alertDetailText(a: Pick<Alert, 'type' | 'details' | 'base_unit'> & { object_name?: string | null }): string {
   const d = a.details
+  if (a.type === 'xarajat_limiti') return expenseLimitText(d)
+  if (isExpenseAlert(a)) return expenseAlertText(a)
   const pct = dec(d, 'diff_pct')
   if (a.type === 'ozi_qabul_qilgan') return d.kind === 'transfer' ? td.selfTransfer : td.self
   if (a.type === 'yozuv_ochirildi') return deletedText(d)
@@ -554,4 +559,55 @@ function automationText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): strin
     default:
       return null
   }
+}
+
+/** Xarajat ogohlantirishi: "Xarajat: tur · summa · obyekt|Umumiy" + tur bo'yicha izoh. */
+function expenseAlertText(a: Pick<Alert, 'type' | 'details' | 'base_unit'> & { object_name?: string | null }): string {
+  const d = a.details
+  const line = expenseAlertLine(a)
+  const what = td.deletedKinds.expenses ?? ''
+  let extra: string
+  switch (a.type) {
+    case 'xarid_boshqa_nomidan':
+      extra = t.expenses.onBehalf(str(d, 'actor_name'), str(d, 'payer_name', 'buyer_name'))
+      break
+    case 'chek_farqi': {
+      const receipt = dec(d, 'receipt_total')
+      const entered = dec(d, 'total_amount', 'amount')
+      extra = td.receiptTotal(receipt !== null ? formatSum(receipt) : '?', entered !== null ? formatSum(entered) : '?')
+      break
+    }
+    case 'sotuvchi_stir_farqi':
+      extra = td.sellerTin(str(d, 'seller_tin'), str(d, 'supplier_name'), str(d, 'supplier_tin'))
+      break
+    case 'takroriy_yozuv': {
+      const minutes = dec(d, 'window_minutes')
+      extra =
+        d.kind === 'photo'
+          ? td.duplicatePhoto(what)
+          : minutes !== null
+            ? td.duplicateEntryWindow(what, formatQty(minutes, 0))
+            : td.duplicateEntry(what)
+      break
+    }
+    case 'yozuv_ochirildi':
+      extra = td.deleted(what, '', str(d, 'deleted_by_name', 'actor_name'))
+      break
+    case 'yozuv_tiklandi':
+      extra = td.restored(what, '', str(d, 'actor_name'))
+      break
+    case 'yozuv_ozgartirildi':
+    case 'yozuv_tuzatildi': {
+      const reason = str(d, 'reason')
+      const why = reason ? td.reasonPart(reason) : ''
+      const changes = entryChanges(d).join('; ')
+      if (a.type === 'yozuv_tuzatildi' && d.via === 'cancel_own_entry') extra = td.entryCancelled(what, '', str(d, 'author_name', 'actor_name')) + why
+      else if (a.type === 'yozuv_tuzatildi') extra = td.entryCorrected(what, '', changes, str(d, 'author_name', 'actor_name')) + why
+      else extra = td.entryChanged(what, '', changes, str(d, 'actor_name')) + why
+      break
+    }
+    default:
+      extra = ''
+  }
+  return extra ? `${line}. ${extra}` : line
 }

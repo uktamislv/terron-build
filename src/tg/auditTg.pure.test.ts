@@ -70,11 +70,14 @@ describe('bosh ekran "Bo‘limlar"', () => {
 describe('"Yozuvlarim" manbalari', () => {
   it('rol bo‘yicha: tekshiruvchi — sanashlar; haydovchi — xarid va unga berilgan pul; buxgalter — bergan puli', () => {
     // Tekshiruvchi harakatlarni o'qiy olmaydi (RLS) — so'ralmaydi
-    expect(mineSources('tekshiruvchi')).toEqual({ movements: false, purchases: false, requests: false, counts: true, cashRecipient: false, cashCreator: false })
+    expect(mineSources('tekshiruvchi')).toEqual({ movements: false, purchases: false, expenses: false, requests: false, counts: true, cashRecipient: false, cashCreator: false })
     expect(mineSources('omborchi').movements).toBe(true)
     expect(mineSources('haydovchi')).toMatchObject({ purchases: true, cashRecipient: true, cashCreator: false, counts: false })
     expect(mineSources('buxgalter')).toMatchObject({ purchases: false, cashCreator: true, cashRecipient: false })
-    expect(mineSources('prorab')).toMatchObject({ requests: true, purchases: true })
+    expect(mineSources('prorab')).toMatchObject({ requests: true, purchases: true, expenses: true })
+    // Xarajat: buxgalter ham kiritadi (veb), omborchi — yo'q
+    expect(mineSources('buxgalter').expenses).toBe(true)
+    expect(mineSources('omborchi').expenses).toBe(false)
   })
 
   it('mergeEntries: hamma turlar vaqt bo‘yicha, pul takrorlanmaydi, transfer_out yashiriladi', () => {

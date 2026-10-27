@@ -16,7 +16,7 @@ import { timingSafeEqual } from '../_shared/telegramAuth.ts'
 import { SlidingWindowLimiter } from '../_shared/rateLimit.ts'
 import { errMessage, isRecord, isUuid, respond, type HandlerResult, type LogFn } from '../_shared/handler.ts'
 
-export const PHOTO_TABLES = ['movements', 'purchases'] as const
+export const PHOTO_TABLES = ['movements', 'purchases', 'expenses'] as const
 export type PhotoTable = (typeof PHOTO_TABLES)[number]
 
 /** Bucket chegarasi bilan bir xil (`storage.buckets.photos.file_size_limit`). */

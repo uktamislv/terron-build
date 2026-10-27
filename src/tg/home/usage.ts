@@ -28,8 +28,9 @@ export function objectUsage(rows: NormOverviewRow[]): ObjectUsage[] {
       const materials = list
         .map((r) => ({
           ...r,
-          pct: r.usage_pct ?? usagePct(r.consumed_qty_base, r.allowed_qty_base),
-          over: cmp(r.consumed_qty_base, r.allowed_qty_base) > 0,
+          // Smetaga kirmaydigan material — sarf ko'rinadi, foiz va oshish hisobga olinmaydi
+          pct: r.outside_estimate ? null : (r.usage_pct ?? usagePct(r.consumed_qty_base, r.allowed_qty_base)),
+          over: !r.outside_estimate && cmp(r.consumed_qty_base, r.allowed_qty_base) > 0,
         }))
         .sort(
           (a, b) =>

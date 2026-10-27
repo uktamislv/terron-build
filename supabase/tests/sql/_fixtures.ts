@@ -50,6 +50,9 @@ export const BUSINESS_TABLES = [
   'material_requests',
   'movements',
   'alerts',
+  // 20261111000001_expenses
+  'expense_categories',
+  'expenses',
 ] as const
 export type BusinessTable = (typeof BUSINESS_TABLES)[number]
 
@@ -225,6 +228,28 @@ export async function buildCompany(db: Db, name: string): Promise<CompanyFixture
 
   ids.alert1 = await ins(db, 'alerts', { company_id: c, type: 'narx_ogishi', object_id: ids.obj1, material_id: ids.m1 })
 
+  // Xarajatlar (20261111000001): standart tur (firma yaratilganda trigger qo'shadi) va 3 ta xarajat.
+  // payment_source = firma — fixture podotchet balanslariga ta'sir qilmaydi.
+  ids.ec1 = (
+    await db.query<{ id: string }>(
+      `select id from public.expense_categories where company_id = $1 and name = 'Oziq-ovqat' and deleted_at is null`,
+      [c],
+    )
+  ).rows[0]!.id
+  const expense = (payer: UserRole, obj: string | null, by: UserRole, amount: number): Promise<string> =>
+    ins(db, 'expenses', {
+      company_id: c,
+      category_id: ids.ec1,
+      object_id: obj,
+      amount,
+      payer_id: P(payer),
+      payment_source: 'firma',
+      created_by: P(by),
+    })
+  ids.ex_hay_obj1 = await expense('haydovchi', ids.obj1, 'haydovchi', 50_000)
+  ids.ex_tam_none = await expense('taminotchi', null, 'taminotchi', 70_000)
+  ids.ex_pro_obj2 = await expense('prorab', ids.obj2, 'admin', 90_000)
+
   return { id, users, ids }
 }
 
@@ -370,6 +395,17 @@ export function insertCase(table: BusinessTable, co: CompanyFixture, me: string,
         sql: `insert into public.alerts (company_id, type, created_by) values ($1, 'narx_ogishi', $2)`,
         params: [c, me],
       }
+    case 'expense_categories':
+      return {
+        sql: `insert into public.expense_categories (company_id, name, created_by) values ($1, $2, $3)`,
+        params: [c, u(), me],
+      }
+    case 'expenses':
+      return {
+        sql: `insert into public.expenses (company_id, category_id, object_id, amount, payer_id, created_by)
+              values ($1, $2, $3, 1000, $4, $4)`,
+        params: [c, ids.ec1, obj, me],
+      }
   }
 }
 
@@ -394,6 +430,8 @@ export const UPDATE_TARGET: Record<BusinessTable, string> = {
   material_requests: 'mr_obj1',
   movements: 'mv_obj1',
   alerts: 'alert1',
+  expense_categories: 'ec1',
+  expenses: 'ex_hay_obj1',
 }
 
 export function targetId(co: CompanyFixture, table: BusinessTable): string {

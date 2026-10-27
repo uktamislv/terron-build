@@ -44,4 +44,4 @@ Siz obyektga kelgan va berilgan materialni Telegram ilovasida yozasiz. To‘g‘
 
 ## Savol bo‘lsa
 
-“Yozuvlar” da kirim-chiqimlaringiz va xabarlaringiz; turi va sanasi bo‘yicha filtrlang. “Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. Savol bo‘lsa — prorab yoki adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+“Yozuvlar” da kirim-chiqimlaringiz va xabarlaringiz; turi va sanasi bo‘yicha filtrlang. “Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. Savol bo‘lsa — prorab yoki adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar tizim egasiga boradi.

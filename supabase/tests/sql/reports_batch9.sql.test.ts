@@ -261,8 +261,16 @@ const userOf = (who: UserRole | TestUser): TestUser => (typeof who === 'string' 
 const call = <T = Row>(who: UserRole | TestUser, sql: string, params: unknown[] = []): Promise<T[]> =>
   asUser(db, userOf(who).authUid, (tx) => rows<T>(tx, sql, params))
 
-const summary = async (who: UserRole | TestUser, from: string, to: string, obj: string | null = null): Promise<Row> =>
-  (await call<{ s: Row }>(who, `select public.dashboard_summary($1, $2, $3) as s`, [from, to, obj]))[0]!.s
+// 20261111000001_expenses: bu fixture'da xarajat yo'q — xarajat kalitlari nol, spend_total_sum = purchases_sum
+// (tekshirilib, solishtirishdan olib tashlanadi; xarajatlar — expenses.sql.test.ts).
+const summary = async (who: UserRole | TestUser, from: string, to: string, obj: string | null = null): Promise<Row> => {
+  const s = (await call<{ s: Row }>(who, `select public.dashboard_summary($1, $2, $3) as s`, [from, to, obj]))[0]!.s
+  const { expense_count, expense_sum, expense_by_category, spend_total_sum, ...rest } = s
+  expect({ expense_count, expense_sum, expense_by_category, spend_total_sum }).toEqual({
+    expense_count: 0, expense_sum: '0.00', expense_by_category: [], spend_total_sum: s.purchases_sum,
+  })
+  return rest
+}
 
 const daily = (who: UserRole | TestUser, from: string, to: string, obj: string | null = null): Promise<Row[]> =>
   call(
@@ -638,6 +646,7 @@ describe('norm_overview', () => {
     allowed_qty_base: '105.000000',
     consumed_qty_base: '10.000000',
     usage_pct: '9.5',
+    outside_estimate: false, // 20261111000001
   }
   const q = (who: UserRole | TestUser, obj: string | null = null): Promise<Row[]> =>
     call(who, `select * from public.norm_overview($1)`, [obj])

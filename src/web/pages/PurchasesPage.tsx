@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { ChevronRight, History, PencilLine, Plus, Receipt, RotateCcw, ShoppingCart, Trash2 } from 'lucide-react'
+import { AddExpenseDialog } from '../purchases/AddExpenseDialog'
+import { ExpensesTab } from '../purchases/ExpensesTab'
 import { CorrectionForm } from '@/components/corrections/CorrectionForm'
 import { useAuth } from '@/auth/authContext'
 import {
@@ -19,7 +21,9 @@ import {
   Qty,
   RetryNotice,
   Spinner,
+  Tabs,
   type FilterDef,
+  type TabItem,
 } from '@/components/ui'
 import { DEFAULT_COMPANY_SETTINGS, getCompanySettings } from '@/data/companiesRepo'
 import { listMaterials } from '@/data/materialsRepo'
@@ -131,6 +135,8 @@ export interface PurchasesViewProps {
   addSlot?: ReactNode
   /** Amal natijasi (masalan "Xarid saqlandi") — filtrlar ostida. */
   notice?: ReactNode
+  /** "Xaridlar / Xarajatlar" tablari (sarlavha ostida). */
+  tabs?: ReactNode
 }
 
 /** Xaridlar: sarlavha, filtrlar, jadval (telefonda yuk xati qatorlari). Ma'lumot props orqali. */
@@ -159,6 +165,7 @@ export function PurchasesView({
   exportSlot,
   addSlot,
   notice,
+  tabs,
 }: PurchasesViewProps) {
   const all = { value: '', label: to.all }
   const filters: FilterDef[] = [
@@ -280,6 +287,7 @@ export function PurchasesView({
           )
         }
       />
+      {tabs}
       <FilterBar label={to.filters} filters={filters} onClear={() => onFilter(EMPTY)} />
       {notice}
 
@@ -401,8 +409,59 @@ type Dialog =
   | { kind: 'add' }
   | null
 
-/** Xaridlar jadvali: filtrlar, qabul holati, alert belgilari, tafsilot. Ko'rinish RLS bilan cheklanadi. */
+type PurchasesTabKey = 'purchases' | 'expenses'
+
+function purchasesTabs(value: PurchasesTabKey, onChange: (k: PurchasesTabKey) => void) {
+  const items: TabItem<PurchasesTabKey>[] = [
+    { key: 'purchases', label: t.expenses.tabPurchases, icon: <ShoppingCart {...ic} /> },
+    { key: 'expenses', label: t.expenses.tabExpenses, icon: <Receipt {...ic} /> },
+  ]
+  return <Tabs label={t.expenses.tabsLabel} items={items} value={value} onChange={onChange} />
+}
+
+/** "Xaridlar" sahifasi: "Xaridlar" va "Xarajatlar" tablari (`?tab=expenses`). */
 export function PurchasesPage() {
+  const [params, setParams] = useSearchParams()
+  const tab: PurchasesTabKey = params.get('tab') === 'expenses' ? 'expenses' : 'purchases'
+  const onTab = (next: PurchasesTabKey) => setParams(next === 'expenses' ? { tab: 'expenses' } : {}, { replace: true })
+  if (tab === 'expenses') return <ExpensesPanel tabs={purchasesTabs(tab, onTab)} />
+  return <MaterialPurchasesPage tabs={purchasesTabs(tab, onTab)} />
+}
+
+function ExpensesPanel({ tabs }: { tabs: ReactNode }) {
+  const [objects, setObjects] = useState<ObjectRow[]>([])
+  const [profiles, setProfiles] = useState<PersonRef[]>([])
+  useEffect(() => {
+    let alive = true
+    listObjects()
+      .then((list) => alive && setObjects(list))
+      .catch(() => undefined)
+    listDirectory()
+      .then((list) => alive && setProfiles(list))
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
+  return (
+    <div className="flex flex-col gap-5">
+      <ExpensesTab
+        objects={objects}
+        profiles={profiles}
+        header={(actions) => (
+          <>
+            <PageHeader title={tp.title} icon={<ShoppingCart strokeWidth={1.75} />} actions={actions} />
+            {tabs}
+          </>
+        )}
+        addDialog={(props) => <AddExpenseDialog {...props} />}
+      />
+    </div>
+  )
+}
+
+/** Xaridlar jadvali: filtrlar, qabul holati, alert belgilari, tafsilot. Ko'rinish RLS bilan cheklanadi. */
+function MaterialPurchasesPage({ tabs }: { tabs: ReactNode }) {
   const { profile: me } = useAuth()
   const purchaseHistoryHref = useHistoryHref()
   const [objects, setObjects] = useState<ObjectRow[]>([])
@@ -560,6 +619,7 @@ export function PurchasesPage() {
           )
         }
         notice={savedText && <Notice tone="ok">{savedText}</Notice>}
+        tabs={tabs}
       />
       {dialog?.kind === 'add' && (
         <AddPurchaseDialog

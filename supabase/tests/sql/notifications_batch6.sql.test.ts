@@ -341,6 +341,10 @@ describe('daily_report_stats', () => {
       chiqim_count: 1,
       purchases_count: 2,
       purchases_sum: '3000.50',
+      // 20261111000001_expenses
+      expenses_count: 0,
+      expenses_sum: '0.00',
+      expense_limit_alerts: 0,
       requests_count: 0,
       alerts_new: 0,
       alerts_by_type: {},

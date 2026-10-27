@@ -16,6 +16,11 @@ const SPENT_SELECT =
   'material:materials!purchases_material_fkey(name), ' +
   'object:objects!purchases_object_fkey(name)'
 
+const EXPENSE_SPENT_SELECT =
+  'id, payer_id, amount::text, spent_at, note, deleted_at, ' +
+  'category:expense_categories!expenses_category_fkey(name), ' +
+  'object:objects!expenses_object_fkey(name)'
+
 export const CASH_HISTORY_LIMIT = 200
 
 /** Balans qatori yo'q (hech narsa berilmagan va sarflanmagan) — nol. */
@@ -117,7 +122,7 @@ export async function updateAdvanceNote(id: string, note: string | null): Promis
   return updateById('cash_advances', id, { note: clean ? clean : null })
 }
 
-/** Tarix yozuvi: berilgan pul, qaytarilgan pul yoki xaridga sarflangan pul. */
+/** Tarix yozuvi: berilgan pul, qaytarilgan pul yoki xarid / xarajatga sarflangan pul. */
 export type CashHistoryEntry =
   | {
       kind: 'issued' | 'returned'
@@ -132,13 +137,17 @@ export type CashHistoryEntry =
     }
   | {
       kind: 'spent'
+      /** `purchase` — material xaridi; `expense` — boshqa xarajat (oziq-ovqat, yoqilg'i …). Yo'q — xarid. */
+      source?: 'purchase' | 'expense'
       id: string
       profileId: string
       profileName: string | null
       amount: string
       at: string
       note: string | null
+      /** Xaridda — material, xarajatda — xarajat turi. */
       materialName: string | null
+      /** Xarajatda null — "Umumiy" (obyektsiz) yoki obyekt ko'rinmaydi. */
       objectName: string | null
       deletedAt: string | null
     }
@@ -154,40 +163,61 @@ interface RawSpent {
   object: { name: string } | null
 }
 
+interface RawExpenseSpent {
+  id: string
+  payer_id: string
+  amount: string
+  spent_at: string
+  note: string | null
+  deleted_at: string | null
+  category: { name: string } | null
+  object: { name: string } | null
+}
+
 /**
- * Berilgan va sarflangan pul tarixi (yangisi birinchi). `profileId` — bitta odam bo'yicha.
- * `includeDeleted` — o'chirilgan berilmalar ham (RLS ruxsat bergan rollarga).
+ * Berilgan va sarflangan pul tarixi (yangisi birinchi). `profileId` — bitta odam bo'yicha. Sarflangan —
+ * podotchetdan to'langan xaridlar va xarajatlar. `includeDeleted` — o'chirilganlar ham (RLS ruxsat bergan rollarga).
  */
 export async function listCashHistory(
   opts: { profileId?: string; includeDeleted?: boolean } = {},
 ): Promise<CashHistoryEntry[]> {
   let issuedQ = getSupabase().from('cash_advances').select(ADVANCE_SELECT)
-  // Firma to'lagan xaridlar ('firma') podotchet hisobiga kirmaydi
+  // Firma to'lagan xaridlar / xarajatlar ('firma') podotchet hisobiga kirmaydi
   let spentQ = getSupabase().from('purchases').select(SPENT_SELECT).eq('payment_source', 'podotchet')
+  let expenseQ = getSupabase().from('expenses').select(EXPENSE_SPENT_SELECT).eq('payment_source', 'podotchet')
   if (!opts.includeDeleted) {
     issuedQ = issuedQ.is('deleted_at', null)
     spentQ = spentQ.is('deleted_at', null)
+    expenseQ = expenseQ.is('deleted_at', null)
   }
   if (opts.profileId) {
     issuedQ = issuedQ.eq('recipient_id', opts.profileId)
     spentQ = spentQ.eq('buyer_id', opts.profileId)
+    expenseQ = expenseQ.eq('payer_id', opts.profileId)
   }
-  const [issued, spent] = await Promise.all([
+  const [issued, spent, expenses] = await Promise.all([
     issuedQ.order('issued_at', { ascending: false }).limit(CASH_HISTORY_LIMIT),
     spentQ.order('purchased_at', { ascending: false }).limit(CASH_HISTORY_LIMIT),
+    expenseQ.order('spent_at', { ascending: false }).limit(CASH_HISTORY_LIMIT),
   ])
   if (issued.error) throw toRepoError(issued.error)
   if (spent.error) throw toRepoError(spent.error)
+  if (expenses.error) throw toRepoError(expenses.error)
   const entries = await mergeHistory(
     (issued.data ?? []) as unknown as RawAdvance[],
     (spent.data ?? []) as unknown as RawSpent[],
+    (expenses.data ?? []) as unknown as RawExpenseSpent[],
   )
-  // Ikki manba birlashtirilgach sana bo'yicha tartiblanadi, keyin umumiy chegara bo'yicha kesiladi
+  // Manbalar birlashtirilgach sana bo'yicha tartiblanadi, keyin umumiy chegara bo'yicha kesiladi
   return entries.slice(0, CASH_HISTORY_LIMIT)
 }
 
-async function mergeHistory(issued: RawAdvance[], spent: RawSpent[]): Promise<CashHistoryEntry[]> {
-  const names = await directoryNames([...issued.flatMap((r) => [r.recipient_id, r.created_by]), ...spent.map((p) => p.buyer_id)])
+async function mergeHistory(issued: RawAdvance[], spent: RawSpent[], expenses: RawExpenseSpent[] = []): Promise<CashHistoryEntry[]> {
+  const names = await directoryNames([
+    ...issued.flatMap((r) => [r.recipient_id, r.created_by]),
+    ...spent.map((p) => p.buyer_id),
+    ...expenses.map((e) => e.payer_id),
+  ])
   const entries: CashHistoryEntry[] = [
     ...issued.map((r) => normalizeAdvance(r, names)).map(
       (a): CashHistoryEntry => ({
@@ -205,6 +235,7 @@ async function mergeHistory(issued: RawAdvance[], spent: RawSpent[]): Promise<Ca
     ...spent.map(
       (p): CashHistoryEntry => ({
         kind: 'spent',
+        source: 'purchase',
         id: p.id,
         profileId: p.buyer_id,
         profileName: names.get(p.buyer_id)?.full_name ?? null,
@@ -214,6 +245,21 @@ async function mergeHistory(issued: RawAdvance[], spent: RawSpent[]): Promise<Ca
         materialName: p.material?.name ?? null,
         objectName: p.object?.name ?? null,
         deletedAt: p.deleted_at,
+      }),
+    ),
+    ...expenses.map(
+      (e): CashHistoryEntry => ({
+        kind: 'spent',
+        source: 'expense',
+        id: e.id,
+        profileId: e.payer_id,
+        profileName: names.get(e.payer_id)?.full_name ?? null,
+        amount: e.amount,
+        at: e.spent_at,
+        note: e.note,
+        materialName: e.category?.name ?? null,
+        objectName: e.object?.name ?? null,
+        deletedAt: e.deleted_at,
       }),
     ),
   ]
@@ -260,7 +306,24 @@ export async function listAllCashHistory(
     },
     { signal, max: EXPORT_MAX_ROWS - issued.length },
   )
-  return mergeHistory(issued, spent)
+  const expenses = await fetchAll<RawExpenseSpent>(
+    async (req) => {
+      let q = getSupabase()
+        .from('expenses')
+        .select(EXPENSE_SPENT_SELECT, req.first ? { count: 'exact' } : undefined)
+        .eq('payment_source', 'podotchet')
+        .lte('created_at', req.before)
+      if (!opts.includeDeleted) q = q.is('deleted_at', null)
+      if (opts.profileId) q = q.eq('payer_id', opts.profileId)
+      let ranged = q.order('spent_at', { ascending: false }).order('id').range(req.from, req.to)
+      if (req.signal) ranged = ranged.abortSignal(req.signal)
+      const { data, error, count } = await ranged
+      if (error) throw toRepoError(error)
+      return { rows: (data ?? []) as unknown as RawExpenseSpent[], total: count ?? null }
+    },
+    { signal, max: Math.max(1, EXPORT_MAX_ROWS - issued.length - spent.length) },
+  )
+  return mergeHistory(issued, spent, expenses)
 }
 
 export function softDeleteAdvance(id: string): Promise<void> {

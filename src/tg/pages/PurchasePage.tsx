@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { useAuth } from '@/auth/authContext'
-import { BottomSheet, Notice, RetryNotice, SkeletonRows } from '@/components/ui'
+import { Receipt, ShoppingCart } from 'lucide-react'
+import { BottomSheet, Notice, RetryNotice, SegmentedControl, SkeletonRows } from '@/components/ui'
 import { getMyBalance } from '@/data/cashRepo'
 import { errorCodeOf } from '@/data/errors'
 import { requestPhotoHash } from '@/data/functions'
@@ -38,7 +39,8 @@ import { ApprovedRequestChips, RequestTag } from '../purchase/ApprovedRequests'
 import { ReceiptCard, ScanReceiptButton } from '../purchase/ReceiptCard'
 import { canScanQr, scanQr } from '../qrScan'
 import { loadLastObject, saveLastObject } from '../movement/prefs'
-import { loadRecentSuppliers, rememberSupplier } from '../purchase/prefs'
+import { loadPurchaseMode, loadRecentSuppliers, rememberSupplier, savePurchaseMode, type PurchaseMode } from '../purchase/prefs'
+import { ExpenseEntry } from '../purchase/ExpenseEntry'
 import { CashHistory } from '../purchase/CashHistory'
 import { BalanceCard, PurchaseDetails, type PurchaseFieldErrors } from '../purchase/PurchaseDetails'
 import type { SupplierChoice } from '../purchase/SupplierPicker'
@@ -50,6 +52,7 @@ import { flashMainButtonSaved, useBackButton, useClosingConfirmation, useMainBut
 const tm = t.tg.movement
 const tp = t.tg.purchase
 const ta = t.tg.auto
+const te = t.expenses
 const USAGE_DAYS = 30
 const RECENT_LIMIT = 30
 /** Chek qatori nomi katalogdagi materialga shu balldan past mos kelsa — foydalanuvchi o'zi tanlaydi. */
@@ -88,7 +91,8 @@ function orderSuppliers(list: Supplier[], recent: string[]): Supplier[] {
   return [...list].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'uz'))
 }
 
-export function PurchasePage() {
+/** Material xaridi (oldingi "Xarid" ekrani). Balans kartasi — `PurchasePage` da (ikkala rejim uchun umumiy). */
+function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) {
   const { profile } = useAuth()
   const companyId = profile?.company_id
   const profileId = profile?.id
@@ -100,10 +104,6 @@ export function PurchasePage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
 
-  const [balance, setBalance] = useState<{ value: string | null; failed: boolean } | null>(null)
-  const [balanceKey, setBalanceKey] = useState(0)
-  // "Qo'limda" kartasi → pul tarixi (berilgan, qaytarilgan, sarflangan)
-  const [cashOpen, setCashOpen] = useState(false)
 
   const [objectId, setObjectId] = useState<string | null>(null)
   const [pickingObject, setPickingObject] = useState(false)
@@ -189,16 +189,6 @@ export function PurchasePage() {
     }
   }, [companyId, reloadKey])
 
-  useEffect(() => {
-    if (!companyId || !profileId) return
-    let alive = true
-    getMyBalance(companyId, profileId)
-      .then((b) => alive && setBalance({ value: b.balance, failed: false }))
-      .catch(() => alive && setBalance({ value: null, failed: true }))
-    return () => {
-      alive = false
-    }
-  }, [companyId, profileId, balanceKey])
 
   // Summa formatlangandan keyin kursor joyida qolsin
   useLayoutEffect(() => {
@@ -607,7 +597,7 @@ export function PurchasePage() {
           ),
           meta: formatSum(row.total_amount),
         })
-        setBalanceKey((k) => k + 1)
+        onBalanceChange()
         resetEntry()
       } catch (err) {
         haptic.error()
@@ -628,7 +618,7 @@ export function PurchasePage() {
     },
     // resetEntry — faqat setState va photo.reset (photo deps ichida)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [profile, preparingPhoto, objectId, materialId, unitId, qty, sum, supplier, resolveSupplier, photo, draftId, note, material, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, receipt, request, geo, entryDate, isAdmin],
+    [onBalanceChange, profile, preparingPhoto, objectId, materialId, unitId, qty, sum, supplier, resolveSupplier, photo, draftId, note, material, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, receipt, request, geo, entryDate, isAdmin],
   )
 
   const onMainButton = useCallback(() => {
@@ -703,19 +693,6 @@ export function PurchasePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <BalanceCard
-        balance={balance}
-        onOpen={() => {
-          haptic.tap()
-          setCashOpen(true)
-        }}
-      />
-      {cashOpen && (
-        <BottomSheet title={t.tg.cashHistory.title} onClose={() => setCashOpen(false)}>
-          <CashHistory profileId={profile.id} />
-        </BottomSheet>
-      )}
-
       {savedText && <SavedBanner meta={savedText.meta}>{savedText.text}</SavedBanner>}
 
       {loadError && <RetryNotice message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />}
@@ -827,6 +804,67 @@ export function PurchasePage() {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * "Xarid" ekrani: tepada "Material / Xarajat" almashtirgichi (oxirgi tanlov eslab qolinadi), ostida "Qo'limda"
+ * kartasi (ikkala rejimda umumiy) va tanlangan forma. Telegram xabaridagi `?request=` — doim material.
+ */
+export function PurchasePage() {
+  const { profile } = useAuth()
+  const [params] = useSearchParams()
+  const [mode, setMode] = useState<PurchaseMode>(() => (readUuidParam(params, 'request') ? 'material' : loadPurchaseMode()))
+  const [balance, setBalance] = useState<{ value: string | null; failed: boolean } | null>(null)
+  const [balanceKey, setBalanceKey] = useState(0)
+  // "Qo'limda" kartasi → pul tarixi (berilgan, qaytarilgan, sarflangan)
+  const [cashOpen, setCashOpen] = useState(false)
+  const companyId = profile?.company_id
+  const profileId = profile?.id
+
+  useEffect(() => {
+    if (!companyId || !profileId) return
+    let alive = true
+    getMyBalance(companyId, profileId)
+      .then((b) => alive && setBalance({ value: b.balance, failed: false }))
+      .catch(() => alive && setBalance({ value: null, failed: true }))
+    return () => {
+      alive = false
+    }
+  }, [companyId, profileId, balanceKey])
+
+  const refreshBalance = useCallback(() => setBalanceKey((k) => k + 1), [])
+  if (!profile) return null
+  return (
+    <div className="flex flex-col gap-4">
+      <SegmentedControl
+        label={te.modeLabel}
+        value={mode}
+        size="lg"
+        onChange={(next) => {
+          haptic.select()
+          setMode(next)
+          savePurchaseMode(next)
+        }}
+        options={[
+          { value: 'material', label: te.modeMaterial, tone: 'navy', icon: <ShoppingCart aria-hidden strokeWidth={1.75} /> },
+          { value: 'expense', label: te.modeExpense, tone: 'navy', icon: <Receipt aria-hidden strokeWidth={1.75} /> },
+        ]}
+      />
+      <BalanceCard
+        balance={balance}
+        onOpen={() => {
+          haptic.tap()
+          setCashOpen(true)
+        }}
+      />
+      {cashOpen && (
+        <BottomSheet title={t.tg.cashHistory.title} onClose={() => setCashOpen(false)}>
+          <CashHistory profileId={profile.id} />
+        </BottomSheet>
+      )}
+      {mode === 'material' ? <MaterialPurchase onBalanceChange={refreshBalance} /> : <ExpenseEntry profile={profile} onSaved={refreshBalance} />}
     </div>
   )
 }

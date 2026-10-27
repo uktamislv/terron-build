@@ -114,7 +114,8 @@ export function useCorrectionForm(target: CorrectionTarget, onDone: () => void, 
   const submit = async () => {
     if (saving) return false
     const result = validateCorrection({
-      table: target.table,
+      // Xarajat — alohida forma (ExpenseCorrectionForm); bu yerda faqat harakat va xarid
+      table: target.table === 'movements' ? 'movements' : 'purchases',
       original: {
         qtyInput: target.qtyInput,
         unitId: target.unitId,

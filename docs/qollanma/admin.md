@@ -12,6 +12,8 @@ Siz firma ichida tizimni boshqarasiz: foydalanuvchilar, obyektlar, materiallar, 
 2. “Foydalanuvchilar” → “Foydalanuvchi qo‘shish”: ism, telefon, rol va obyektlar. Odam Telegram ilovasini ochib, raqamini ulashadi. Veb kerak bo‘lsa — “Veb login berish”.
 3. “Materiallar” da birliklar va muqobil nomlarni, “Sotuvchilar” da takror yozilgan sotuvchilarni tekshiring (“Birlashtirish”).
 4. “Sozlamalar”: chegaralar va “Tinch soatlar” — bu vaqtda Telegram xabarlari kutib turadi.
+5. “Sozlamalar” → “Xarajat turlari”: tur qo‘shing, oylik limit (so‘m, ixtiyoriy) va “Rasm majburiy” ni belgilang, tartibini o‘zgartiring; keraksizini “Nofaol qilish”.
+6. Smetada bo‘lmaydigan materialga (mix, asbob) “Smetaga kirmaydi” belgisini qo‘ying — normadan oshish ogohlantirishi chiqmaydi.
 
 ### Har kuni
 
@@ -42,7 +44,8 @@ Siz firma ichida tizimni boshqarasiz: foydalanuvchilar, obyektlar, materiallar, 
 | Narx og‘ishi | Narx oxirgi xaridlar o‘rtachasidan chegaradan ko‘p farq qiladi. | Chekni ko‘ring, sababini so‘rang. |
 | Inventarizatsiya kamomadi | Sanalgan qoldiq hisobdagidan kam. | Sababini aniqlang, keyin “Qoldiqni tuzatish”. |
 | Podotchet muddati o‘tdi | Berilgan pul uzoq vaqt hisobot qilinmagan. | Odamdan cheklarni yoki qolgan pulni so‘rang. |
+| Xarajat limiti oshdi | Shu oy xarajat turi bo‘yicha sarf oylik limitdan oshdi. | “Xarajatlar” ni ko‘ring; kerak bo‘lsa limitni o‘zgartiring. |
 
 ## Savol bo‘lsa
 
-Ogohlantirish Telegram’da ham keladi: “Ko‘rildi” tugmasini u yerda ham bosish mumkin. “Ish xabarlari” (so‘rov, o‘tkazma, xarid) — yon menyuda, “Parol” yonida yoqing yoki o‘chiring. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+Ogohlantirish Telegram’da ham keladi: “Ko‘rildi” tugmasini u yerda ham bosish mumkin. “Ish xabarlari” (so‘rov, o‘tkazma, xarid) — yon menyuda, “Parol” yonida yoqing yoki o‘chiring. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar tizim egasiga boradi.

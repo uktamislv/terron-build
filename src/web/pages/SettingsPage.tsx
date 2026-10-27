@@ -1,15 +1,16 @@
 import { useSearchParams } from 'react-router'
-import { Bug, Building2, Send, Settings } from 'lucide-react'
+import { Bug, Building2, Receipt, Send, Settings } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { PageHeader, Tabs, type TabItem } from '@/components/ui'
 import { t } from '@/i18n'
 import { BugReportsList } from '../settings/BugReportsList'
 import { CompanySettingsForm } from '../settings/CompanySettingsForm'
+import { ExpenseCategoriesTab } from '../settings/ExpenseCategoriesTab'
 import { TelegramHealthCard } from '../settings/TelegramHealthCard'
 
-type SettingsTab = 'company' | 'telegram' | 'bugs'
+type SettingsTab = 'company' | 'expenses' | 'telegram' | 'bugs'
 
-const TABS: readonly SettingsTab[] = ['company', 'telegram', 'bugs']
+const TABS: readonly SettingsTab[] = ['company', 'expenses', 'telegram', 'bugs']
 
 function isTab(v: string | null): v is SettingsTab {
   return v !== null && (TABS as readonly string[]).includes(v)
@@ -31,6 +32,7 @@ export function SettingsPage() {
   const tab: SettingsTab = isTab(raw) ? raw : 'company'
   const items: TabItem<SettingsTab>[] = [
     { key: 'company', label: ts.tabCompany, icon: <Building2 {...icon} /> },
+    { key: 'expenses', label: t.expenses.categories.tab, icon: <Receipt {...icon} /> },
     { key: 'telegram', label: ts.tabTelegram, icon: <Send {...icon} /> },
     { key: 'bugs', label: ts.tabBugs, icon: <Bug {...icon} /> },
   ]
@@ -44,6 +46,7 @@ export function SettingsPage() {
         onChange={(next) => setParams(next === 'company' ? {} : { tab: next }, { replace: true })}
       />
       {tab === 'company' && <CompanySettingsForm companyId={profile.company_id} canEdit={canEdit} />}
+      {tab === 'expenses' && <ExpenseCategoriesTab companyId={profile.company_id} canEdit={canEdit} />}
       {tab === 'telegram' && <TelegramHealthCard />}
       {tab === 'bugs' && <BugReportsList />}
     </div>

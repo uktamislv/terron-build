@@ -1,4 +1,4 @@
-# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, audit tuzatishlari 1–2 tur)
+# Ma'lumotlar bazasi dizayni (Batch 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, audit tuzatishlari 1–2 tur, xarajatlar)
 
 Supabase PostgreSQL 17. Bu hujjat — migratsiyalar uchun shartnoma. Kod bilan farq qilsa, hujjat yangilanadi.
 
@@ -78,6 +78,8 @@ Migratsiya egasi (`postgres`) `BYPASSRLS` bo'lishi shart (Supabase'da shunday): 
 Batch 7: `estimates`, `estimate_items` — qo'shish va `is_current`/qator mazmunini o'zgartirish faqat RPC (`import_estimate`, `set_current_estimate`) orqali; to'g'ridan-to'g'ri — faqat nom/sana/fayl nomi va soft delete ("Smeta importi" bo'limi).
 | `material_requests` | firma rollari; prorab: a'zo obyektlar; haydovchi: a'zo obyektlarning `tasdiqlandi` so'rovlari (audit 2-tur) | admin; prorab (a'zo obyekt) | admin, taminotchi |
 | `transfers` | firma rollari; prorab, omborchi: qaysidir tomoni a'zo obyekt | Batch 8: faqat RPC `create_transfer` (admin; prorab — `from` a'zo) | Batch 8: faqat RPC `receive_transfer` / `cancel_transfer` |
+| `expense_categories` | firma a'zolari (tekshiruvchisiz) | admin | admin |
+| `expenses` | admin, direktor, buxgalter, taminotchi: hammasi; boshqalar: o'zi to'lagan / kiritgan; tekshiruvchi — yo'q | admin; buxgalter, taminotchi; prorab, haydovchi (obyekt a'zo yoki null); `payer_id = o'zi` (admin'dan tashqari) | admin (muallif — `correct_entry` / `cancel_own_entry`) |
 | `alerts` | admin, direktor, buxgalter | — (faqat tizim: trigger/Edge Function; Batch 5 qoidalari — `private.evaluate_*`) | admin — faqat `status`, `close_note` (Batch 5) |
 | `audit_log` | admin, direktor | — (faqat trigger) | — |
 | `company_settings` ichida | `companies` ustunlari sifatida | | |
@@ -298,6 +300,9 @@ Unique indekslar (o'chirilmaganlar orasida): `materials (company_id, norm_name(n
 | `supplier_merge_invalid` | 22023 | `merge_suppliers` (audit_fixes) | Id yo'q yoki bir xil |
 | `supplier_not_found` | P0002 | `merge_suppliers` (audit_fixes) | Sotuvchi yo'q / o'chirilgan / boshqa firma |
 | `notification_health_forbidden` | 42501 | `notification_health` (audit_fixes) | Admin emas |
+| `expense_category_duplicate` | 23505 | `b_expense_categories_guard` (expenses) | Shu nomdagi xarajat turi bor |
+| `expense_category_inactive` | P0001 | `b_expenses_guard` (expenses) | Xarajat turi o'chirilgan yoki nofaol |
+| `expense_payer_invalid` | 23514 | `b_payer_guard` (expenses) | To'lovchi faol xarajat kiritadigan xodim emas |
 
 audit_fixes qayta ishlatadi: `restore_transfer_movement` (endi trigger ham — tizim uchun ham), `cash_amount_locked` (`issued_at` ham, foydalanuvchi sessiyasida), `ops_occurred_at_range` (`cash_advances` INSERT, admin emas), `photo_sha256_invalid` (`svc_set_photo_hash`), `estimate_direct_edit` (`estimate_alert` firma tekshiruvi), `estimate_not_found` (`set_current_estimate` qulfdan keyin).
 
@@ -740,6 +745,83 @@ Shartnoma va to'liq tafsilot: `docs/audit-fixes.md` → "2-tur" (S1–S14, L1–
 - **Qoida 1 (o'zgargan):** `receipt_candidates` — qisman taqsimlash, orqa sanali xaridlar oxirida; `evaluate_purchase_receipt` — xarid qatorini qulflamaydi, `receipt_alloc` birinchi; zanjir yangi alert yaratmaydi (`terron.receipt_chain`).
 - **Cron:** `terron-photo-hash-sweep` (`*/5 * * * *`).
 - **Pul:** `cash_balances`, `private.cash_position`, kunlik hisobot pul yig'indilari — faqat `payment_source = 'podotchet'` xaridlar.
+
+## Xarajatlar va "smetaga kirmaydi" materiallar (`20261111000001_expenses.sql`)
+
+Shartnoma: `docs/expenses-design.md`. Xarajat — ombordan tashqari pul sarfi (oziq-ovqat, yoqilg'i, transport, ijara …): qoldiqqa ta'sir qilmaydi, `payment_source = 'podotchet'` bo'lsa to'lovchining qo'lidagi puldan ayiriladi.
+
+### `public.expense_categories` (biznes jadvali)
+
+- Ustunlar: `id, company_id, name` (btrim, 1..80; firma ichida `norm_name` bo'yicha unique, o'chirilmaganlar — `expense_categories_company_name_key` + `b_expense_categories_guard` → 23505 `expense_category_duplicate`), `monthly_limit numeric(18,2)` (null — limitsiz, > 0), `photo_required boolean default false`, `is_active boolean default true`, `sort_order int default 0` + standart ustunlar.
+- Standart turlar (`private.seed_expense_categories(company)`, idempotent): Oziq-ovqat, Yoqilg'i, Transport va yetkazish, Asbob-uskuna ijarasi, Kommunal xizmatlar, Boshqa (`sort_order` 1..6). Mavjud firmalarga — migratsiyada; yangi firmaga — `companies.zz_expense_categories` (after insert).
+- RLS: SELECT — firma a'zolari, tekshiruvchidan tashqari (`is_blind_counter`); o'chirilganlar — admin, direktor, super_admin. INSERT / UPDATE (soft delete, tiklash) — admin, super_admin. DELETE yo'q. Grant: authenticated — `select, insert, update`.
+- `zz_limit_reeval` (after update of `monthly_limit`, `deleted_at`, `name`): joriy oy va ochiq `xarajat_limiti` alertli oylar qayta baholanadi.
+
+### `public.expenses` (biznes jadvali)
+
+- Ustunlar: `id, company_id, category_id` (FK `(company_id, category_id)`), `object_id` (nullable — "Umumiy"), `amount numeric(18,2) > 0`, `spent_at timestamptz` (default `now()`; `b_op_date` — admin emaslar `[now − 3 kun, now + 5 daqiqa]`, `ops_occurred_at_range`), `payer_id` (FK `(company_id, payer_id) → profiles`), `payment_source text not null ('podotchet' | 'firma')`, `supplier_id` (ixtiyoriy), `note` (btrim, ≤ 500), `receipt_photo_path`, `receipt_photo_sha256` (server), `receipt_fiscal_sign`, `receipt_terminal_id`, `receipt_no`, `receipt_verified`, `receipt_total`, `seller_tin`, `geo_lat`, `geo_lng`, `geo_accuracy_m`, `geo_status` (xariddagi cheklovlar bilan bir xil) + standart ustunlar.
+- RLS: INSERT — admin, super_admin, buxgalter, taminotchi, prorab, haydovchi; `created_by = o'zi`; admin bo'lmaganlar `payer_id = o'zi`; `object_id` null yoki `can_access_object`. SELECT — super_admin, admin, direktor, buxgalter, taminotchi: hammasi; boshqalar — `payer_id = o'zi` yoki `created_by = o'zi`; o'chirilganlar — admin, direktor, super_admin + muallif (`expenses_select_own_deleted`); tekshiruvchi — hech narsa. UPDATE — admin, super_admin (muallif — `correct_entry` / `cancel_own_entry`). DELETE yo'q.
+- Triggerlar (tartib): `a_*` → `b_expenses_guard` (tur o'chirilgan / nofaol — yangi xarajat, tiklash, tur almashtirish: P0001 `expense_category_inactive`; izoh btrim) → `b_op_date('spent_at')` → `b_payer_guard` (admin boshqa nomidan: to'lovchi faol `haydovchi/taminotchi/prorab/admin/buxgalter` — 23514 `expense_payer_invalid`; `payment_source` — xariddagi qoida: to'lovchiga tirik `berildi` podotchet bor → `podotchet`, aks holda `firma`; admin/super_admin/buxgalter tanlaydi; boshqalar — qoida, UPDATE'da o'zgarmaydi) → `b_photo_hash_client` → `b_photo_path` → `c_expenses_auto` (xesh, chek keshi: `receipt_verified` = kesh bor VA `|total − amount| ≤ 1` yoki biror `items[].sum` VA `receipt_at` `spent_at` dan ±3 kun; fiskal belgi **xaridlar va xarajatlar bo'yicha birga** bitta tirik yozuv — 23505 `receipt_already_used`; rasm majburiy: `amount >= companies.photo_required_amount` yoki `category.photo_required`, tasdiqlangan bir qatorli summasi ma'lum chek — ozod) → `z_audit` → `zz_deleted_alert`, `zz_expense_rules_ins/upd`, `zz_other_payer_ins/upd`, `zz_photo_hash_ins/upd`, `zz_posted_change`.
+- `purchases.c_purchases_auto` (create or replace): fiskal belgi xarajatlarda ham tekshiriladi. Rasm yo'li (`b_photo_path`) — movements, purchases, expenses bo'ylab bitta tirik yozuv (`ops_photo_reused`).
+- Indekslar: `(company_id, category_id | object_id | payer_id | supplier_id)`, `created_by`, partial `(company_id, spent_at)`, `(company_id, category_id, spent_at)`, `(company_id, object_id, spent_at)`, `(company_id, payer_id, payment_source)`, `(created_by, created_at desc)`, `(company_id, deleted_at)`, unique `receipt_photo_path`, unique `(company_id, receipt_fiscal_sign)`, `(company_id, receipt_photo_sha256)`; `alerts_company_category_month_idx (company_id, details->>'category_id', details->>'month')`.
+
+### Nazorat qoidalari
+
+Xarajat alertlarida `purchase_id` / `movement_id` / `material_id` — null; bog'lanish `details.table = 'expenses'`, `details.record_id` (= `expense_id`), `object_id` ustunda.
+
+- **Takroriy yozuv** (`takroriy_yozuv`, belgi): shu `created_by`, `category_id`, `object_id` (null ham teng), `amount`, `duplicate_window_minutes` ichida; `details` + `category_id`. Rasm xeshi takrori (`kind = 'photo'`, ogohlantirish) — harakat, xarid va xarajat bo'ylab (`first_table` ∈ `movements | purchases | expenses`). `correct_entry` dan keyin `reevaluate_duplicate('expenses', id)`.
+- **chek_farqi**: `|receipt_total − amount| > 1` (ko'p qatorli chek — taqqoslanmaydi); `details`: `table, record_id, expense_id, receipt_total, total_amount, diff, receipt_fiscal_sign, receipt_verified`. Yopilish: `within_threshold`, `multi_line_receipt`, `expense_deleted`.
+- **sotuvchi_stir_farqi** (belgi): `details` + `table, record_id, expense_id`; sotuvchi STIR o'zgarsa (`zz_tin_reeval`) — xarajatlar ham. Yopilish: `not_applicable`, `expense_deleted`.
+- **Oylik limit — `xarajat_limiti`** (ogohlantirish ✉, `object_id` null): `private.evaluate_expense_limit(company, category, month)`, tur + Toshkent oyi bo'yicha bitta ochiq (`alert_lock`). `spent` = shu tur, shu oy (`spent_at`, Toshkent) o'chirilmagan xarajatlar (ikkala manba). `spent > monthly_limit` → alert; ochiq bo'lsa `details` yangilanadi. Avtomatik yopish: `within_threshold` (spent ≤ limit), `not_applicable` (limit null), `category_deleted`. Admin qo'lda yopgan alert shu `limit` va `spent ≤ yopilgandagi spent` da qayta ochilmaydi; spent oshsa yoki limit o'zgarsa — yangi alert. Chaqiriladi: xarajat INSERT, `amount` / `category_id` / `spent_at` / `deleted_at` o'zgarishi (eski va yangi (tur, oy)), tur `monthly_limit` / `deleted_at` / `name` o'zgarishi. `details`: `category_id, category_name, month ('YYYY-MM'), limit, spent, over, over_pct, expense_count, last_expense_id` (+ avtomatik yopishda `auto_closed, closed_reason, closed_by_actor`).
+- **Boshqa nomidan**: admin `payer_id ≠ o'zi` (INSERT yoki `payer_id` o'zgarishi) → `xarid_boshqa_nomidan` (`details`: `table: 'expenses', record_id, expense_id, purchase_id: null, buyer_id, buyer_name, payer_id, payer_name, actor_profile_id, actor_name, amount, object_id, object_name, category_id, category_name, material_id: null, material_name: null, spent_at, payment_source, via`) + to'lovchiga outbox `expense_on_your_name`.
+- **O'zgartirish / o'chirish / tiklash**: `yozuv_ozgartirildi` (admin to'g'ridan-to'g'ri; kuzatiladi: `category_id, object_id, amount, spent_at, payer_id, payment_source, supplier_id, receipt_photo_path, receipt_fiscal_sign, seller_tin, geo_*`), `yozuv_tuzatildi` (muallif `correct_entry` / `cancel_own_entry`), `yozuv_ochirildi`, `yozuv_tiklandi`. Xarajat uchun `details` ga qo'shiladi: `expense_id, category_id, category_name, payer_id, payer_name, payment_source, spent_at` (+ `amount`).
+- **Joylashuv** — saqlanadi, alert yo'q; kunlik hisobot `geo_*_count` ga kiradi.
+
+### RPC o'zgarishlari
+
+- `correct_entry('expenses', id, p_total_amount, p_note, p_reason, p_object_id)` — summa (> 0, aks holda `correct_invalid`), izoh, obyekt (faqat muallif, 30 daqiqa; yangi obyekt mavjud va a'zo bo'lishi kerak). `p_qty_input`, `p_unit_id`, `p_material_id` — `correct_invalid`. Muallif rollari: taminotchi, buxgalter; prorab, haydovchi — obyekt null yoki a'zo.
+- `cancel_own_entry('expenses', id, reason)` — muallif, 30 daqiqa, xuddi shu rollar.
+- `restore_record('expense_categories' | 'expenses', id)`; `history_tables()` ∪ `expense_categories`, `expenses` (oxirida); `deleted_records` ∪ ikkala jadval; `audit_record_label`: tur — nom; xarajat — `tur · 41 000 so'm · obyekt` (obyektsiz — `Umumiy`).
+- `svc_set_photo_hash('expenses', …)`, `svc_claim_photo_hash_jobs` — expenses; `private.photo_hash_queue.table_name` ∪ `expenses`.
+- `merge_suppliers` — xarajatlar ham ko'chiriladi (`sotuvchi_birlashtirildi.details.moved_expense_count` — faqat > 0 bo'lsa).
+- **Yangi:** `public.my_expense_category_usage(p_days int default 30) → (category_id, use_count, last_used_at)` — o'zi kiritgan xarajatlar (tugmalar tartibi); `ops_usage_days_range`.
+
+### Pul
+
+`cash_balances` (view), `private.cash_position`, `evaluate_cash_advances` (podotchet muddati / manfiy), `enqueue_cash_statements`, dashboard va kunlik hisobot pul yig'indilari — `payment_source = 'podotchet'` xarajatlar "sarflandi" ga qo'shiladi (`spent_total`, `last_spent_at`). Haftalik `cash_statement` payload: `spent_week` = xaridlar + podotchet xarajatlar, yangi `expenses_week`.
+
+### Hisobotlar
+
+- `dashboard_summary` ∪ `expense_count` (int), `expense_sum` (text), `expense_by_category` (jsonb massiv, top 5: `{category_id, category_name, sum (text), count}`, summa kamayish tartibida), `spend_total_sum` (text, xaridlar + xarajatlar). Obyekt filtri xarajatlarga ham (obyektsizlar — faqat filtrsiz). `objects_over_norm_count` — smetaga kirmaydigan materiallarsiz. Tekshiruvchi — nol / bo'sh.
+- `spend_breakdown` (**drop + create**, qaytarish turi o'zgardi): `(key, label, purchases_sum, purchases_count, expenses_sum text, expenses_count int, total_sum text)`; `p_group` ∪ `category` (faqat xarajatlar). `material` — faqat xaridlar; `object` — ikkalasi (obyektsiz xarajatlar `key = null`); `buyer` — xaridor / to'lovchi; `supplier` — ikkalasi. Tartib: `total` kamayish, son, `key nulls last`. Noto'g'ri guruh — `report_group_invalid`.
+- Kunlik hisobot ∪ `expenses_count`, `expenses_sum` (text, `spent_at` bo'yicha), `expense_limit_alerts` (oraliqda yaratilgan `xarajat_limiti`); `backdated_count`, `geo_*_count`, `cash_*_sum` — xarajatlar ham.
+- `norm_overview` (**drop + create**) ∪ `outside_estimate boolean`.
+
+### "Smetaga kirmaydi" — `materials.outside_estimate boolean not null default false`
+
+- Qoida 4 (`evaluate_norm`, `not_in_estimate` ham) va qoida 6 (`evaluate_request`) — bunday material uchun ishlamaydi; ochiq alertlar `closed_reason = 'outside_estimate'` bilan yopiladi. `smetasiz_chiqim` (`evaluate_no_estimate_chiqim`) va kunlik `chiqim_without_estimate_count` ularni hisobga olmaydi.
+- `materials.zz_outside_estimate` (after update of `outside_estimate`): shu materialning ochiq norma / so'rov alertlari, chiqimi yoki ochiq so'rovi bor obyektlar bo'yicha qoida 4 va 6 qayta baholanadi (belgi olinsa — oddiy qoidalar qaytadi).
+- Ombor, qoldiq, xarid, narx og'ishi, manfiy qoldiq — o'zgarishsiz. `norm_usage` view o'zgarmagan (sarf ko'rinadi).
+
+### Bildirishnomalar
+
+- Outbox `kind` ∪ `expense_on_your_name` (`profile_id` = to'lovchi, `ref_id` = xarajat; unique `notification_outbox_expense_payer_key (kind, ref_id, profile_id)`; `notify_workflow` ga qaramaydi; tinch oynada ushlanmaydi). Payload: `{expense_id, alert_id, company_name, payer_id, payer_name, actor_name, object_id, object_name (null — umumiy), category_id, category_name, amount (son), payment_source, note, spent_at}`.
+- `xarajat_limiti` — oddiy `alert` xabari (direktor, admin; tinch oynada ushlanadi).
+- `bug_report` qabul qiluvchilari — **faqat** faol `super_admin` lar (istalgan firma; bloklanmagan, `telegram_chat_id` bor). Firma adminlari endi xabar olmaydi (`bug_reports` RLS o'zgarmagan).
+
+### Storage
+
+`photos_insert` ∪ `buxgalter` (xarajat cheki); `photos_select` ∪ `expenses.receipt_photo_path` (invoker exists — RLS: o'zi to'lagan / kiritgan).
+
+### Yangi hint'lar
+
+| `hint` | `errcode` | Qayerda |
+|---|---|---|
+| `expense_category_duplicate` | 23505 | `b_expense_categories_guard` — shu nomdagi tur bor |
+| `expense_category_inactive` | P0001 | `b_expenses_guard` — tur o'chirilgan yoki nofaol (yangi xarajat, tiklash, tur almashtirish) |
+| `expense_payer_invalid` | 23514 | `b_payer_guard` — admin tanlagan to'lovchi faol xarajat kiritadigan xodim emas |
+
+Qayta ishlatiladi: `photo_required`, `photo_sha256_invalid`, `receipt_already_used` (xarid ↔ xarajat), `ops_photo_*`, `ops_occurred_at_range`, `correct_*`, `restore_*`, `photo_hash_invalid`, `report_group_invalid`, `ops_usage_days_range`, `soft_delete_only`. Avtomatik yopish sabablari ∪ `outside_estimate`, `category_deleted`, `expense_deleted`.
 
 ## Qoldiq
 

@@ -7,6 +7,7 @@
 
 import {
   MAX_PHOTO_BYTES,
+  PHOTO_TABLES,
   authorizeSweep,
   createUserLimiter,
   handlePhotoHash,
@@ -22,8 +23,8 @@ import { json, log, preflight, readJson } from '../_shared/http.ts'
 import { activeProfileByAuthUserId, getAdminClient, getAuthUserIdFromJwt } from '../_shared/supabaseAdmin.ts'
 
 const PHOTO_BUCKET = 'photos'
-const PATH_COLUMN: Record<PhotoTable, string> = { movements: 'photo_path', purchases: 'receipt_photo_path' }
-const SHA_COLUMN: Record<PhotoTable, string> = { movements: 'photo_sha256', purchases: 'receipt_photo_sha256' }
+const PATH_COLUMN: Record<PhotoTable, string> = { movements: 'photo_path', purchases: 'receipt_photo_path', expenses: 'receipt_photo_path' }
+const SHA_COLUMN: Record<PhotoTable, string> = { movements: 'photo_sha256', purchases: 'receipt_photo_sha256', expenses: 'receipt_photo_sha256' }
 
 async function downloadPhoto(path: string): Promise<DownloadResult> {
   const { data, error } = await getAdminClient().storage.from(PHOTO_BUCKET).download(path)
@@ -40,7 +41,7 @@ async function downloadPhoto(path: string): Promise<DownloadResult> {
 
 /** Shu firmada shu xesh boshqa tirik yozuvda (ikkala jadvalda). */
 async function hasDuplicate(companyId: string, table: PhotoTable, id: string, sha256: string): Promise<boolean> {
-  for (const t of ['movements', 'purchases'] as const) {
+  for (const t of PHOTO_TABLES) {
     let q = getAdminClient()
       .from(t)
       .select('id', { count: 'exact', head: true })

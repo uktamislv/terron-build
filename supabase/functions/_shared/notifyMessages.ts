@@ -54,6 +54,10 @@ export interface DailyReportPayload {
   cash_outstanding_sum?: string | null
   /** Audit: xodimlarga qarz (Σ manfiy balans, musbat son), matn. */
   cash_owed_to_staff_sum?: string | null
+  /** Xarajatlar (20261111): oraliqdagi xarajatlar soni va summasi (matn), limiti oshgan turlar alerti. */
+  expenses_count?: number | null
+  expenses_sum?: string | null
+  expense_limit_alerts?: number | null
 }
 
 /** Batch 12 (J): `alert_remind_hours` dan beri ko'rilmagan alert — eslatma. */
@@ -112,7 +116,10 @@ export interface CashStatementPayload {
   profile_id: string
   profile_name: string | null
   issued_week: string | null
+  /** 20261111: xaridlar + podotchet xarajatlar. */
   spent_week: string | null
+  /** 20261111: shu haftadagi xarajatlar (sarf ichida). */
+  expenses_week?: string | null
   returned_week: string | null
   issued_total?: string | null
   returned_total?: string | null
@@ -171,6 +178,7 @@ export const NOTIFY_TEXTS = {
     sotuvchi_stir_farqi: 'Sotuvchi STIR farqi',
     xarid_boshqa_nomidan: 'Boshqa odam nomidan xarid',
     sotuvchi_birlashtirildi: 'Sotuvchilar birlashtirildi',
+    xarajat_limiti: 'Xarajat limiti oshdi',
   },
   deletedTitles: {
     purchases: "Xarid o'chirildi",
@@ -178,6 +186,7 @@ export const NOTIFY_TEXTS = {
     kirim: "Kirim o'chirildi",
     chiqim: "Chiqim o'chirildi",
     movements: "Ombor harakati o'chirildi",
+    expenses: "Xarajat o'chirildi",
     other: "Yozuv o'chirildi",
   },
   restoredTitles: {
@@ -186,6 +195,7 @@ export const NOTIFY_TEXTS = {
     kirim: 'Kirim tiklandi',
     chiqim: 'Chiqim tiklandi',
     movements: 'Ombor harakati tiklandi',
+    expenses: 'Xarajat tiklandi',
     other: 'Yozuv tiklandi',
   },
   restored: {
@@ -224,6 +234,7 @@ export const NOTIFY_TEXTS = {
     sotuvchi_stir_farqi: 'sotuvchi STIR',
     xarid_boshqa_nomidan: 'boshqa nomidan xarid',
     sotuvchi_birlashtirildi: 'sotuvchi birlashtirildi',
+    xarajat_limiti: 'xarajat limiti',
   } as Record<string, string>,
   noSource: {
     open_purchase: "Ochiq xarid bor edi, lekin kirim unga bog'lanmagan",
@@ -244,7 +255,7 @@ export const NOTIFY_TEXTS = {
     photo: 'Bu rasm boshqa yozuvda ham ishlatilgan',
     qty: 'Miqdor: ',
     amount: 'Summa: ',
-    tables: { purchases: 'Xarid', movements: 'Ombor harakati' } as Record<string, string>,
+    tables: { purchases: 'Xarid', movements: 'Ombor harakati', expenses: 'Xarajat' } as Record<string, string>,
   },
   geo: {
     /** "Obyektdan 850 m uzoqda" */
@@ -303,6 +314,8 @@ export const NOTIFY_TEXTS = {
     issued: 'Berildi: ',
     spent: 'Sarflandi: ',
     returned: 'Qaytarildi: ',
+    /** Xarajatlar (sarf ichida) — 20261111 */
+    expenses: 'Xarajatlar (sarf ichida): ',
     balance: "Qo'lingizda: ",
     overspent: "Ortiqcha sarf (sizga qaytarilishi kerak): ",
     /** "Eng eski qoldiq: 20.10.2026 (20 kun)" */
@@ -319,6 +332,7 @@ export const NOTIFY_TEXTS = {
       kirim: "Kirim o'zgartirildi",
       chiqim: "Chiqim o'zgartirildi",
       movements: "Ombor harakati o'zgartirildi",
+      expenses: "Xarajat o'zgartirildi",
       other: "Yozuv o'zgartirildi",
     } as Record<string, string>,
     correctedTitle: 'Muallif yozuvni tuzatdi',
@@ -340,6 +354,23 @@ export const NOTIFY_TEXTS = {
       unit_price: 'Narx',
       price_per_base: 'Narx (asosiy birlik)',
       buyer_id: 'Xaridor',
+      // xarajat va 2-tur kuzatiladigan ustunlar
+      category_id: 'Xarajat turi',
+      amount: 'Summa',
+      spent_at: 'Sana',
+      payer_id: "To'lovchi",
+      payment_source: "To'lov manbai",
+      supplier_id: 'Sotuvchi',
+      request_id: "Bog'langan so'rov",
+      photo_path: 'Rasm',
+      receipt_photo_path: 'Chek rasmi',
+      receipt_fiscal_sign: 'Fiskal belgi',
+      seller_tin: 'Sotuvchi STIR',
+      geo_lat: 'Joylashuv',
+      geo_lng: 'Joylashuv',
+      geo_accuracy_m: 'Joylashuv aniqligi',
+      geo_status: 'Joylashuv holati',
+      deleted_at: "O'chirilgan",
     } as Record<string, string>,
     movementTypes: {
       kirim: 'kirim',
@@ -475,6 +506,22 @@ export const NOTIFY_TEXTS = {
     filledKeys: { tin: 'STIR', phone: 'telefon', note: 'izoh' } as Record<string, string>,
     actor: 'Bajardi: ',
   },
+  /** Xarajatlar (20261111). */
+  expense: {
+    /** "Xarajat: Oziq-ovqat · 41 000 so‘m · Obyekt A" */
+    label: 'Xarajat: ',
+    general: 'Umumiy',
+    limitTitle: 'Xarajat limiti oshdi',
+    /** "Oziq-ovqat, 10.2026: 5 200 000 / 5 000 000 so‘m (+4 %)" */
+    limitLine: (cat: string, month: string, spent: string, limit: string, pct: string | null) =>
+      `${cat}, ${month}: ${spent} / ${limit}${pct ? ` (${pct})` : ''}`,
+    /** "Oshdi: 200 000 so‘m · 12 ta xarajat" */
+    limitOver: (over: string | null, n: string | null) =>
+      [over ? `Oshdi: ${over}` : null, n ? `${n} ta xarajat` : null].filter((x) => x).join(' · '),
+    onYourNameTitle: 'Sizning nomingizga xarajat kiritildi',
+    onYourNameWarn: "Agar siz qilmagan bo'lsangiz — adminga ayting.",
+    payer: "To'lovchi: ",
+  },
   entryCancel: {
     title: 'Muallif yozuvni bekor qildi',
     reason: 'Sabab: ',
@@ -568,6 +615,8 @@ export const NOTIFY_TEXTS = {
     kirim: 'Kirim: ',
     chiqim: 'Chiqim: ',
     purchases: 'Xaridlar: ',
+    expenses: 'Xarajatlar: ',
+    expenseLimits: 'Limiti oshgan xarajat turlari: ',
     pieces: ' ta',
     requests: "So'rovlar: ",
     alertsNew: 'Yangi farqlar: ',
@@ -773,7 +822,23 @@ export function safeSlice(line: string, max: number): string {
 }
 
 function contextLine(p: AlertPayload): string {
+  if (isExpenseAlert(p)) return expenseLine(p)
   return [nameHtml(p.material_name), nameHtml(p.object_name)].filter((x) => x).join(' · ')
+}
+
+/** Xarajat yozuvi alerti (`details.table = 'expenses'`, material yo'q). */
+function isExpenseAlert(p: AlertPayload): boolean {
+  return !!p.details && typeof p.details === 'object' && p.details.table === 'expenses'
+}
+
+/** "Xarajat: Oziq-ovqat · 41 000 so‘m · Obyekt A" (obyektsiz — "Umumiy"). */
+function expenseLine(p: AlertPayload): string {
+  const t = NOTIFY_TEXTS.expense
+  const d = p.details && typeof p.details === 'object' ? p.details : {}
+  const category = nameHtml(d.category_name)
+  const amount = moneyText(d.amount ?? d.total_amount)
+  const object = nameHtml(p.object_name) ?? nameHtml(d.object_name) ?? t.general
+  return t.label + [category, amount, object].filter((x) => x).join(' · ')
 }
 
 function safeDetails(p: AlertPayload): Record<string, unknown> {
@@ -810,6 +875,7 @@ function alertEmoji(type: string, severity: string, details: Record<string, unkn
   if (type === 'sotuvchi_stir_farqi') return '🧾'
   if (type === 'xarid_boshqa_nomidan') return '👤'
   if (type === 'sotuvchi_birlashtirildi') return '🔗'
+  if (type === 'xarajat_limiti') return '💸'
   if (type === 'normadan_oshish') return '📉'
   if (type === 'smetadan_ortiq_sorov') return '📝'
   if (type === 'otkazma_farqi') return '🔄'
@@ -878,6 +944,7 @@ function priceLines(p: AlertPayload): string[] {
 function deletedTitle(d: Record<string, unknown>): string {
   const t = NOTIFY_TEXTS.deletedTitles
   if (d.table === 'purchases') return t.purchases
+  if (d.table === 'expenses') return t.expenses
   if (d.table === 'cash_advances') return t.cash_advances
   if (d.table === 'movements') {
     if (d.movement_type === 'kirim') return t.kirim
@@ -893,6 +960,7 @@ function recordSummary(p: AlertPayload): string {
   const material = nameHtml(d.material_name) ?? nameHtml(p.material_name)
   const unit = typeof d.base_unit === 'string' && d.base_unit.trim() !== '' ? d.base_unit : p.base_unit
   const parts: (string | null)[] = []
+  if (d.table === 'expenses') return expenseLine(p)
   if (d.table === 'cash_advances') {
     parts.push(moneyText(d.amount), nameHtml(d.recipient_name))
   } else if (d.table === 'purchases') {
@@ -906,6 +974,7 @@ function recordSummary(p: AlertPayload): string {
 function restoredTitle(d: Record<string, unknown>): string {
   const t = NOTIFY_TEXTS.restoredTitles
   if (d.table === 'purchases') return t.purchases
+  if (d.table === 'expenses') return t.expenses
   if (d.table === 'cash_advances') return t.cash_advances
   if (d.table === 'movements') {
     if (d.movement_type === 'kirim') return t.kirim
@@ -929,8 +998,9 @@ function restoredLines(p: AlertPayload): string[] {
   const d = p.details
   const lines = [recordSummary(p)]
   const object = nameHtml(p.object_name)
-  if (object) lines.push(NOTIFY_TEXTS.deleted.object + object)
-  const date = dateOnly(d.occurred_at)
+  // xarajatda obyekt "Xarajat: …" qatorida
+  if (object && !isExpenseAlert(p)) lines.push(NOTIFY_TEXTS.deleted.object + object)
+  const date = dateOnly(d.occurred_at ?? d.spent_at)
   const days = formatDecimal(d.days_since, 0)
   const since = days !== null && !days.startsWith('-') ? t.daysSince(days) : null
   if (date) lines.push(`${t.recordDate}${date}${since ? ` (${since})` : ''}`)
@@ -947,7 +1017,7 @@ function deletedLines(p: AlertPayload): { main: string; extra: string[] } {
   const object = nameHtml(p.object_name)
   const parts = [recordSummary(p)]
   const extra: string[] = []
-  if (object) extra.push(t.object + object)
+  if (object && !isExpenseAlert(p)) extra.push(t.object + object)
   const actor = nameHtml(d.actor_name)
   if (actor) extra.push(t.actor + actor)
   return { main: parts.join(''), extra }
@@ -1359,10 +1429,27 @@ function cashAlertLines(p: AlertPayload): string[] {
 // Audit (20261108) — yangi alert turlari
 // ---------------------------------------------------------------------------
 
-const CHANGE_DATE_KEYS = ['occurred_at', 'purchased_at']
-const CHANGE_MONEY_KEYS = ['total_amount', 'unit_price', 'price_per_base']
+const CHANGE_DATE_KEYS = ['occurred_at', 'purchased_at', 'spent_at']
+const CHANGE_MONEY_KEYS = ['total_amount', 'unit_price', 'price_per_base', 'amount']
+/** Matn ustunlari (raqamlar guruhlanmaydi: STIR, fiskal belgi). */
+const CHANGE_TEXT_KEYS = ['receipt_fiscal_sign', 'seller_tin']
 /** Qiymati id (uuid) bo'lgan ustunlar — qiymat ko'rsatilmaydi, faqat "o'zgardi". */
-const CHANGE_ID_KEYS = ['object_id', 'material_id', 'purchase_id', 'buyer_id']
+const CHANGE_ID_KEYS = [
+  'object_id',
+  'material_id',
+  'purchase_id',
+  'buyer_id',
+  'category_id',
+  'payer_id',
+  'supplier_id',
+  'request_id',
+  'photo_path',
+  'receipt_photo_path',
+  'geo_lat',
+  'geo_lng',
+  'geo_accuracy_m',
+  'deleted_at',
+]
 /** O'zgargan ustunlar ro'yxatida ko'pi bilan shuncha qator. */
 const CHANGE_MAX_LINES = 12
 
@@ -1380,6 +1467,8 @@ function changeValue(key: string, v: unknown, unit: string | null): string {
   }
   if (CHANGE_MONEY_KEYS.includes(key)) return moneyText(v) ?? nameHtml(String(v)) ?? empty
   if (key === 'qty_base') return qtyText(v, unit) ?? empty
+  if (CHANGE_TEXT_KEYS.includes(key)) return nameHtml(String(v)) ?? empty
+  if (key === 'payment_source' && typeof v === 'string') return NOTIFY_TEXTS.workflow.paymentSources[v] ?? nameHtml(v) ?? empty
   if (key === 'type') {
     return typeof v === 'string' ? (NOTIFY_TEXTS.recordChange.movementTypes[v] ?? nameHtml(v) ?? empty) : empty
   }
@@ -1447,6 +1536,7 @@ function recordChangeTitle(type: string, d: Record<string, unknown>): string {
   if (d.via === 'cancel_own_entry') return NOTIFY_TEXTS.entryCancel.title
   if (type === 'yozuv_tuzatildi') return t.correctedTitle
   if (d.table === 'purchases') return t.titles.purchases ?? t.titles.other ?? ''
+  if (d.table === 'expenses') return t.titles.expenses ?? t.titles.other ?? ''
   if (d.table === 'movements') {
     if (d.movement_type === 'kirim') return t.titles.kirim ?? ''
     if (d.movement_type === 'chiqim') return t.titles.chiqim ?? ''
@@ -1460,7 +1550,7 @@ function recordChangeLines(p: AlertPayload): string[] {
   const d = p.details
   const material = nameHtml(p.material_name) ?? nameHtml(d.material_name)
   if (d.via === 'cancel_own_entry') return cancelOwnEntryLines(p)
-  const ctx = [material, nameHtml(p.object_name)].filter((x) => x).join(' · ')
+  const ctx = isExpenseAlert(p) ? expenseLine(p) : [material, nameHtml(p.object_name)].filter((x) => x).join(' · ')
   return [ctx, ...recordChangeItems(p), reasonLine(d), recordChangeActor(d)]
 }
 
@@ -1570,8 +1660,10 @@ function reasonLine(d: Record<string, unknown>): string {
 function cancelOwnEntryLines(p: AlertPayload): string[] {
   const d = p.details
   const material = nameHtml(p.material_name) ?? nameHtml(d.material_name)
-  const ctx = [material, nameHtml(p.object_name)].filter((x) => x).join(' · ')
-  const summary = [qtyText(d.qty_base, unitOf(p)), moneyText(d.amount)].filter((x) => x).join(' · ')
+  const expense = isExpenseAlert(p)
+  const ctx = expense ? expenseLine(p) : [material, nameHtml(p.object_name)].filter((x) => x).join(' · ')
+  // xarajatda summa kontekst qatorida
+  const summary = expense ? '' : [qtyText(d.qty_base, unitOf(p)), moneyText(d.amount)].filter((x) => x).join(' · ')
   const actor = nameHtml(d.actor_name) ?? nameHtml(d.author_name)
   return [ctx, summary, reasonLine(d), actor ? NOTIFY_TEXTS.workflow.cancelledBy + actor : '']
 }
@@ -1582,15 +1674,20 @@ function otherBuyerLines(p: AlertPayload): string[] {
   const d = p.details
   const material = nameHtml(p.material_name) ?? nameHtml(d.material_name)
   const object = nameHtml(p.object_name) ?? nameHtml(d.object_name)
-  const buyer = nameHtml(d.buyer_name)
+  const expense = isExpenseAlert(p)
+  // xarajatda — to'lovchi (payer_*), xaridda — xaridor (buyer_*; xarajatda ham alias sifatida bor)
+  const buyer = expense ? (nameHtml(d.payer_name) ?? nameHtml(d.buyer_name)) : nameHtml(d.buyer_name)
   const actor = nameHtml(d.actor_name)
   const unit = typeof d.base_unit === 'string' && d.base_unit.trim() !== '' ? d.base_unit : p.base_unit
-  const summary = [qtyText(d.qty_base, unit), moneyText(d.amount)].filter((x) => x).join(' · ')
+  const summary = expense ? '' : [qtyText(d.qty_base, unit), moneyText(d.amount)].filter((x) => x).join(' · ')
   const source = typeof d.payment_source === 'string' ? NOTIFY_TEXTS.workflow.paymentSources[d.payment_source] : undefined
-  const date = typeof d.purchased_at === 'string' ? formatDateTimeTashkent(d.purchased_at) : null
-  const who = [buyer ? t.buyer + buyer : null, actor ? t.actor + actor : null].filter((x) => x).join(' · ')
+  const when = expense ? d.spent_at : d.purchased_at
+  const date = typeof when === 'string' ? formatDateTimeTashkent(when) : null
+  const who = [buyer ? (expense ? NOTIFY_TEXTS.expense.payer : t.buyer) + buyer : null, actor ? t.actor + actor : null]
+    .filter((x) => x)
+    .join(' · ')
   return [
-    [material, object].filter((x) => x).join(' · '),
+    expense ? expenseLine(p) : [material, object].filter((x) => x).join(' · '),
     who + (d.via === 'update' ? ` ${t.viaUpdate}` : ''),
     summary,
     source ? NOTIFY_TEXTS.workflow.payment + source : '',
@@ -1618,6 +1715,20 @@ function supplierMergeLines(p: AlertPayload): string[] {
     filled.length ? t.filled + filled.join(', ') : '',
     actor ? t.actor + actor : '',
   ]
+}
+
+/** "Oziq-ovqat, 10.2026: 5 200 000 / 5 000 000 so‘m (+4 %)", "Oshdi: 200 000 so‘m · 12 ta xarajat". */
+function expenseLimitLines(p: AlertPayload): string[] {
+  const t = NOTIFY_TEXTS.expense
+  const d = p.details
+  const cat = nameHtml(d.category_name) ?? '?'
+  const m = typeof d.month === 'string' ? /^(\d{4})-(\d{2})/.exec(d.month) : null
+  const month = m ? `${m[2]}.${m[1]}` : (nameHtml(d.month) ?? '')
+  const spent = formatDecimal(d.spent, 2)
+  const limit = moneyText(d.limit)
+  const pct = percentText(d.over_pct, '+')
+  const main = spent !== null && limit !== null ? t.limitLine(cat, month, spent, limit, pct) : cat
+  return [main, t.limitOver(moneyText(d.over), nonNegInt(d.expense_count))]
 }
 
 /** Tur sarlavhasi (escape kerak emas — bizning matnimiz). */
@@ -1688,6 +1799,8 @@ function alertTitle(type: string, details: Record<string, unknown>): string {
       return titles.xarid_boshqa_nomidan
     case 'sotuvchi_birlashtirildi':
       return titles.sotuvchi_birlashtirildi
+    case 'xarajat_limiti':
+      return titles.xarajat_limiti
     default:
       return NOTIFY_TEXTS.genericAlert
   }
@@ -1783,6 +1896,9 @@ export function formatAlertMessage(p: AlertPayload): string {
     case 'sotuvchi_birlashtirildi':
       lines.push(...supplierMergeLines(payload))
       break
+    case 'xarajat_limiti':
+      lines.push(...expenseLimitLines(payload))
+      break
     default:
       lines.push(ctx)
   }
@@ -1820,6 +1936,7 @@ const ALERT_TYPE_ORDER = [
   'sotuvchi_stir_farqi',
   'xarid_boshqa_nomidan',
   'sotuvchi_birlashtirildi',
+  'xarajat_limiti',
   'yozuv_tuzatildi',
   'ozi_qabul_qilgan',
 ]
@@ -1861,7 +1978,9 @@ export function formatAlertDigest(payloads: AlertPayload[], opts: { reminder?: b
   const items = shown.map((p) => {
     const details = safeDetails(p)
     const ctx =
-      p.type === 'yozuv_ochirildi' || p.type === 'yozuv_tiklandi'
+      isExpenseAlert({ ...p, details })
+        ? expenseLine({ ...p, details })
+        : p.type === 'yozuv_ochirildi' || p.type === 'yozuv_tiklandi'
         ? [nameHtml(details.material_name) ?? nameHtml(p.material_name), nameHtml(p.object_name)]
             .filter((x) => x)
             .join(' · ')
@@ -1922,6 +2041,10 @@ export function formatDailyReport(p: DailyReportPayload): string {
   const pending = positive(p.transfers_pending_count)
   const restored = positive(p.restored_count)
   const noEstimate = positive(p.chiqim_without_estimate_count)
+  const expensesCount = positive(p.expenses_count)
+  const expensesSumN = formatDecimal(p.expenses_sum, 2)
+  const expensesSum = expensesSumN !== null && expensesSumN !== '0' && !expensesSumN.startsWith('-') ? `${expensesSumN} ${NOTIFY_TEXTS.currency}` : null
+  const expenseLimits = positive(p.expense_limit_alerts)
   const lowStock = positive(p.low_stock_count)
   const geoDenied = positive(p.geo_denied_count)
   const geoUnavailable = positive(p.geo_unavailable_count)
@@ -1943,6 +2066,10 @@ export function formatDailyReport(p: DailyReportPayload): string {
     `${t.kirim}${count(p.kirim_count)} · ${t.chiqim}${count(p.chiqim_count)}`,
     noEstimate ? t.chiqimWithoutEstimate + noEstimate : '',
     `${t.purchases}${count(p.purchases_count)}${t.pieces}, ${sum}`,
+    expensesCount || expensesSum
+      ? `${t.expenses}${[expensesCount ? expensesCount + t.pieces : null, expensesSum].filter((x) => x).join(', ')}`
+      : '',
+    expenseLimits ? `💸 ${t.expenseLimits}${expenseLimits}` : '',
     `${t.requests}${count(p.requests_count)}`,
     pending ? t.transfersPending + pending : '',
     `${t.alertsNew}${count(p.alerts_new)}${breakdown ? ` (${breakdown})` : ''}`,
@@ -2025,6 +2152,9 @@ export function formatCashStatement(p: CashStatementPayload): string {
     ? `${t.overspent}${moneyText(balRaw.slice(1)) ?? zero}`
     : `${t.balance}<b>${moneyText(p.balance) ?? zero}</b>`
   const oldest = typeof p.oldest_open_date === 'string' ? dateOnly(p.oldest_open_date) : null
+  const expensesWeekN = formatDecimal(p.expenses_week, 2)
+  const expensesWeek =
+    expensesWeekN !== null && expensesWeekN !== '0' && !expensesWeekN.startsWith('-') ? `${expensesWeekN} ${NOTIFY_TEXTS.currency}` : null
   return fitLines([
     `💵 <b>${t.title} · ${period}</b>`,
     nameHtml(p.profile_name) ?? '',
@@ -2032,6 +2162,7 @@ export function formatCashStatement(p: CashStatementPayload): string {
     t.week,
     `${t.issued}${moneyText(p.issued_week) ?? zero}`,
     `${t.spent}${moneyText(p.spent_week) ?? zero}`,
+    expensesWeek ? t.expenses + expensesWeek : '',
     `${t.returned}${moneyText(p.returned_week) ?? zero}`,
     balLine,
     oldest && !negative ? t.oldest(oldest, nonNegInt(p.days_open)) : '',
@@ -2513,10 +2644,49 @@ export function formatAlertsDigest(p: AlertsDigestPayload): string {
   return text.length <= TELEGRAM_MAX_LENGTH ? text : fitLines([head])
 }
 
+/** Xarajatlar (20261111): to'lovchiga — uning nomiga boshqa odam xarajat kiritdi. */
+export interface ExpenseOnYourNamePayload {
+  expense_id: string
+  alert_id?: string | null
+  company_name: string | null
+  payer_id?: string | null
+  payer_name: string | null
+  actor_name: string | null
+  object_id?: string | null
+  /** null — umumiy (obyektsiz) xarajat. */
+  object_name: string | null
+  category_id?: string | null
+  category_name: string | null
+  amount: number | string | null
+  payment_source: string | null
+  note: string | null
+  spent_at: string | null
+}
+
+export function formatExpenseOnYourName(p: ExpenseOnYourNamePayload): string {
+  const t = NOTIFY_TEXTS.expense
+  const w = NOTIFY_TEXTS.workflow
+  const line = t.label + [nameHtml(p.category_name), moneyText(p.amount), nameHtml(p.object_name) ?? t.general]
+    .filter((x) => x)
+    .join(' · ')
+  const note = noteHtml(p.note)
+  const source = typeof p.payment_source === 'string' ? w.paymentSources[p.payment_source] : undefined
+  const actor = nameHtml(p.actor_name)
+  return fitLines([
+    `⚠️ <b>${t.onYourNameTitle}</b>`,
+    line,
+    note ? w.note + note : '',
+    source ? w.payment + source : '',
+    actor ? w.enteredBy + actor : '',
+    isoTime(p.spent_at),
+    t.onYourNameWarn,
+  ])
+}
+
 /**
- * Ish oqimi xabari "Ochish" havolasi: `?request=<id>` / `?transfer=<id>` / `?purchase=<id>`
- * (payload'da id bo'lsa); qolganlari — oddiy Mini App URL. Frontend request va transfer ni
- * ochadi; purchase — hozircha bosh sahifa.
+ * Ish oqimi xabari "Ochish" havolasi: `?request=<id>` / `?transfer=<id>` / `?purchase=<id>` /
+ * `?expense=<id>` (expense_on_your_name; payload'da uuid bo'lsa); qolganlari — oddiy Mini App URL.
+ * Frontend request, transfer va expense ni ochadi; purchase — hozircha bosh sahifa.
  */
 export function workflowOpenUrl(baseUrl: string, kind: string, payload: unknown): string {
   const p = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
@@ -2531,6 +2701,7 @@ export function workflowOpenUrl(baseUrl: string, kind: string, payload: unknown)
   if (kind === 'purchase_for_object' || kind === 'purchase_deleted' || kind === 'purchase_on_your_name') {
     return pick('purchase_id', 'purchase') ?? baseUrl
   }
+  if (kind === 'expense_on_your_name') return pick('expense_id', 'expense') ?? baseUrl
   return baseUrl
 }
 

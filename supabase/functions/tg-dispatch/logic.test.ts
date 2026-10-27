@@ -768,3 +768,22 @@ describe('2-tur — yangi kindlar, deep link, sozlama 400', () => {
     expect(f.sent).toHaveLength(1)
   })
 })
+
+describe('xarajatlar — expense_on_your_name', () => {
+  it('yuboriladi (noma‘lum kind emas), "Ochish" ?expense=<id>, digest qilinmaydi', async () => {
+    const P = {
+      expense_id: '11111111-2222-4333-8444-555555555555', alert_id: 'a', company_name: 'F', payer_id: 'p', payer_name: 'S',
+      actor_name: 'Admin', object_id: null, object_name: null, category_id: 'c', category_name: 'Oziq-ovqat', amount: 1000,
+      payment_source: 'firma', note: null, spent_at: '2026-10-29T09:32:00Z',
+    }
+    const rows = Array.from({ length: DIGEST_THRESHOLD + 1 }, (_, i): OutboxRow => ({
+      id: `x${i}`, company_id: 'c1', kind: 'expense_on_your_name', payload: P, attempts: 1, delivered_chat_ids: [],
+    }))
+    const url = 'https://app.example.uz/tg'
+    const f = fake({ rows, recipients: { c1: [R(1, 'haydovchi')] }, miniAppUrl: url })
+    const r = await handleDispatch(SECRET, f.deps)
+    expect(r.body).toEqual({ processed: rows.length, sent: rows.length, failed: 0 })
+    expect(f.sent[0]?.text.startsWith('⚠️ <b>Sizning nomingizga xarajat kiritildi</b>')).toBe(true)
+    for (const s of f.sent) expect(s.markup).toEqual(miniAppKeyboard(`${url}?expense=${P.expense_id}`, 'Ochish'))
+  })
+})

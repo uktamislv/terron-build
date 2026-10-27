@@ -12,6 +12,7 @@ export type FieldKind =
   | 'ref_profile'
   | 'ref_unit'
   | 'ref_supplier'
+  | 'ref_category'
   | 'ref_purchase'
   | 'enum'
   | 'bool'
@@ -98,6 +99,7 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
       category: 'text',
       is_active: 'bool',
       photo_required: 'bool',
+      outside_estimate: 'bool',
     },
   },
   material_units: {
@@ -295,6 +297,42 @@ const TABLES: Readonly<Record<string, TableSpec>> = {
       sheet_name: 'text',
       header_row: 'text',
       last_used_at: 'datetime',
+    },
+  },
+  // Xarajatlar (20261111000001_expenses.sql)
+  expense_categories: {
+    primary: ['name', 'monthly_limit', 'photo_required', 'is_active'],
+    columns: {
+      name: 'text',
+      monthly_limit: 'money',
+      photo_required: 'bool',
+      is_active: 'bool',
+      sort_order: 'qty',
+    },
+  },
+  expenses: {
+    primary: ['category_id', 'amount', 'object_id', 'payer_id', 'spent_at', 'payment_source'],
+    columns: {
+      category_id: 'ref_category',
+      object_id: 'ref_object',
+      amount: 'money',
+      spent_at: 'datetime',
+      payer_id: 'ref_profile',
+      payment_source: 'enum',
+      supplier_id: 'ref_supplier',
+      note: 'text',
+      receipt_photo_path: 'text',
+      receipt_photo_sha256: 'text',
+      receipt_fiscal_sign: 'text',
+      receipt_terminal_id: 'text',
+      receipt_no: 'text',
+      receipt_verified: 'bool',
+      receipt_total: 'money',
+      seller_tin: 'text',
+      geo_lat: 'text',
+      geo_lng: 'text',
+      geo_accuracy_m: 'qty',
+      geo_status: 'enum',
     },
   },
 }

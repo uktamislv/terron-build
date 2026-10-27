@@ -14,6 +14,11 @@ Siz xodimlarga xarid uchun pul berasiz va qaytgan pulni yozasiz. Smetani yuklays
 4. Izoh xato bo‘lsa — yozuvni ochib “Izohni tahrirlash”.
 5. “Qo‘ldagi pul” jadvalida har kimning berilgan, sarflangan va qo‘lidagi puli ko‘rinadi.
 
+### Xarajat kiritish
+
+1. “Xaridlar” → “Xarajatlar” → “Xarajat qo‘shish”: tur, summa, obyekt yoki “Umumiy”, sana; kerak bo‘lsa “Pul manbai”.
+2. Xato xarajatni 30 daqiqa ichida “Tuzatish” yoki “Bekor qilish (o‘chirish)”.
+
 ### Smeta yuklash
 
 1. “Smeta” → obyektni tanlang → “Smeta yuklash”.
@@ -42,4 +47,4 @@ Siz xodimlarga xarid uchun pul berasiz va qaytgan pulni yozasiz. Smetani yuklays
 
 ## Savol bo‘lsa
 
-“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — yon menyuda, “Parol” yonida yoqing yoki o‘chiring. Savol bo‘lsa, firmangiz adminiga murojaat qiling. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — yon menyuda, “Parol” yonida yoqing yoki o‘chiring. Savol bo‘lsa, firmangiz adminiga murojaat qiling. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar tizim egasiga boradi.

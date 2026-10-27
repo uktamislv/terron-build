@@ -9,7 +9,8 @@ import { validateQtyInput, type QtyError } from './units'
 export const CORRECTION_WINDOW_MS = 30 * 60 * 1000
 
 export interface CorrectableEntry {
-  table: 'movements' | 'purchases'
+  /** Xarajat (`expenses`) — bog'lanish yo'q: doim tuzatish mumkin (oyna ichida). */
+  table: 'movements' | 'purchases' | 'expenses'
   createdBy: string | null
   createdAt: string
   deletedAt: string | null
@@ -27,6 +28,7 @@ export interface CorrectableEntry {
 
 /** Yozuv bog'lanmaganmi (server `correct_linked` bermaydimi). Noma'lum bog'lanish — bog'langan deb olinadi. */
 export function isUnlinked(e: CorrectableEntry): boolean {
+  if (e.table === 'expenses') return true
   if (e.table === 'movements') {
     // Aniq null bo'lishi shart: maydon yuklanmagan (undefined) — bog'langan deb olinadi
     return (

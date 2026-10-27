@@ -4,7 +4,7 @@
 import { toRepoError } from './errors'
 import { getSupabase } from './supabaseClient'
 
-export type CorrectableTable = 'movements' | 'purchases'
+export type CorrectableTable = 'movements' | 'purchases' | 'expenses'
 
 export interface EntryCorrection {
   table: CorrectableTable
@@ -13,7 +13,7 @@ export interface EntryCorrection {
   qtyInput: string | null
   /** null — o'zgarmaydi. */
   unitId: string | null
-  /** Faqat xaridda: Dec satr, so'm; null — o'zgarmaydi. */
+  /** Xarid va xarajatda: Dec satr, so'm; null — o'zgarmaydi. */
   totalAmount?: string | null
   /** Tuzatish sababi (majburiy — UI tekshiradi). Audit va direktor xabariga boradi. */
   reason: string
@@ -37,10 +37,10 @@ export async function correctEntry(input: EntryCorrection): Promise<void> {
     p_id: input.id,
     p_qty_input: input.qtyInput,
     p_unit_id: input.unitId,
-    p_total_amount: input.table === 'purchases' ? (input.totalAmount ?? null) : null,
+    p_total_amount: input.table === 'movements' ? null : (input.totalAmount ?? null),
     p_reason: clip(input.reason),
     p_note: input.note == null ? null : clip(input.note),
-    p_material_id: input.materialId ?? null,
+    p_material_id: input.table === 'expenses' ? null : (input.materialId ?? null),
     p_object_id: input.objectId ?? null,
   })
   if (error) throw toRepoError(error)

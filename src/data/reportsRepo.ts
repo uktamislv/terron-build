@@ -28,6 +28,20 @@ export interface DashboardSummary {
   telegram_blocked_count: number
   /** Joriy foydalanuvchining o'zi botni bloklagan — Telegram xabarlari kelmaydi. */
   telegram_me_blocked: boolean
+  /** Xarajatlar (ombordan tashqari) — davrda soni va summasi. */
+  expense_count: number
+  expense_sum: Dec
+  /** Tur bo'yicha top 5 (summa kamayish tartibida). */
+  expense_by_category: ExpenseByCategory[]
+  /** Umumiy xarajat: xaridlar + xarajatlar. */
+  spend_total_sum: Dec
+}
+
+export interface ExpenseByCategory {
+  category_id: string | null
+  category_name: string | null
+  sum: Dec
+  count: number
 }
 
 export interface DailyRow {
@@ -39,15 +53,21 @@ export interface DailyRow {
   alerts_count: number
 }
 
-export type SpendGroup = 'material' | 'object' | 'buyer' | 'supplier'
-export const SPEND_GROUPS: readonly SpendGroup[] = ['material', 'object', 'buyer', 'supplier']
+export type SpendGroup = 'material' | 'object' | 'buyer' | 'supplier' | 'category'
+export const SPEND_GROUPS: readonly SpendGroup[] = ['material', 'object', 'category', 'buyer', 'supplier']
 
 export interface SpendRow {
-  /** Guruh kaliti (sotuvchisiz xarid — null). */
+  /** Guruh kaliti (sotuvchisiz xarid, obyektsiz xarajat — null). */
   key: string | null
   label: string | null
+  /** Material xaridlari. */
   purchases_sum: Dec
   purchases_count: number
+  /** Boshqa xarajatlar (`expenses`); `material` guruhida — doim 0. */
+  expenses_sum: Dec
+  expenses_count: number
+  /** purchases_sum + expenses_sum. */
+  total_sum: Dec
 }
 
 export interface NormOverviewRow {
@@ -61,6 +81,8 @@ export interface NormOverviewRow {
   consumed_qty_base: Dec
   /** Norma 0 bo'lsa — null. */
   usage_pct: Dec | null
+  /** Material "smetaga kirmaydi" — norma ogohlantirishi yo'q (sarf ko'rinadi). Eski javobda yo'q — false. */
+  outside_estimate?: boolean
 }
 
 export interface ReportRange {
@@ -82,8 +104,18 @@ const COUNT_KEYS = [
   'pending_requests_count',
   'objects_over_norm_count',
   'telegram_blocked_count',
+  'expense_count',
 ] as const
-const MONEY_KEYS = ['purchases_sum', 'cash_issued_sum', 'cash_returned_sum', 'cash_on_hand_total', 'cash_outstanding_sum', 'cash_owed_to_staff_sum'] as const
+const MONEY_KEYS = [
+  'purchases_sum',
+  'cash_issued_sum',
+  'cash_returned_sum',
+  'cash_on_hand_total',
+  'cash_outstanding_sum',
+  'cash_owed_to_staff_sum',
+  'expense_sum',
+  'spend_total_sum',
+] as const
 
 function int(v: unknown): number {
   const n = Number(v ?? 0)
@@ -108,7 +140,19 @@ export function normalizeSummary(raw: unknown): DashboardSummary {
   const out = {} as Record<string, number | Dec>
   for (const k of COUNT_KEYS) out[k] = int(o[k])
   for (const k of MONEY_KEYS) out[k] = dec(o[k])
-  return { ...(out as unknown as DashboardSummary), telegram_me_blocked: o.telegram_me_blocked === true }
+  const byCat = Array.isArray(o.expense_by_category) ? (o.expense_by_category as unknown[]) : []
+  return {
+    ...(out as unknown as DashboardSummary),
+    telegram_me_blocked: o.telegram_me_blocked === true,
+    expense_by_category: byCat
+      .filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+      .map((x) => ({
+        category_id: x.category_id ? String(x.category_id) : null,
+        category_name: x.category_name === null || x.category_name === undefined ? null : String(x.category_name),
+        sum: dec(x.sum),
+        count: int(x.count),
+      })),
+  }
 }
 
 /** Bosh sahifa kartochkalari. Noto'g'ri davr — `report_period_invalid`. */
@@ -140,6 +184,10 @@ export async function getSpendBreakdown(r: ReportRange, group: SpendGroup): Prom
     label: d.label === null || d.label === undefined ? null : String(d.label),
     purchases_sum: dec(d.purchases_sum),
     purchases_count: int(d.purchases_count),
+    expenses_sum: dec(d.expenses_sum),
+    expenses_count: int(d.expenses_count),
+    // Eski javobda total_sum yo'q — xaridlar summasi
+    total_sum: d.total_sum === null || d.total_sum === undefined || d.total_sum === '' ? dec(d.purchases_sum) : String(d.total_sum),
   }))
 }
 
@@ -157,6 +205,7 @@ export async function getNormOverview(objectId?: string | null): Promise<NormOve
     allowed_qty_base: dec(d.allowed_qty_base),
     consumed_qty_base: dec(d.consumed_qty_base),
     usage_pct: decOrNull(d.usage_pct),
+    outside_estimate: d.outside_estimate === true,
   }))
 }
 
@@ -166,8 +215,12 @@ export interface EstimateSpendRow {
   object_name: string | null
   /** Joriy smeta jami (`estimate_totals.total_sum`); joriy smeta yo'q — null. */
   estimate_sum: Dec | null
-  /** Tanlangan davrdagi xaridlar summasi (`spend_breakdown`, obyekt bo'yicha). */
+  /** Tanlangan davrdagi jami (`spend_breakdown` → obyekt, `total_sum`): material + boshqa xarajat. */
   spent_sum: Dec
+  /** Material xaridlari. */
+  material_sum?: Dec
+  /** Boshqa xarajatlar (oziq-ovqat, yoqilg'i …). */
+  expense_sum?: Dec
 }
 
 /**
@@ -197,11 +250,13 @@ export async function getEstimateVsSpend(r: ReportRange): Promise<EstimateSpendR
   const { data: objects, error: objError } = await sb.from('objects').select('id, name').in('id', [...ids])
   if (objError) throw toRepoError(objError)
   const names = new Map(((objects ?? []) as { id: string; name: string }[]).map((o) => [o.id, o.name]))
-  const spent = new Map(spend.filter((s) => s.key).map((s) => [s.key as string, s.purchases_sum]))
+  const spent = new Map(spend.filter((s) => s.key).map((s) => [s.key as string, s]))
   return [...ids].map((id) => ({
     object_id: id,
     object_name: names.get(id) ?? spend.find((s) => s.key === id)?.label ?? null,
     estimate_sum: totals.get(id) ?? null,
-    spent_sum: spent.get(id) ?? '0',
+    spent_sum: spent.get(id)?.total_sum ?? '0',
+    material_sum: spent.get(id)?.purchases_sum ?? '0',
+    expense_sum: spent.get(id)?.expenses_sum ?? '0',
   }))
 }

@@ -177,13 +177,15 @@ export interface RefIds {
   profiles: readonly string[]
   units: readonly string[]
   suppliers: readonly string[]
+  /** Xarajat turlari (expenses.category_id). */
+  categories: readonly string[]
 }
 
 export type RefKind = keyof RefIds
 export type RefNames = Record<RefKind, Record<string, string>>
 
 export function emptyRefNames(): RefNames {
-  return { objects: {}, materials: {}, profiles: {}, units: {}, suppliers: {} }
+  return { objects: {}, materials: {}, profiles: {}, units: {}, suppliers: {}, categories: {} }
 }
 
 const REF_SOURCES: Record<RefKind, { table: string; columns: string; label: (r: Record<string, unknown>) => string }> = {
@@ -198,6 +200,7 @@ const REF_SOURCES: Record<RefKind, { table: string; columns: string; label: (r: 
     label: (r) => unitLabel({ unit: String(r.unit ?? ''), variant: r.variant ? String(r.variant) : null }),
   },
   suppliers: { table: 'suppliers', columns: 'id, name', label: (r) => String(r.name ?? '') },
+  categories: { table: 'expense_categories', columns: 'id, name', label: (r) => String(r.name ?? '') },
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -210,7 +213,7 @@ export async function loadRefNames(ids: RefIds): Promise<RefNames> {
   const out = emptyRefNames()
   await Promise.all(
     (Object.keys(REF_SOURCES) as RefKind[]).map(async (kind) => {
-      const list = ids[kind].filter((id) => UUID_RE.test(id))
+      const list = (ids[kind] ?? []).filter((id) => UUID_RE.test(id))
       if (list.length === 0) return
       const src = REF_SOURCES[kind]
       const rows = await inChunks(list, async (chunk) => {
@@ -227,6 +230,7 @@ export async function loadRefNames(ids: RefIds): Promise<RefNames> {
 /** Hisobot davriga ta'sir qiladigan jadvallar va ularning yozuv sanasi ustuni. */
 export const RECORD_DATE_COLUMNS: Readonly<Record<string, string>> = {
   purchases: 'purchased_at',
+  expenses: 'spent_at',
   cash_advances: 'issued_at',
   movements: 'occurred_at',
 }

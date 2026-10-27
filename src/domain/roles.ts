@@ -171,6 +171,8 @@ export type Action =
   | 'manage_alerts'
   | 'restore_records'
   | 'manage_estimates'
+  | 'create_expense'
+  | 'manage_expense_categories'
 
 const ADMINS: readonly Role[] = ['super_admin', 'admin']
 
@@ -193,6 +195,8 @@ const ACTIONS: Record<Action, readonly Role[]> = {
   manage_alerts: ADMINS, // alerts update (Ko'rildi / Yopish)
   restore_records: ADMINS, // deleted_at -> null (restore_admin_only)
   manage_estimates: [...ADMINS, 'buxgalter'], // estimates, estimate_items: import va joriy qilish
+  create_expense: [...ADMINS, 'buxgalter', 'taminotchi', 'prorab', 'haydovchi'], // expenses insert (payer_id = o'zi)
+  manage_expense_categories: ADMINS, // expense_categories: admin
 }
 
 export function can(role: Role, action: Action): boolean {

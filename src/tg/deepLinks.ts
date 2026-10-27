@@ -15,6 +15,7 @@ export function readUuidParam(params: URLSearchParams, key: string): string | nu
  * - so'rov → admin: "So'rovlarni tasdiqlash" (shu so'rov varag'i); ta'minotchi: xarid ekrani (so'rov tanlangan);
  *   so'rov yuborgan (prorab): "Yozuvlar" → so'rov tafsiloti;
  * - xarid → o'z xaridi "Yozuvlar" da (boshqalar — bosh ekran);
+ * - xarajat → o'z xarajati "Yozuvlar" da (xarajat kirita olmaydiganlar — bosh ekran);
  * - o'tkazma → kirim/chiqim ekrani, kelgan o'tkazmani qabul qilish varag'i.
  * Mos kelmasa — null.
  */
@@ -29,6 +30,9 @@ export function deepLinkTarget(role: Role, params: URLSearchParams): string | nu
   // Xarid (masalan "sizning nomingizdan xarid") — o'z xaridi "Yozuvlar" da ochiladi; topilmasa — jim
   const purchase = readUuidParam(params, 'purchase')
   if (purchase) return can(role, 'create_purchase') ? `/tg/mine?purchase=${purchase}` : null
+  // Xarajat (masalan "sizning nomingizdan xarajat") — o'z xarajati "Yozuvlar" da; topilmasa — oddiy ro'yxat
+  const expense = readUuidParam(params, 'expense')
+  if (expense) return can(role, 'create_expense') ? `/tg/mine?expense=${expense}` : null
   const transfer = readUuidParam(params, 'transfer')
   if (transfer && can(role, 'create_movement')) return `/tg/movement?transfer=${transfer}`
   return null

@@ -72,6 +72,8 @@ const LABELS: Partial<Record<BusinessTable, string[]>> = {
   material_requests: ['mr_obj1', 'mr_obj2'],
   movements: ['mv_obj1', 'mv_obj2'],
   alerts: ['alert1', 'alert_site_norm', 'alert_site_req', 'alert_site_obj2'],
+  expense_categories: ['ec1'],
+  expenses: ['ex_hay_obj1', 'ex_tam_none', 'ex_pro_obj2'],
 }
 
 type VisRule = (role: UserRole) => string[]
@@ -121,6 +123,15 @@ const VISIBILITY: Partial<Record<BusinessTable, VisRule>> = {
   estimate_import_templates: () => all('estimate_import_templates'),
   material_requests: byRole('material_requests', { prorab: ['mr_obj1'], omborchi: [], haydovchi: [], tekshiruvchi: [] }),
   // To'liq ro'yxat — RELATION_SELECT_ALL.alerts; prorab / omborchi — faqat a'zo obyektdagi sayt turlari
+  // 20261111000001: xarajat turlari — firma a'zolari (tekshiruvchidan tashqari)
+  expense_categories: byRole('expense_categories', { tekshiruvchi: [] }),
+  // xarajatlar: admin, direktor, buxgalter, taminotchi — hammasi; boshqalar — o'zi to'lagan / kiritgan
+  expenses: byRole('expenses', {
+    prorab: ['ex_pro_obj2'],
+    haydovchi: ['ex_hay_obj1'],
+    omborchi: [],
+    tekshiruvchi: [],
+  }),
   alerts: (role) =>
     RELATION_SELECT_ALL.alerts.includes(role)
       ? all('alerts')
@@ -187,12 +198,33 @@ describe('ko`rish (SELECT) — yorliqli qatorlar', () => {
 // ----------------------------------------------------------------------------
 
 // Yagona matritsa (src/test/roleMatrix.ts) — src/domain/roles.test.ts (UI `can()`) ham shuni ishlatadi.
-const CAN_INSERT: Record<BusinessTable, readonly UserRole[]> = TABLE_INSERT
-const CAN_UPDATE: Record<BusinessTable, readonly UserRole[]> = TABLE_UPDATE
+//
+// 20261111000001_expenses: expense_categories / expenses — src/test/roleMatrix.ts ga (frontend) ko'chirilguncha
+// shu yerda. MATRIX_TABLES ularni o'z ichiga olsa — u ustun (TABLE_INSERT / TABLE_UPDATE dagi qiymatlar).
+const EXPENSE_TABLES = ['expense_categories', 'expenses'] as const
+type ExpenseTable = (typeof EXPENSE_TABLES)[number]
+const EXPENSE_INSERT: Record<ExpenseTable, readonly UserRole[]> = {
+  expense_categories: ADMINS,
+  // payer_id = o'zi; obj1 — prorab, haydovchi a'zo
+  expenses: [...ADMINS, 'buxgalter', 'taminotchi', 'prorab', 'haydovchi'],
+}
+const EXPENSE_UPDATE: Record<ExpenseTable, readonly UserRole[]> = {
+  expense_categories: ADMINS,
+  // muallif — faqat correct_entry / cancel_own_entry orqali
+  expenses: ADMINS,
+}
+const CAN_INSERT: Record<BusinessTable, readonly UserRole[]> = { ...EXPENSE_INSERT, ...TABLE_INSERT }
+const CAN_UPDATE: Record<BusinessTable, readonly UserRole[]> = { ...EXPENSE_UPDATE, ...TABLE_UPDATE }
 
 describe('yagona rol matritsasi — jadvallar va rollar ro`yxati', () => {
   it('MATRIX_TABLES === BUSINESS_TABLES, MATRIX_ROLES === ROLES', () => {
-    expect([...MATRIX_TABLES]).toEqual([...BUSINESS_TABLES])
+    const matrix: string[] = [...MATRIX_TABLES]
+    expect([...matrix, ...EXPENSE_TABLES.filter((t) => !matrix.includes(t))]).toEqual([...BUSINESS_TABLES])
+    // src matritsasiga ko'chirilganda qiymatlar bir xil bo'lsin
+    for (const t of EXPENSE_TABLES) {
+      expect(CAN_INSERT[t], t).toEqual(EXPENSE_INSERT[t])
+      expect(CAN_UPDATE[t], t).toEqual(EXPENSE_UPDATE[t])
+    }
     expect([...MATRIX_ROLES]).toEqual([...ROLES])
   })
 })

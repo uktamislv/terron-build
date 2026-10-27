@@ -165,6 +165,10 @@ export const SERVER_HINTS = {
   alert_close_note_locked: { showServerMessage: false },
   // check_purchase_price (54000) — narx tekshiruvi chegarasi
   rate_limited: { showServerMessage: false },
+  // Xarajatlar (20261111000001_expenses.sql)
+  expense_category_duplicate: { showServerMessage: false },
+  expense_category_inactive: { showServerMessage: false },
+  expense_payer_invalid: { showServerMessage: false },
 } as const satisfies Record<string, { showServerMessage: boolean }>
 
 export type ServerHintCode = keyof typeof SERVER_HINTS

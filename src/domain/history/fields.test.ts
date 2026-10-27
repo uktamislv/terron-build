@@ -47,7 +47,7 @@ function allowedKinds(sqlType: string): FieldKind[] {
   if (sqlType === 'jsonb') return ['json']
   if (sqlType.startsWith('public.')) return ['enum']
   if (sqlType === 'uuid') {
-    return ['text', 'ref_object', 'ref_material', 'ref_profile', 'ref_unit', 'ref_supplier', 'ref_purchase']
+    return ['text', 'ref_object', 'ref_material', 'ref_profile', 'ref_unit', 'ref_supplier', 'ref_purchase', 'ref_category']
   }
   if (sqlType === 'integer') return ['qty', 'text']
   if (sqlType === 'bigint') return ['text']
@@ -98,6 +98,8 @@ describe('migratsiyalar bilan xarita', () => {
       profile_id: 'ref_profile',
       recipient_id: 'ref_profile',
       buyer_id: 'ref_profile',
+      payer_id: 'ref_profile',
+      category_id: 'ref_category',
     }
     for (const c of cols) {
       const want = refs[c.column]
@@ -191,6 +193,7 @@ describe('HISTORY_TABLES', () => {
     expect(HISTORY_TABLES).not.toContain('notification_outbox')
     expect(HISTORY_TABLES).toContain('movements')
     expect(HISTORY_TABLES).toContain('estimate_import_templates')
-    expect(HISTORY_TABLES).toHaveLength(19)
+    expect(HISTORY_TABLES).toContain('expenses')
+    expect(HISTORY_TABLES).toHaveLength(21)
   })
 })

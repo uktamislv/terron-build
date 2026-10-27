@@ -1,6 +1,6 @@
 // Batch 11 — 20261107000001_handoff.sql: bug_reports (RLS, cheklov, holat — faqat admin,
 // created_by serverdan, audit, soft delete), notification_outbox kind 'bug_report' va
-// qabul qiluvchilar (firma admin(lar)i + barcha super_admin), skrinshot yo'li va
+// qabul qiluvchilar (faqat barcha faol super_admin — 20261111000001_expenses), skrinshot yo'li va
 // storage siyosatlari. Shartnoma: docs/handoff-design.md (1-bo'lim, payload).
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -442,7 +442,7 @@ describe('holatni o`zgartirish', () => {
 // Bildirishnoma
 // ============================================================================
 describe('notification_outbox: bug_report', () => {
-  it('payload (xabar 500 belgigacha kesiladi) va qabul qiluvchilar: firma admini + barcha super_admin', async () => {
+  it('payload (xabar 500 belgigacha kesiladi) va qabul qiluvchilar: faqat barcha super_admin (firma admini emas)', async () => {
     const long = `${'Ж'.repeat(499)}ab`
     const r = await as('prorab', async (tx) => {
       const id = await report(tx, A, { message: long, client: 'tg 8.0 · android', app_version: '0.11.0' })
@@ -505,13 +505,13 @@ describe('notification_outbox: bug_report', () => {
     })
     expect((main!.payload.message as string).length).toBe(500)
     expect(small!.payload).toMatchObject({ message: 'Qisqa', message_truncated: false, screen: null, client: null, app_version: null })
+    // 20261111000001_expenses: bug_report — faqat super_admin (tizim egasi), firma adminlari emas
     expect(r.rec).toEqual([
-      { chat_id: 5001, role: 'admin' },
       { chat_id: 5002, role: 'super_admin' },
       { chat_id: 5003, role: 'super_admin' },
     ])
-    expect(r.rec2).toEqual([{ chat_id: 5001 }, { chat_id: 5002 }])
-    expect(r.rec3).toEqual([{ chat_id: 5001 }, { chat_id: 5002 }])
+    expect(r.rec2).toEqual([{ chat_id: 5002 }])
+    expect(r.rec3).toEqual([{ chat_id: 5002 }])
     expect(r.recAlert).toEqual([
       { chat_id: 5001, role: 'admin' },
       { chat_id: 5005, role: 'direktor' },
@@ -623,7 +623,7 @@ describe('rasm yo`li', () => {
     }
     expect(out).toEqual({
       direktor: ['OK:1', '42501:'],
-      buxgalter: ['OK:1', '42501:'],
+      buxgalter: ['OK:1', 'OK:1'], // 20261111000001: xarajat cheki
       tekshiruvchi: ['OK:1', '42501:'],
       prorab: ['OK:1', 'OK:1'],
       haydovchi: ['OK:1', 'OK:1'],

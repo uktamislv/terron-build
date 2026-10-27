@@ -26,6 +26,7 @@ import {
   UserCheck,
   UserRoundPen,
   Merge,
+  WalletMinimal,
 } from 'lucide-react'
 import type { AlertType } from '@/data/types'
 
@@ -40,6 +41,8 @@ export function AlertTypeIcon({ type }: { type: AlertType }) {
       return <UserCheck {...p} />
     case 'narx_ogishi':
       return <TrendingUp {...p} />
+    case 'xarajat_limiti':
+      return <WalletMinimal {...p} />
     case 'normadan_oshish':
       return <Gauge {...p} />
     case 'inventarizatsiya_kamomadi':

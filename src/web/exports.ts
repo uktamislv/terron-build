@@ -5,6 +5,7 @@ import type {
   Alert,
   CashBalance,
   EstimateItem,
+  Expense,
   InventoryDetailRow,
   Material,
   MaterialRequest,
@@ -426,6 +427,40 @@ export function historySheet(rows: AuditEntry[], names: RefNames): ExportSheetSp
         actor: e.actor_name ?? (e.device === 'tizim' ? th.system : th.noActor),
         device: e.device ? th.devices[e.device] : '',
         changes: changesText(e.table_name, entryChanges(e), names),
+      }),
+    ),
+  }
+}
+
+/** Xarajatlar (ombordan tashqari): har xarajat — bitta qator; summa raqam katakchasi. */
+export function expensesSheet(rows: Expense[]): ExportSheetSpec {
+  const te = t.expenses
+  return {
+    sheetName: te.exportSheet,
+    columns: [
+      { header: te.colDate, key: 'spent_at', type: 'datetime' },
+      { header: te.colCategory, key: 'category', type: 'text' },
+      { header: te.colObject, key: 'object', type: 'text' },
+      { header: te.colAmount, key: 'amount', type: 'money' },
+      { header: te.colPayer, key: 'payer', type: 'text' },
+      { header: te.colPaymentSource, key: 'payment_source', type: 'text' },
+      { header: c.supplier, key: 'supplier', type: 'text' },
+      { header: te.colNote, key: 'note', type: 'text' },
+      { header: te.colReceipt, key: 'receipt', type: 'text' },
+      { header: c.deleted, key: 'deleted', type: 'text' },
+    ],
+    rows: rows.map(
+      (e): ExportRow => ({
+        spent_at: e.spent_at,
+        category: e.category_name,
+        object: e.object_name ?? te.general,
+        amount: e.amount,
+        payer: e.payer_name,
+        payment_source: t.purchases.paymentSources[e.payment_source],
+        supplier: e.supplier_name,
+        note: e.note,
+        receipt: yesNo(e.receipt_photo_path),
+        deleted: yesNo(e.deleted_at),
       }),
     ),
   }

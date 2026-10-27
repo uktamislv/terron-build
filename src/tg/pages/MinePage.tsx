@@ -14,6 +14,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   PencilLine,
+  Receipt,
   Trash2,
   Scale,
   ShoppingCart,
@@ -38,16 +39,16 @@ import {
   RetryNotice,
   sameQty,
   SkeletonRows,
-  TextAreaField,
 } from '@/components/ui'
 import { listMyBugReports, type BugReport, type BugReportStatus } from '@/data/bugReportsRepo'
 import { listMyAdvances } from '@/data/cashRepo'
 import { listCounts } from '@/data/inventoryRepo'
 import { listMyMovements } from '@/data/movementsRepo'
 import { listMyPurchases } from '@/data/purchasesRepo'
+import { listMyExpenses } from '@/data/expensesRepo'
 import { listMyRequests } from '@/data/requestsRepo'
 import { cancelTransfer, CANCEL_REASON_MAX, listMyTransfers } from '@/data/transfersRepo'
-import type { CashAdvance, InventoryCount, MaterialRequest, Movement, Purchase, Transfer } from '@/data/types'
+import type { CashAdvance, Expense, InventoryCount, MaterialRequest, Movement, Purchase, Transfer } from '@/data/types'
 import { cancelOwnEntry, CORRECTION_NOTE_MAX } from '@/data/correctionsRepo'
 import { remainingMinutes, selfCorrection, type CorrectableEntry } from '@/domain/corrections'
 import { simpleReceiptStatus, type SimpleReceiptStatus } from '@/domain/purchaseStatus'
@@ -67,6 +68,7 @@ import {
   mineSources,
   presentCategories,
   type Entry,
+  type ExpenseEntry,
   type MineCategory,
   type OtherEntry,
   type PlanEntry,
@@ -74,11 +76,17 @@ import {
 } from '../mine/mineEntries'
 import { TgCorrectionForm } from '../corrections/TgCorrectionForm'
 import { readUuidParam } from '../deepLinks'
+import { ExpenseDetail, ExpenseRow } from '../mine/ExpenseItems'
+import { ReasonForm } from '../mine/ReasonForm'
 
 const tm = t.tg.mine
 
 function isPlan(e: Entry): e is PlanEntry {
   return e.kind === 'request' || e.kind === 'transfer'
+}
+
+function isExpense(e: Entry): e is ExpenseEntry {
+  return e.kind === 'expense'
 }
 
 function isRecord(e: Entry): e is RecordEntry {
@@ -100,6 +108,7 @@ function typeMark(e: Entry): { kind: EntryKind; icon: ReactNode; label: string }
   if (e.kind === 'request') return { kind: 'neutral', icon: <ClipboardList className={ic} strokeWidth={1.75} />, label: tm.request }
   if (e.kind === 'transfer') return { kind: 'transfer', icon: <ArrowLeftRight className={ic} strokeWidth={1.75} />, label: tm.transfer }
   if (e.kind === 'purchase') return { kind: 'xarid', icon: <ShoppingCart className={ic} strokeWidth={1.75} />, label: tm.purchase }
+  if (e.kind === 'expense') return { kind: 'xarid', icon: <Receipt className={ic} strokeWidth={1.75} />, label: t.expenses.one }
   if (e.kind === 'count') return { kind: 'neutral', icon: <ClipboardCheck className={ic} strokeWidth={1.75} />, label: tm.count }
   if (e.kind === 'bug') return { kind: 'neutral', icon: <Bug className={ic} strokeWidth={1.75} />, label: tm.bug }
   if (e.kind === 'cash') {
@@ -201,7 +210,14 @@ export function MinePage() {
   const [params, setParams] = useSearchParams()
   const linkedRequest = readUuidParam(params, 'request')
   const linkedPurchase = readUuidParam(params, 'purchase')
-  const linkedKey = linkedRequest ? `r:${linkedRequest}` : linkedPurchase ? `p:${linkedPurchase}` : null
+  const linkedExpense = readUuidParam(params, 'expense')
+  const linkedKey = linkedRequest
+    ? `r:${linkedRequest}`
+    : linkedPurchase
+      ? `p:${linkedPurchase}`
+      : linkedExpense
+        ? `e:${linkedExpense}`
+        : null
   // Havola birinchi ochilishda eslab qolinadi; ro'yxatda topilmasa — jim (oddiy ro'yxat)
   const [pendingLink, setPendingLink] = useState(linkedKey)
   const profileId = profile?.id
@@ -229,13 +245,21 @@ export function MinePage() {
       src.cashRecipient ? optional(listMyAdvances(profileId, 'recipient'), [] as CashAdvance[]) : none<CashAdvance>(),
       src.cashCreator ? optional(listMyAdvances(profileId, 'creator'), [] as CashAdvance[]) : none<CashAdvance>(),
       optional(listMyBugReports(profileId), [] as BugReport[]),
+      src.expenses ? optional(listMyExpenses(profileId, limit), [] as Expense[]) : none<Expense>(),
     ])
-      .then(([movements, purchases, requests, transfers, counts, cashIn, cashOut, bugs]) => {
+      .then(([movements, purchases, requests, transfers, counts, cashIn, cashOut, bugs, expenses]) => {
         if (!alive) return
-        const all = mergeEntries(movements, purchases, requests, transfers, { counts, cash: [...cashIn, ...cashOut], bugs }, Number.MAX_SAFE_INTEGER)
+        const all = mergeEntries(
+          movements,
+          purchases,
+          requests,
+          transfers,
+          { counts, cash: [...cashIn, ...cashOut], bugs, expenses },
+          Number.MAX_SAFE_INTEGER,
+        )
         setRows(all.slice(0, limit))
         // Biror manba chegaraga yetdi yoki birlashgan ro'yxat uzunroq — yana bor
-        setHasMore(all.length > limit || [movements, purchases, requests, transfers ?? []].some((list) => list.length >= limit))
+        setHasMore(all.length > limit || [movements, purchases, requests, transfers ?? [], expenses].some((list) => list.length >= limit))
         setPartial(failed)
         setError(null)
       })
@@ -259,6 +283,7 @@ export function MinePage() {
     const next = new URLSearchParams(params)
     next.delete('request')
     next.delete('purchase')
+    next.delete('expense')
     setParams(next, { replace: true })
   }, [linkedKey, params, setParams])
   const shown = useMemo(() => (rows ? filterEntries(rows, category, from, to) : null), [rows, category, from, to])
@@ -287,6 +312,17 @@ export function MinePage() {
         myId={profile.id}
         nowIso={now}
         thresholdPct={settings.receiptMismatchPct}
+        onClose={close}
+        onCorrected={() => finished(t.correction.saved)}
+        onCancelled={() => finished(t.correction.cancelled)}
+      />
+    )
+  if (open && isExpense(open))
+    return (
+      <ExpenseDetail
+        row={open.row}
+        myId={profile.id}
+        nowIso={now}
         onClose={close}
         onCorrected={() => finished(t.correction.saved)}
         onCancelled={() => finished(t.correction.cancelled)}
@@ -352,6 +388,7 @@ export function MinePage() {
               setOpenKey(e.key)
             }
             if (isPlan(e)) return <PlanRow key={e.key} entry={e} onOpen={openRow} />
+            if (isExpense(e)) return <ExpenseRow key={e.key} row={e.row} myId={profile.id} nowIso={now} onOpen={openRow} />
             if (!isRecord(e)) return <OtherRow key={e.key} entry={e} onOpen={openRow} />
             const mark = typeMark(e)
             const r = e.row
@@ -703,78 +740,6 @@ function PlanDetail({
         </BottomSheet>
       )}
     </article>
-  )
-}
-
-/** Sabab majburiy bo'lgan tasdiq formasi (o'tkazmani yoki o'z yozuvini bekor qilish). */
-function ReasonForm({
-  text,
-  label,
-  requiredText,
-  confirm,
-  maxLength,
-  onCancel,
-  onSubmit,
-  onDone,
-}: {
-  text: string
-  label: string
-  requiredText: string
-  confirm: string
-  maxLength: number
-  onCancel: () => void
-  onSubmit: (reason: string) => Promise<void>
-  onDone: () => void
-}) {
-  const [reason, setReason] = useState('')
-  const [missing, setMissing] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const submit = async () => {
-    if (busy) return
-    if (!reason.trim()) {
-      setMissing(true)
-      haptic.error()
-      return
-    }
-    setBusy(true)
-    setError(null)
-    try {
-      await onSubmit(reason)
-      onDone()
-    } catch (err) {
-      haptic.error()
-      setError(errorText(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-sm text-muted">{text}</p>
-      <TextAreaField
-        label={label}
-        required
-        aria-required="true"
-        rows={2}
-        maxLength={maxLength}
-        value={reason}
-        error={missing ? requiredText : null}
-        onChange={(e) => {
-          setReason(e.target.value)
-          setMissing(false)
-        }}
-      />
-      {error && <Notice>{error}</Notice>}
-      <div className="flex flex-col-reverse gap-2">
-        <Button variant="secondary" size="lg" onClick={onCancel}>
-          {t.common.back}
-        </Button>
-        <Button variant="danger" size="lg" loading={busy} onClick={() => void submit()}>
-          {confirm}
-        </Button>
-      </div>
-    </div>
   )
 }
 

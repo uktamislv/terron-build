@@ -66,6 +66,13 @@ const todayRows: Movement[] = [
 ]
 
 const summary: DashboardSummary = {
+  expense_count: 3,
+  expense_sum: '1850000',
+  expense_by_category: [
+    { category_id: 'ec-1', category_name: 'Oziq-ovqat', sum: '1100000', count: 2 },
+    { category_id: 'ec-2', category_name: 'Yoqilg‘i', sum: '750000', count: 1 },
+  ],
+  spend_total_sum: '50100000',
   kirim_count: 14,
   chiqim_count: 9,
   purchases_count: 6,

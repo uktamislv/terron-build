@@ -164,7 +164,7 @@ describe('storage: photos bucket', () => {
       super_admin: 'OK:1',
       admin: 'OK:1',
       direktor: '42501:',
-      buxgalter: '42501:',
+      buxgalter: 'OK:1', // 20261111000001: xarajat chekini yuklaydi
       taminotchi: 'OK:1',
       prorab: 'OK:1',
       omborchi: 'OK:1',

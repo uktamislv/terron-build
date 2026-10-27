@@ -129,6 +129,7 @@ describe('materialsRepo yozish', () => {
       category: null,
       waste_pct: '1.5',
       photo_required: false,
+      outside_estimate: false,
     })
   })
 

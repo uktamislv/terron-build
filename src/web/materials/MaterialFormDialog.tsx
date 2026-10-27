@@ -39,6 +39,7 @@ export function MaterialFormDialog({
   const [category, setCategory] = useState(material?.category ?? '')
   const [waste, setWaste] = useState(material ? formatQty(material.waste_pct) : '')
   const [photoRequired, setPhotoRequired] = useState(Boolean(material?.photo_required))
+  const [outsideEstimate, setOutsideEstimate] = useState(Boolean(material?.outside_estimate))
   const [errors, setErrors] = useState<Errors>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -54,7 +55,7 @@ export function MaterialFormDialog({
     setSaveError(null)
     try {
       if (material) {
-        await updateMaterial(material.id, { name, baseUnit, category, wastePct, photoRequired })
+        await updateMaterial(material.id, { name, baseUnit, category, wastePct, photoRequired, outsideEstimate })
         onSaved(material.id)
       } else {
         const created = await createMaterial({ companyId, name, baseUnit, category, wastePct, photoRequired })
@@ -143,6 +144,18 @@ export function MaterialFormDialog({
           <span className="flex flex-col">
             <span className="text-sm font-medium text-ink">{t.materials.photoRequired}</span>
             <span className="text-xs text-muted">{t.materials.photoRequiredHint}</span>
+          </span>
+        </label>
+        <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line bg-paper px-3 py-2.5">
+          <Checkbox
+            checked={outsideEstimate}
+            onChange={(e) => setOutsideEstimate(e.target.checked)}
+            className="mt-0.5"
+            data-testid="material-outside-estimate"
+          />
+          <span className="flex flex-col">
+            <span className="text-sm font-medium text-ink">{t.materials.outsideEstimate}</span>
+            <span className="text-xs text-muted">{t.materials.outsideEstimateHint}</span>
           </span>
         </label>
         <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">

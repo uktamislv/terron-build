@@ -36,7 +36,9 @@ vi.mock('@/data/reportsRepo', async (orig) => {
     getDashboardDaily: vi.fn(async (r: { from: string }) => [
       { day: r.from, kirim_count: 5, chiqim_count: 1, purchases_sum: '1500000', alerts_count: 0 },
     ]),
-    getSpendBreakdown: vi.fn(async () => [{ key: 'm1', label: 'Sement', purchases_sum: '1500000', purchases_count: 2 }]),
+    getSpendBreakdown: vi.fn(async () => [
+      { key: 'm1', label: 'Sement', purchases_sum: '1500000', purchases_count: 2, expenses_sum: '0', expenses_count: 0, total_sum: '1500000' },
+    ]),
     getEstimateVsSpend: vi.fn(async () => []),
     getNormOverview: vi.fn(async () => []),
   }
@@ -186,7 +188,7 @@ describe('DashboardPage', () => {
 
   it('diagramma yiqilsa — faqat uning kartochkasida xabar', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    reports.getSpendBreakdown.mockResolvedValueOnce([{ key: 'm1', label: 'BOOM', purchases_sum: '10', purchases_count: 1 }])
+    reports.getSpendBreakdown.mockResolvedValueOnce([{ key: 'm1', label: 'BOOM', purchases_sum: '10', purchases_count: 1, expenses_sum: '0', expenses_count: 0, total_sum: '10' }])
     openAs('direktor')
     const spend = await screen.findByRole('region', { name: t.reports.charts.spend })
     expect(await within(spend).findByText(t.appError.chart)).toBeInTheDocument()

@@ -359,7 +359,7 @@ describe('Edge Function’lar', () => {
 describe('Audit 2 — repo qatlami', () => {
   it('N: tarix diff ismlari — profile_directory dan (direktor ham ko‘radi)', async () => {
     fake.people.push({ id: '11111111-2222-4333-8444-555555555555', full_name: 'Ali', role: 'prorab', is_active: true })
-    const names = await loadRefNames({ objects: [], materials: [], profiles: ['11111111-2222-4333-8444-555555555555'], units: [], suppliers: [] })
+    const names = await loadRefNames({ objects: [], materials: [], profiles: ['11111111-2222-4333-8444-555555555555'], units: [], suppliers: [], categories: [] })
     expect(fake.calls).toContainEqual(['from', 'profile_directory'])
     expect(fake.calls).not.toContainEqual(['from', 'profiles'])
     expect(names.profiles['11111111-2222-4333-8444-555555555555']).toBe('Ali')

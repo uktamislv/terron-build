@@ -1,6 +1,6 @@
 // Telegram ilovasi "Yozuvlar" — yozuv turlari, ro'yxatni birlashtirish va filtrlar (sof).
 import type { BugReport } from '@/data/bugReportsRepo'
-import type { CashAdvance, InventoryCount, MaterialRequest, Movement, Purchase, Transfer } from '@/data/types'
+import type { CashAdvance, Expense, InventoryCount, MaterialRequest, Movement, Purchase, Transfer } from '@/data/types'
 import { can, type Role } from '@/domain/roles'
 import { tashkentIsoDate } from '@/lib/format'
 
@@ -9,6 +9,7 @@ export const MINE_LIMIT = 50
 export type Entry =
   | { kind: 'movement'; key: string; at: string; row: Movement }
   | { kind: 'purchase'; key: string; at: string; row: Purchase }
+  | { kind: 'expense'; key: string; at: string; row: Expense }
   | { kind: 'request'; key: string; at: string; row: MaterialRequest }
   | { kind: 'transfer'; key: string; at: string; row: Transfer }
   | { kind: 'count'; key: string; at: string; row: InventoryCount }
@@ -18,11 +19,14 @@ export type Entry =
 export type PlanEntry = Extract<Entry, { kind: 'request' | 'transfer' }>
 export type RecordEntry = Extract<Entry, { kind: 'movement' | 'purchase' }>
 export type OtherEntry = Extract<Entry, { kind: 'count' | 'cash' | 'bug' }>
+export type ExpenseEntry = Extract<Entry, { kind: 'expense' }>
 
 export interface Sources {
   /** Kirim/chiqim — yozuv kirita oladiganlar (tekshiruvchi harakatlarni o'qiy olmaydi — RLS). */
   movements: boolean
   purchases: boolean
+  /** Xarajatlar (ombordan tashqari). */
+  expenses: boolean
   requests: boolean
   counts: boolean
   cashRecipient: boolean
@@ -34,6 +38,7 @@ export function mineSources(role: Role): Sources {
   return {
     movements: can(role, 'create_movement'),
     purchases: can(role, 'create_purchase'),
+    expenses: can(role, 'create_expense'),
     requests: can(role, 'create_request'),
     counts: can(role, 'run_inventory'),
     // Pul oluvchi — xarid kiritadiganlar; pul beruvchi — admin, buxgalter
@@ -52,7 +57,7 @@ export function mergeEntries(
   purchases: Purchase[],
   requests: MaterialRequest[] = [],
   transfers: Transfer[] | null = null,
-  extra: { counts?: InventoryCount[]; cash?: CashAdvance[]; bugs?: BugReport[] } = {},
+  extra: { counts?: InventoryCount[]; cash?: CashAdvance[]; bugs?: BugReport[]; expenses?: Expense[] } = {},
   limit = MINE_LIMIT,
 ): Entry[] {
   const shownMovements = transfers ? movements.filter((m) => m.type !== 'transfer_out') : movements
@@ -60,6 +65,7 @@ export function mergeEntries(
   const list: Entry[] = [
     ...shownMovements.map((row): Entry => ({ kind: 'movement', key: `m:${row.id}`, at: row.created_at, row })),
     ...purchases.map((row): Entry => ({ kind: 'purchase', key: `p:${row.id}`, at: row.created_at, row })),
+    ...(extra.expenses ?? []).map((row): Entry => ({ kind: 'expense', key: `e:${row.id}`, at: row.created_at, row })),
     ...requests.map((row): Entry => ({ kind: 'request', key: `r:${row.id}`, at: row.created_at, row })),
     ...(transfers ?? []).map((row): Entry => ({ kind: 'transfer', key: `t:${row.id}`, at: row.created_at, row })),
     ...(extra.counts ?? []).map((row): Entry => ({ kind: 'count', key: `c:${row.id}`, at: row.created_at, row })),
@@ -69,13 +75,13 @@ export function mergeEntries(
   return list.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, limit)
 }
 
-/** "Yozuvlar" filtri: Hammasi / Kirim-chiqim / Xarid / So'rov (va o'tkazma) / Pul / Boshqa (sanash, xabar). */
-export type MineCategory = 'all' | 'movement' | 'purchase' | 'request' | 'cash' | 'other'
+/** "Yozuvlar" filtri: Hammasi / Kirim-chiqim / Xarid / Xarajat / So'rov (va o'tkazma) / Pul / Boshqa (sanash, xabar). */
+export type MineCategory = 'all' | 'movement' | 'purchase' | 'expense' | 'request' | 'cash' | 'other'
 
-export const MINE_CATEGORIES: readonly MineCategory[] = ['all', 'movement', 'purchase', 'request', 'cash', 'other']
+export const MINE_CATEGORIES: readonly MineCategory[] = ['all', 'movement', 'purchase', 'expense', 'request', 'cash', 'other']
 
 export function categoryOf(e: Entry): Exclude<MineCategory, 'all'> {
-  if (e.kind === 'movement' || e.kind === 'purchase' || e.kind === 'cash') return e.kind
+  if (e.kind === 'movement' || e.kind === 'purchase' || e.kind === 'expense' || e.kind === 'cash') return e.kind
   if (e.kind === 'request' || e.kind === 'transfer') return 'request'
   return 'other'
 }

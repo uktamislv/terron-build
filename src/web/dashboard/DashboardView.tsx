@@ -13,13 +13,15 @@ import {
   HandCoins,
   LayoutDashboard,
   PackageOpen,
+  Receipt,
+  Sigma,
   ShoppingCart,
   TriangleAlert,
   Wallet,
 } from 'lucide-react'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { Badge, EmptyState, EntryRow, Notice, PageHeader, RetryNotice, SegmentedControl, SkeletonRows, SkeletonTiles, StatTile, cx } from '@/components/ui'
-import type { DailyRow, EstimateSpendRow, NormOverviewRow, SpendGroup, SpendRow } from '@/data/reportsRepo'
+import { Badge, EmptyState, EntryRow, Money, Notice, PageHeader, RetryNotice, SegmentedControl, SkeletonRows, SkeletonTiles, StatTile, cx } from '@/components/ui'
+import type { DailyRow, EstimateSpendRow, ExpenseByCategory, NormOverviewRow, SpendGroup, SpendRow } from '@/data/reportsRepo'
 import { SPEND_GROUPS } from '@/data/reportsRepo'
 import type { Alert } from '@/data/types'
 import { t } from '@/i18n'
@@ -28,7 +30,7 @@ import type { Loaded } from '@/lib/useLoad'
 import { alertDetailText } from '../alerts/alertDetails'
 import { SEVERITY_TONE } from '../alerts/alertTones'
 import type { CardKey, DashCard } from './cards'
-import { dailyChartRows, estimateSpendRows, normChartRows, spendChartRows, type CashPoint } from './chartData'
+import { dailyChartRows, estimateSpendRows, hasExpenseSegment, normChartRows, spendChartRows, type CashPoint } from './chartData'
 
 // Recharts faqat shu chunk'da
 const charts = () => import('./Charts')
@@ -39,6 +41,7 @@ const CashChart = lazy(() => charts().then((m) => ({ default: m.CashChart })))
 
 const tr = t.reports
 const tc = tr.charts
+const te = t.expenses
 
 /** Sahifa skeleti: sarlavha, davr paneli, kartochkalar, diagrammalar to'ri, ogohlantirishlar. */
 export function DashboardLayout({
@@ -50,6 +53,7 @@ export function DashboardLayout({
   daily,
   norm,
   spend,
+  expenses,
   cash,
   alerts,
 }: {
@@ -61,6 +65,8 @@ export function DashboardLayout({
   daily?: ReactNode
   norm?: ReactNode
   spend?: ReactNode
+  /** Xarajatlar turlar bo'yicha. */
+  expenses?: ReactNode
   cash?: ReactNode
   alerts?: ReactNode
 }) {
@@ -74,6 +80,7 @@ export function DashboardLayout({
         {daily}
         {norm}
         {spend}
+        {expenses}
         {cash}
       </div>
       {alerts}
@@ -86,6 +93,8 @@ const CARD_ICON: Record<CardKey, ReactNode> = {
   kirim: <ArrowDownLeft {...ic} />,
   chiqim: <ArrowUpRight {...ic} />,
   purchases: <ShoppingCart {...ic} />,
+  expenses: <Receipt {...ic} />,
+  spendTotal: <Sigma {...ic} />,
   cashIssued: <Wallet {...ic} />,
   cashOnHand: <HandCoins {...ic} />,
   alertsOpen: <TriangleAlert {...ic} />,
@@ -254,8 +263,14 @@ export function NormCard({
           </ChartSuspense>
           <SrTable
             caption={tc.norm}
-            head={[t.excel.cols.object, tc.estimateSum, tc.spentSum]}
-            rows={data.map((p) => [p.name, p.estimateText === null ? tc.noEstimate : formatSum(p.estimateText), formatSum(p.spentText)])}
+            head={[t.excel.cols.object, tc.estimateSum, te.segmentMaterial, te.segmentExpense, tc.spentSum]}
+            rows={data.map((p) => [
+              p.name,
+              p.estimateText === null ? tc.noEstimate : formatSum(p.estimateText),
+              formatSum(p.materialText),
+              formatSum(p.expenseText),
+              formatSum(p.spentText),
+            ])}
           />
         </>
       )}
@@ -279,7 +294,14 @@ export function NormCard({
               <tbody>
                 {qty.map((p) => (
                   <tr key={p.materialId} className="border-b border-line/60 last:border-0">
-                    <td className={cx('py-1.5 pr-3', p.over ? 'font-semibold text-danger' : 'text-ink')}>{p.name}</td>
+                    <td className={cx('py-1.5 pr-3', p.over ? 'font-semibold text-danger' : 'text-ink')}>
+                      {p.name}
+                      {p.outside && (
+                        <Badge tone="neutral" className="ml-2">
+                          {t.norms.outsideEstimate}
+                        </Badge>
+                      )}
+                    </td>
                     <td className="tabular py-1.5 pr-3 text-right">{formatQtyUnit(p.allowedText, p.unit)}</td>
                     <td className={cx('tabular py-1.5 text-right', p.over && 'font-semibold text-danger')}>{formatQtyUnit(p.consumedText, p.unit)}</td>
                   </tr>
@@ -303,7 +325,7 @@ export function SpendCard({ state, group, onGroup }: { state: Loaded<SpendRow[]>
           label={tc.spend}
           value={group}
           onChange={onGroup}
-          className="grid-cols-2! sm:grid-cols-4!"
+          className="grid-cols-2! sm:grid-cols-5!"
           options={SPEND_GROUPS.map((g) => ({ value: g, label: tc.spendGroups[g] }))}
         />
       }
@@ -315,8 +337,48 @@ export function SpendCard({ state, group, onGroup }: { state: Loaded<SpendRow[]>
           <ChartSuspense>
             <SpendChart data={data} />
           </ChartSuspense>
-          <SrTable caption={tc.spend} head={[tc.spendGroups[group], tc.dailySum]} rows={data.map((p) => [p.label, formatSum(p.valueText)])} />
+          <SrTable
+            caption={tc.spend}
+            head={hasExpenseSegment(data) ? [tc.spendGroups[group], te.segmentMaterial, te.segmentExpense, te.spendTotalCard] : [tc.spendGroups[group], tc.dailySum]}
+            rows={data.map((p) =>
+              hasExpenseSegment(data) ? [p.label, formatSum(p.materialText), formatSum(p.expenseText), formatSum(p.valueText)] : [p.label, formatSum(p.valueText)],
+            )}
+          />
         </>
+      )}
+    </ChartCard>
+  )
+}
+
+/** Xarajatlar turlar bo'yicha (dashboard_summary.expense_by_category, top 5): nom, summa, soni, ulush chizig'i. */
+export function ExpenseCategoryCard({ state }: { state: Loaded<ExpenseByCategory[]> }) {
+  const rows = state.data ?? []
+  const max = rows.reduce((m, r) => Math.max(m, Number(r.sum) || 0), 0)
+  return (
+    <ChartCard title={te.byCategoryTitle}>
+      <p className="-mt-2 text-xs text-muted">{te.byCategoryHint}</p>
+      <LoadStatus state={state} />
+      {state.data && rows.length === 0 && <NoData />}
+      {rows.length > 0 && (
+        <ul className="flex flex-col gap-3" aria-label={te.byCategoryTitle} data-testid="expense-by-category">
+          {rows.map((r) => {
+            const pct = max > 0 ? Math.round(((Number(r.sum) || 0) / max) * 100) : 0
+            return (
+              <li key={r.category_id ?? r.category_name ?? ''} className="flex flex-col gap-1">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 truncate text-sm font-medium text-ink">{r.category_name ?? te.noCategoryName}</span>
+                  <span className="flex shrink-0 items-baseline gap-2">
+                    <span className="tabular text-xs text-muted">{tr.countUnit(formatQty(String(r.count)))}</span>
+                    <Money value={r.sum} size="sm" />
+                  </span>
+                </div>
+                <span aria-hidden className="h-1.5 overflow-hidden rounded-full bg-ice">
+                  <span className="block h-full rounded-full bg-transfer" style={{ width: `${pct}%` }} />
+                </span>
+              </li>
+            )
+          })}
+        </ul>
       )}
     </ChartCard>
   )

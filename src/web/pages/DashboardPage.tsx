@@ -28,7 +28,7 @@ import { tashkentIsoDate } from '@/lib/format'
 import { useLoad, type Loaded } from '@/lib/useLoad'
 import { buildCards, dashboardSections, summaryExportRows, type DashCard } from '../dashboard/cards'
 import { cashChartRows, dailyChartRows } from '../dashboard/chartData'
-import { CashCard, DailyCard, DashboardLayout, NormCard, RecentAlertsCard, SpendCard, SummaryCards } from '../dashboard/DashboardView'
+import { CashCard, DailyCard, DashboardLayout, ExpenseCategoryCard, NormCard, RecentAlertsCard, SpendCard, SummaryCards } from '../dashboard/DashboardView'
 import { PeriodBar } from '../dashboard/PeriodBar'
 import { dashboardSearch, isoToUz, readDashboardQuery, type DashboardQuery } from '../dashboard/query'
 import { ExportButton } from '../ExportButton'
@@ -166,6 +166,7 @@ function Dashboard({
       daily={showDaily && <DailyCard state={daily} from={query.from} to={query.to} />}
       norm={sections.has('norm') && <NormSection objectId={query.objectId} range={range} rangeKey={rangeKey} />}
       spend={sections.has('purchases') && <SpendSection range={range} rangeKey={rangeKey} />}
+      expenses={sections.has('purchases') && <ExpenseCategoryCard state={{ ...summary, error: null, data: summary.data ? summary.data.expense_by_category : null }} />}
       cash={sections.has('cash') && <CashSection />}
       alerts={can(role, 'view_alerts') && <RecentAlerts objectId={query.objectId} />}
     />

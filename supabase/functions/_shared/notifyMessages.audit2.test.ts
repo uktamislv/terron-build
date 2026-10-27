@@ -203,6 +203,8 @@ describe('workflowOpenUrl (deep link)', () => {
     ['purchase_for_object', { purchase_id: UUID }, `${base}?purchase=${UUID}`],
     ['purchase_deleted', { purchase_id: UUID }, `${base}?purchase=${UUID}`],
     ['purchase_on_your_name', { purchase_id: UUID }, `${base}?purchase=${UUID}`],
+    ['expense_on_your_name', { expense_id: UUID }, `${base}?expense=${UUID}`],
+    ['expense_on_your_name', { expense_id: 'x' }, base],
     ['login_changed', { alert_id: UUID }, base],
     ['inventory_applied', { count_id: UUID }, base],
     ['alerts_digest', {}, base],

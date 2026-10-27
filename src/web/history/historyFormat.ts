@@ -27,6 +27,8 @@ export const RESTORABLE_TABLES: readonly string[] = [
   'estimates',
   'estimate_items',
   'estimate_import_templates',
+  'expense_categories',
+  'expenses',
 ]
 
 export function isRestorable(table: string): boolean {
@@ -64,6 +66,8 @@ const ENUMS: Record<string, Record<string, string>> = {
   'alerts.type': t.alertTexts.types,
   'alerts.status': t.alertTexts.statuses,
   'alerts.severity': t.alertTexts.severities,
+  'purchases.payment_source': t.purchases.paymentSources,
+  'expenses.payment_source': t.purchases.paymentSources,
 }
 
 export function enumLabel(table: string, field: string, value: string): string {
@@ -76,6 +80,7 @@ const REF_KIND: Partial<Record<FieldKind, RefKind>> = {
   ref_profile: 'profiles',
   ref_unit: 'units',
   ref_supplier: 'suppliers',
+  ref_category: 'categories',
 }
 
 export function refKindOf(kind: FieldKind): RefKind | null {
@@ -143,6 +148,7 @@ export function collectRefIds(items: readonly { table: string; changes: readonly
     profiles: new Set(),
     units: new Set(),
     suppliers: new Set(),
+    categories: new Set(),
   }
   for (const { table, changes } of items)
     for (const c of changes) {
@@ -156,6 +162,7 @@ export function collectRefIds(items: readonly { table: string; changes: readonly
     profiles: [...sets.profiles],
     units: [...sets.units],
     suppliers: [...sets.suppliers],
+    categories: [...sets.categories],
   }
 }
 

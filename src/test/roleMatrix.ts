@@ -45,6 +45,9 @@ export const MATRIX_TABLES = [
   'material_requests',
   'movements',
   'alerts',
+  // 20261111000001_expenses
+  'expense_categories',
+  'expenses',
 ] as const
 export type MatrixTable = (typeof MATRIX_TABLES)[number]
 
@@ -69,6 +72,8 @@ export const ACTION_ROLES: Record<Action, readonly Role[]> = {
   manage_alerts: ADMINS,
   restore_records: ADMINS,
   manage_estimates: [...ADMINS, 'buxgalter'],
+  create_expense: [...ADMINS, 'buxgalter', 'taminotchi', 'prorab', 'haydovchi'],
+  manage_expense_categories: ADMINS,
 }
 
 /**
@@ -98,6 +103,9 @@ export const TABLE_INSERT: Record<MatrixTable, readonly Role[]> = {
   material_requests: [...ADMINS, 'prorab'],
   transfers: [],
   alerts: [],
+  expense_categories: ADMINS,
+  // payer_id = o'zi; obj1 — prorab, haydovchi a'zo
+  expenses: [...ADMINS, 'buxgalter', 'taminotchi', 'prorab', 'haydovchi'],
 }
 
 /** Jadvaldagi namunaviy qatorni to'g'ridan-to'g'ri UPDATE (RLS + ustun grantlari). */
@@ -124,6 +132,9 @@ export const TABLE_UPDATE: Record<MatrixTable, readonly Role[]> = {
   // o'tkazma faqat RPC (receive_transfer / cancel_transfer) orqali o'zgaradi
   transfers: [],
   alerts: ADMINS,
+  expense_categories: ADMINS,
+  // muallif — faqat correct_entry / cancel_own_entry orqali
+  expenses: ADMINS,
 }
 
 /**
@@ -177,6 +188,8 @@ export const ACTION_SOURCE: Record<Action, ActionSource> = {
   manage_alerts: { kind: 'update', table: 'alerts' },
   restore_records: { kind: 'guarded', probe: 'restore_record' },
   manage_estimates: { kind: 'update', table: 'estimates' },
+  create_expense: { kind: 'insert', table: 'expenses' },
+  manage_expense_categories: { kind: 'insert', table: 'expense_categories' },
 }
 
 /** RPC / trigger ichidagi rol tekshiruvi — role_matrix.sql.test.ts haqiqiy chaqiruv bilan tekshiradi. */

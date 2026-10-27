@@ -41,6 +41,8 @@ function target(table: string): string {
     estimates: ids.est_obj2,
     estimate_items: ids.ei_obj2,
     estimate_import_templates: ids.tpl1,
+    expense_categories: ids.ec1,
+    expenses: ids.ex_tam_none,
   }
   const id = map[table]
   if (!id) throw new Error(`restore_roundtrip: ${table} uchun fixture qatori yo'q — target() ga qo'shing`)
@@ -80,6 +82,8 @@ describe('restore_record — oq ro`yxatdagi har jadval', () => {
     'estimates',
     'estimate_items',
     'estimate_import_templates',
+    'expense_categories',
+    'expenses',
   ])('%s: o`chirish → tiklash → ko`rinadi → audit RESTORE', async (t) => {
     expect(tables, `${t} history_tables() da yo'q`).toContain(t)
     const id = target(t)
@@ -139,6 +143,8 @@ describe('restore_record — oq ro`yxatdagi har jadval', () => {
         'estimates',
         'estimate_items',
         'estimate_import_templates',
+        'expense_categories',
+        'expenses',
       ].sort(),
     )
   })

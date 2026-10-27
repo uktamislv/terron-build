@@ -32,6 +32,8 @@ export type CardKey =
   | 'kirim'
   | 'chiqim'
   | 'purchases'
+  | 'expenses'
+  | 'spendTotal'
   | 'cashIssued'
   | 'cashOnHand'
   | 'alertsOpen'
@@ -119,6 +121,29 @@ export function buildCards(s: DashboardSummary, role: Role, r: CardRange): DashC
       tone: 'default',
       to: link('purchases', `/purchases${qs(period)}`),
     })
+    // Xarajatlar (ombordan tashqari) va umumiy xarajat (material + boshqa)
+    cards.push(
+      {
+        key: 'expenses',
+        current: false,
+        companyWide: false,
+        label: t.expenses.card,
+        value: formatSum(s.expense_sum),
+        sub: count(s.expense_count),
+        tone: 'default',
+        to: link('purchases', `/purchases${qs({ tab: 'expenses', ...period })}`),
+      },
+      {
+        key: 'spendTotal',
+        current: false,
+        companyWide: false,
+        label: t.expenses.spendTotalCard,
+        value: formatSum(s.spend_total_sum),
+        sub: t.expenses.spendTotalSub,
+        tone: 'default',
+        to: null,
+      },
+    )
   }
   if (sections.has('cash')) {
     cards.push(
@@ -234,6 +259,9 @@ export function summaryExportRows(s: DashboardSummary, role: Role): { indicator:
     rows.push(
       { indicator: t.reports.exportRows.purchasesSum, value: s.purchases_sum },
       { indicator: t.reports.exportRows.purchasesCount, value: n(s.purchases_count) },
+      { indicator: t.expenses.exportExpensesSum, value: s.expense_sum },
+      { indicator: t.expenses.exportExpensesCount, value: n(s.expense_count) },
+      { indicator: t.expenses.exportSpendTotal, value: s.spend_total_sum },
     )
   }
   if (sections.has('cash')) {

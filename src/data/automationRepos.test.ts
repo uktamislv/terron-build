@@ -256,7 +256,7 @@ describe('cashRepo — qaytarish', () => {
       ],
       error: null,
     })
-    fake.results.push({ data: [], error: null })
+    fake.results.push({ data: [], error: null }, { data: [], error: null })
     const h = await listCashHistory()
     expect(h.map((e) => e.kind)).toEqual(['returned', 'issued'])
     expect(emptyBalance('c', 'p').returned_total).toBe('0')

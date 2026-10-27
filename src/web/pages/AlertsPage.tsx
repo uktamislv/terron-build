@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router'
-import { Building2, Check, Package, ShieldCheck, TriangleAlert, X } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router'
+import { Building2, Check, ChevronRight, Package, ShieldCheck, TriangleAlert, X } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { Badge, Button, EmptyState, EntryRow, FilterBar, Modal, Notice, PageHeader, Pager, RetryNotice, Spinner, TextAreaField } from '@/components/ui'
 import {
@@ -31,7 +31,7 @@ import { formatDateTime } from '@/lib/format'
 import { ExportButton } from '../ExportButton'
 import { alertsSheet } from '../exports'
 import { paramId, paramOneOf } from '../urlFilters'
-import { alertDetailText, autoCloseReason, isAutoClosed } from '../alerts/alertDetails'
+import { alertDetailText, autoCloseReason, expenseAlertHref, isAutoClosed } from '../alerts/alertDetails'
 import { SEVERITY_ENTRY_KIND, SEVERITY_TONE, STATUS_TONE } from '../alerts/alertTones'
 import { AlertTypeIcon } from '../alerts/AlertTypeIcon'
 
@@ -207,6 +207,16 @@ export function AlertsView({
                       <span>
                         {tp.closeNoteLabel}: {a.close_note}
                       </span>
+                    )}
+                    {expenseAlertHref(a) && (
+                      <Link
+                        to={expenseAlertHref(a) ?? '/purchases'}
+                        data-testid="alert-expense-link"
+                        className="inline-flex min-h-11 items-center gap-1 self-start rounded-lg font-semibold text-brand hover:underline"
+                      >
+                        {a.type === 'xarajat_limiti' ? t.expenses.openCategoryMonth : t.expenses.openExpense}
+                        <ChevronRight aria-hidden className="size-4" strokeWidth={1.75} />
+                      </Link>
                     )}
                   </>
                 }

@@ -2,13 +2,16 @@
 import { ExternalLink, MapPin } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Money } from '@/components/ui'
-import type { Purchase } from '@/data/types'
+import type { GeoColumns, Purchase } from '@/data/types'
+
+/** Xarid va xarajat uchun umumiy chek QR maydonlari. */
+export type ReceiptQrFields = Pick<Purchase, 'receipt_fiscal_sign' | 'receipt_terminal_id' | 'receipt_no' | 'receipt_total' | 'seller_tin' | 'receipt_verified'>
 import { t } from '@/i18n'
 import { formatQty } from '@/lib/format'
 
 const tp = t.purchases
 
-export function PurchaseQr({ p }: { p: Purchase }) {
+export function PurchaseQr({ p }: { p: ReceiptQrFields }) {
   const item = (label: string, value: ReactNode) => (
     <>
       <dt className="text-muted">{label}</dt>
@@ -28,7 +31,7 @@ export function PurchaseQr({ p }: { p: Purchase }) {
 }
 
 /** Joylashuv: holat, koordinata va aniqlik, xaritada ochish havolasi (xarid do'konda — alert yo'q). */
-export function PurchaseGeo({ p }: { p: Purchase }) {
+export function PurchaseGeo({ p }: { p: GeoColumns }) {
   if (!p.geo_status) return <p className="text-sm text-muted">{tp.geoNone}</p>
   const ok = p.geo_status === 'ok' && p.geo_lat && p.geo_lng
   return (

@@ -19,6 +19,7 @@ Siz obyektga kelgan va ishlatilgan materialni yozasiz, xarid kiritasiz va kerakl
 1. “Xarid” da “Qo‘limda” — qo‘lingizdagi pul; bosing — “Pul tarixi”.
 2. Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing.
 3. Material, miqdor, “Jami summa (chekdagi)” va obyektni kiriting, “Saqlash”.
+4. Ovqat, yoqilg‘i, transport kabi xarajat: “Xarid” tepasida “Xarajat” → tur tugmasi → summa → “Saqlash”. Obyektga tegishli bo‘lmasa — “Umumiy”. Chek rasmi odatda ixtiyoriy.
 
 ### So‘rov, o‘tkazma, qoldiq
 
@@ -46,4 +47,4 @@ Siz obyektga kelgan va ishlatilgan materialni yozasiz, xarid kiritasiz va kerakl
 
 ## Savol bo‘lsa
 
-“Yozuvlar” da kirim-chiqim, xarid, so‘rov, o‘tkazma, pul va xabarlaringiz; turi va sanasi bo‘yicha filtrlang. “Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+“Yozuvlar” da kirim-chiqim, xarid, so‘rov, o‘tkazma, pul va xabarlaringiz; turi va sanasi bo‘yicha filtrlang. “Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar tizim egasiga boradi.

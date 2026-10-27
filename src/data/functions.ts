@@ -33,7 +33,7 @@ export interface PhotoHashResult {
   duplicate?: boolean
 }
 
-export type PhotoHashTable = 'movements' | 'purchases'
+export type PhotoHashTable = 'movements' | 'purchases' | 'expenses'
 
 /**
  * Saqlangan yozuv rasmi xeshini serverda hisoblatish (`photo-hash`: Storage'dan o'qiydi va

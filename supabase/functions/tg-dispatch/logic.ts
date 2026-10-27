@@ -12,6 +12,8 @@
 
 import { timingSafeEqual } from '../_shared/telegramAuth.ts'
 import {
+  formatExpenseOnYourName,
+  type ExpenseOnYourNamePayload,
   formatAlertsDigest,
   formatInventoryApplied,
   formatPurchaseDeleted,
@@ -270,6 +272,8 @@ export function buildMessage(row: OutboxRow): string {
       return formatInventoryApplied(row.payload as unknown as InventoryAppliedPayload)
     case 'alerts_digest':
       return formatAlertsDigest(row.payload as unknown as AlertsDigestPayload)
+    case 'expense_on_your_name':
+      return formatExpenseOnYourName(row.payload as unknown as ExpenseOnYourNamePayload)
     default:
       throw new Error(`noma'lum kind: ${String(row.kind).slice(0, 40)}`)
   }
@@ -312,6 +316,8 @@ export const WORKFLOW_KINDS: readonly string[] = [
   'purchase_on_your_name',
   'inventory_applied',
   'alerts_digest',
+  // xarajatlar (20261111) — Ochish: ?expense=<expense_id> (uuid bo'lsa), aks holda Mini App
+  'expense_on_your_name',
 ]
 
 /** Faqat admin / super_admin "Ko'rildi" bosa oladi (`svc_mark_alert_seen`). */

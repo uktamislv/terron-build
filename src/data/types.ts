@@ -120,6 +120,8 @@ export interface Material {
   is_active: boolean
   /** Batch 12 (E): kirim/xaridda rasm majburiy. */
   photo_required?: boolean
+  /** Smetaga kirmaydi: norma va "smetadan ortiq so'rov" qoidalari ishlamaydi (docs/expenses-design.md, 6). */
+  outside_estimate?: boolean
   created_by: string | null
   created_at: string
   updated_at: string
@@ -248,6 +250,8 @@ export type AlertType =
   // Audit 2 (20261109000001_audit2_fixes.sql)
   | 'xarid_boshqa_nomidan'
   | 'sotuvchi_birlashtirildi'
+  // Xarajatlar (20261111000001_expenses.sql)
+  | 'xarajat_limiti'
 
 export const ALERT_TYPES: readonly AlertType[] = [
   'xarid_qabul_farqi',
@@ -277,6 +281,7 @@ export const ALERT_TYPES: readonly AlertType[] = [
   'sotuvchi_stir_farqi',
   'xarid_boshqa_nomidan',
   'sotuvchi_birlashtirildi',
+  'xarajat_limiti',
 ]
 
 export type AlertStatus = 'yangi' | 'korildi' | 'yopildi'
@@ -607,4 +612,54 @@ export interface InventoryDetailRow {
   /** counted − expected (ishorali). */
   diff: Dec | null
   shortage_value: Dec | null
+}
+
+/** `expense_categories` — xarajat turi (oziq-ovqat, yoqilg'i …). Firma bo'yicha; qo'shish/o'zgartirish — admin. */
+export interface ExpenseCategory {
+  id: string
+  company_id: string
+  name: string
+  /** Oylik limit (so'm, `numeric(18,2)` satr); null — limitsiz. */
+  monthly_limit: Dec | null
+  photo_required: boolean
+  is_active: boolean
+  sort_order: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+/**
+ * `expenses` — ombordan tashqari xarajat. Qoldiqqa ta'sir qilmaydi; `payment_source = 'podotchet'` bo'lsa
+ * to'lovchining qo'lidagi puldan ayiriladi. `object_id` null — "Umumiy (obyektsiz)".
+ */
+export interface Expense extends GeoColumns {
+  id: string
+  company_id: string
+  category_id: string
+  object_id: string | null
+  amount: Dec
+  spent_at: string
+  payer_id: string
+  payment_source: PaymentSource
+  supplier_id: string | null
+  note: string | null
+  receipt_photo_path: string | null
+  receipt_photo_sha256: string | null
+  receipt_fiscal_sign: string | null
+  receipt_terminal_id: string | null
+  receipt_no: string | null
+  receipt_verified: boolean
+  receipt_total: Dec | null
+  seller_tin: string | null
+  created_by: string | null
+  created_at: string
+  deleted_at: string | null
+  category_name: string | null
+  object_name: string | null
+  supplier_name: string | null
+  payer_name: string | null
+  /** Ochiq alert turlari — faqat ko'ra oladiganlar uchun. */
+  alert_types: AlertType[]
 }

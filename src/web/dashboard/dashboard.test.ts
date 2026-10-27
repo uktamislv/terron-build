@@ -78,6 +78,8 @@ describe('kartochkalar', () => {
       'kirim',
       'chiqim',
       'purchases',
+      'expenses',
+      'spendTotal',
       'cashIssued',
       'cashOnHand',
       'alertsOpen',
@@ -109,7 +111,7 @@ describe('kartochkalar', () => {
 
   it('omborchi — faqat kirim/chiqim va o‘tkazmalar; taminotchi — xaridlar va so‘rovlar; tekshiruvchi — hech narsa', () => {
     expect(buildCards(summary, 'omborchi', range).map((c) => c.key)).toEqual(['kirim', 'chiqim', 'pendingTransfers'])
-    expect(buildCards(summary, 'taminotchi', range).map((c) => c.key)).toEqual(['purchases', 'unreceived', 'pendingRequests'])
+    expect(buildCards(summary, 'taminotchi', range).map((c) => c.key)).toEqual(['purchases', 'expenses', 'spendTotal', 'unreceived', 'pendingRequests'])
     expect(buildCards(summary, 'tekshiruvchi', range)).toEqual([])
     expect(dashboardSections('tekshiruvchi').size).toBe(0)
     expect(makeProfile('prorab').role).toBe('prorab')
@@ -161,14 +163,17 @@ describe('diagramma qatorlari', () => {
       label: `L${i}`,
       purchases_sum: String((10 - i) * 1000),
       purchases_count: 1,
+      expenses_sum: '0',
+      expenses_count: 0,
+      total_sum: String((10 - i) * 1000),
     }))
     const data = spendChartRows(rows)
     expect(data).toHaveLength(9)
     expect(data[8]).toMatchObject({ label: t.reports.charts.other, valueText: '3000', count: 2, other: true })
     const named = spendChartRows(
       [
-        { key: null, label: null, purchases_sum: '5', purchases_count: 1 },
-        { key: 'x', label: null, purchases_sum: '3', purchases_count: 1 },
+        { key: null, label: null, purchases_sum: '5', purchases_count: 1, expenses_sum: '0', expenses_count: 0, total_sum: '5' },
+        { key: 'x', label: null, purchases_sum: '3', purchases_count: 1, expenses_sum: '0', expenses_count: 0, total_sum: '3' },
       ],
       8,
       'supplier',

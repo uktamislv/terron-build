@@ -33,4 +33,4 @@ Siz obyektdagi materialni sanaysiz (inventarizatsiya). Hisobdagi qoldiq sizga ko
 
 ## Savol bo‘lsa
 
-“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.
+“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring. Savol bo‘lsa — adminga. Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar tizim egasiga boradi.

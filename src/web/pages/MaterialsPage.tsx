@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { Camera, Layers, Package, Percent, Plus, Ruler, SearchX, Store } from 'lucide-react'
+import { Camera, FileMinus, Layers, Package, Percent, Plus, Ruler, SearchX, Store } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { Badge, Button, EmptyState, FilterBar, PageHeader, RetryNotice, SegmentedControl, SkeletonRows, Tabs } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
@@ -193,6 +193,11 @@ export function MaterialsPage() {
                       {m.photo_required && (
                         <Badge tone="info" icon={<Camera aria-hidden className="size-3.5" strokeWidth={2} />}>
                           {tm.photoRequired}
+                        </Badge>
+                      )}
+                      {m.outside_estimate && (
+                        <Badge tone="neutral" icon={<FileMinus aria-hidden className="size-3.5" strokeWidth={2} />}>
+                          {tm.outsideEstimate}
                         </Badge>
                       )}
                       <Badge tone={m.is_active ? 'ok' : 'warn'}>{m.is_active ? tm.active : tm.inactive}</Badge>

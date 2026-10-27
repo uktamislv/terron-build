@@ -29,7 +29,10 @@ export const guideHeadings = {
 } as const
 
 const BUG_REPORT =
-  'Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar adminga boradi.'
+  'Ilovada xato ko‘rsangiz, “Xatolik haqida xabar berish” tugmasini bosing: nima bo‘lganini yozing, xohlasangiz skrinshot qo‘shing. Xabar tizim egasiga boradi.'
+
+const EXPENSE_TG =
+  'Ovqat, yoqilg‘i, transport kabi xarajat: “Xarid” tepasida “Xarajat” → tur tugmasi → summa → “Saqlash”. Obyektga tegishli bo‘lmasa — “Umumiy”. Chek rasmi odatda ixtiyoriy.'
 
 /** Ish xabarlari (so'rov, o'tkazma, xarid) — har kim o'zi yoqadi yoki o'chiradi. */
 const WORK_MESSAGES_TG = '“Ish xabarlari” (so‘rov, o‘tkazma, xarid) — “Yozuvlar” tepasida yoqing yoki o‘chiring.'
@@ -55,6 +58,8 @@ const admin: RoleGuide = {
         '“Foydalanuvchilar” → “Foydalanuvchi qo‘shish”: ism, telefon, rol va obyektlar. Odam Telegram ilovasini ochib, raqamini ulashadi. Veb kerak bo‘lsa — “Veb login berish”.',
         '“Materiallar” da birliklar va muqobil nomlarni, “Sotuvchilar” da takror yozilgan sotuvchilarni tekshiring (“Birlashtirish”).',
         '“Sozlamalar”: chegaralar va “Tinch soatlar” — bu vaqtda Telegram xabarlari kutib turadi.',
+        '“Sozlamalar” → “Xarajat turlari”: tur qo‘shing, oylik limit (so‘m, ixtiyoriy) va “Rasm majburiy” ni belgilang, tartibini o‘zgartiring; keraksizini “Nofaol qilish”.',
+        'Smetada bo‘lmaydigan materialga (mix, asbob) “Smetaga kirmaydi” belgisini qo‘ying — normadan oshish ogohlantirishi chiqmaydi.',
       ],
     },
     {
@@ -103,6 +108,11 @@ const admin: RoleGuide = {
       meaning: 'Berilgan pul uzoq vaqt hisobot qilinmagan.',
       whatToDo: 'Odamdan cheklarni yoki qolgan pulni so‘rang.',
     },
+    {
+      name: 'Xarajat limiti oshdi',
+      meaning: 'Shu oy xarajat turi bo‘yicha sarf oylik limitdan oshdi.',
+      whatToDo: '“Xarajatlar” ni ko‘ring; kerak bo‘lsa limitni o‘zgartiring.',
+    },
   ],
   help:
     'Ogohlantirish Telegram’da ham keladi: “Ko‘rildi” tugmasini u yerda ham bosish mumkin. ' +
@@ -142,6 +152,7 @@ export const guides: Record<Role, RoleGuide> = {
           '“Bosh sahifa”: davr va obyektni tanlang. “Smeta va haqiqiy” — obyekt bo‘yicha smeta jami va xaridlar (so‘m).',
           '“Ogohlantirishlar” — barcha farqlar ro‘yxati.',
           '“Podotchet” — kimning qo‘lida qancha pul bor.',
+          '“Xaridlar” → “Xarajatlar” — ovqat, yoqilg‘i kabi boshqa xarajatlar; “Bosh sahifa” da tur bo‘yicha taqsimot.',
           '“Tarix” — kim, qachon, nimani o‘zgartirgan yoki o‘chirgan (oldin va keyin).',
         ],
       },
@@ -161,6 +172,11 @@ export const guides: Record<Role, RoleGuide> = {
         name: 'Normadan oshish',
         meaning: 'Obyektda smeta normasidan ko‘p material ishlatilgan.',
         whatToDo: 'Prorab bilan gaplashing.',
+      },
+      {
+        name: 'Xarajat limiti oshdi',
+        meaning: 'Xarajat turi bo‘yicha shu oydagi sarf limitdan oshdi.',
+        whatToDo: 'Ogohlantirishdagi “Shu oy xarajatlari” ni oching.',
       },
       {
         name: 'Yozuv o‘zgartirildi',
@@ -204,6 +220,13 @@ export const guides: Record<Role, RoleGuide> = {
           'Odam ortiqcha pulni qaytarsa — “Qaytarish”, “Kimdan” ni tanlang.',
           'Izoh xato bo‘lsa — yozuvni ochib “Izohni tahrirlash”.',
           '“Qo‘ldagi pul” jadvalida har kimning berilgan, sarflangan va qo‘lidagi puli ko‘rinadi.',
+        ],
+      },
+      {
+        title: 'Xarajat kiritish',
+        steps: [
+          '“Xaridlar” → “Xarajatlar” → “Xarajat qo‘shish”: tur, summa, obyekt yoki “Umumiy”, sana; kerak bo‘lsa “Pul manbai”.',
+          'Xato xarajatni 30 daqiqa ichida “Tuzatish” yoki “Bekor qilish (o‘chirish)”.',
         ],
       },
       {
@@ -265,6 +288,7 @@ export const guides: Record<Role, RoleGuide> = {
           'Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing: summa va sotuvchi o‘zi to‘ldiriladi.',
           'Material, miqdor, “Jami summa (chekdagi)”, obyekt va sotuvchini tanlang. Kechagi xarid — “Kecha”.',
           '“Saqlash” ni bosing.',
+          EXPENSE_TG,
         ],
       },
       {
@@ -272,6 +296,7 @@ export const guides: Record<Role, RoleGuide> = {
         steps: [
           '“Xaridlar” → “Xarid qo‘shish” — xuddi shu ma’lumotlar, oxirgi obyekt eslab qolinadi.',
           '“So‘rovlar” da tasdiqlanganlarni ko‘ring. So‘rov bo‘yicha kiritilgan xarid so‘rovni o‘zi yopadi.',
+          'Boshqa xarajat: “Xaridlar” → “Xarajatlar” → “Xarajat qo‘shish”.',
           'Xato xaridni 30 daqiqa ichida “Tuzatish” (sabab bilan).',
         ],
       },
@@ -332,6 +357,7 @@ export const guides: Record<Role, RoleGuide> = {
           '“Xarid” da “Qo‘limda” — qo‘lingizdagi pul; bosing — “Pul tarixi”.',
           'Chekda QR bo‘lsa, “Chekni skanerlash” ni bosing.',
           'Material, miqdor, “Jami summa (chekdagi)” va obyektni kiriting, “Saqlash”.',
+          EXPENSE_TG,
         ],
       },
       {
@@ -460,6 +486,10 @@ export const guides: Record<Role, RoleGuide> = {
           'Material, miqdor, “Jami summa (chekdagi)” va obyektni tanlang. Kechagi xarid — “Kecha”.',
           '“Saqlash” ni bosing. “Qo‘limda” yangi summani ko‘rsatadi.',
         ],
+      },
+      {
+        title: 'Yoqilg‘i, ovqat va boshqa xarajat',
+        steps: [EXPENSE_TG, 'Xarajat ham qo‘lingizdagi puldan ayriladi va “Pul tarixi” da ko‘rinadi.'],
       },
       {
         title: 'Tekshirish',

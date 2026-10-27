@@ -25,6 +25,13 @@ function loaded<T>(data: T): Loaded<T> {
 }
 
 const summary: DashboardSummary = {
+  expense_count: 3,
+  expense_sum: '1850000',
+  expense_by_category: [
+    { category_id: 'ec-1', category_name: 'Oziq-ovqat', sum: '1100000', count: 2 },
+    { category_id: 'ec-2', category_name: 'Yoqilg‘i', sum: '750000', count: 1 },
+  ],
+  spend_total_sum: '88100000',
   kirim_count: 48,
   chiqim_count: 36,
   purchases_count: 14,
@@ -82,11 +89,11 @@ const norms: NormOverviewRow[] = [
 ]
 
 const spend: SpendRow[] = [
-  { key: 'm-1', label: 'Sement M400', purchases_sum: '28400000', purchases_count: 5 },
-  { key: 'm-5', label: 'Armatura Ø12', purchases_sum: '24100000', purchases_count: 3 },
-  { key: 'm-2', label: 'G‘isht (pishiq)', purchases_sum: '16800000', purchases_count: 2 },
-  { key: 'm-6', label: 'Beton B25', purchases_sum: '11250000', purchases_count: 2 },
-  { key: 'm-3', label: 'Qum', purchases_sum: '5900000', purchases_count: 2 },
+  { key: 'm-1', label: 'Sement M400', purchases_sum: '28400000', purchases_count: 5, expenses_sum: '0', expenses_count: 0, total_sum: '28400000' },
+  { key: 'm-5', label: 'Armatura Ø12', purchases_sum: '24100000', purchases_count: 3, expenses_sum: '0', expenses_count: 0, total_sum: '24100000' },
+  { key: 'm-2', label: 'G‘isht (pishiq)', purchases_sum: '16800000', purchases_count: 2, expenses_sum: '0', expenses_count: 0, total_sum: '16800000' },
+  { key: 'm-6', label: 'Beton B25', purchases_sum: '11250000', purchases_count: 2, expenses_sum: '0', expenses_count: 0, total_sum: '11250000' },
+  { key: 'm-3', label: 'Qum', purchases_sum: '5900000', purchases_count: 2, expenses_sum: '0', expenses_count: 0, total_sum: '5900000' },
 ]
 
 const cash: CashPoint[] = [

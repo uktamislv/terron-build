@@ -5,9 +5,9 @@ Maqsad: tizimni quruvchiga sinovga berishga tayyorlash.
 ## 1. Xatolik haqida xabar berish
 
 - Jadval `public.bug_reports`: `id, company_id, created_by, message text (1..2000), screen text (≤200, masalan "/tg/movement"), client text (≤500 — platforma, Telegram versiyasi, user agent qisqa), app_version text (≤50), photo_path text (ixtiyoriy, Storage `photos` bucket qoidalari bilan), status text check in ('yangi','korildi','hal_qilindi') default 'yangi'` + standart ustunlar. RLS: har bir faol foydalanuvchi o'z firmasiga **insert** qiladi (`created_by` = o'zi); o'qish — o'zi yozganlarini + admin/super_admin firmaning hammasini; status o'zgartirish — admin. Soft delete, audit.
-- Insert trigger → `notification_outbox` kind `bug_report` (payload: report id, kim, rol, ekran, xabar (≤500 kesilgan), client). Qabul qiluvchilar — `svc_outbox_recipients`: firma admin(lar)i va super_admin.
+- Insert trigger → `notification_outbox` kind `bug_report` (payload: report id, kim, rol, ekran, xabar (≤500 kesilgan), client). Qabul qiluvchilar — `svc_outbox_recipients`: **faqat super_admin** (tizim egasi; `20261111000001_expenses.sql` dan — firma adminlari emas). Firma admini xabarlarni veb paneldagi ro'yxatda ko'radi (RLS o'zgarmagan).
 - Cheklov: bir foydalanuvchi 10 daqiqada ≤ 5 ta xabar (`23514 bug_report_rate_limited`).
-- Mini App: har ekranda (TgLayout sarlavhasida yoki "Mening yozuvlarim" yonida) kichik "Xatolik haqida xabar berish" tugmasi → BottomSheet: matn (majburiy), ixtiyoriy rasm (skrinshot), joriy ekran avtomatik. Yuborilgach: "Rahmat, xabaringiz adminga yuborildi".
+- Mini App: har ekranda (TgLayout sarlavhasida yoki "Mening yozuvlarim" yonida) kichik "Xatolik haqida xabar berish" tugmasi → BottomSheet: matn (majburiy), ixtiyoriy rasm (skrinshot), joriy ekran avtomatik. Yuborilgach: "Rahmat, xabaringiz yuborildi" (Telegram xabari faqat tizim egasiga — super_admin).
 - Veb: yon menyuda (foydalanuvchi bloki) ham shu tugma; admin uchun "Xatolik xabarlari" ro'yxati (Sozlamalar ichida yoki alohida sahifa) — holatni o'zgartirish.
 
 ### Baza (`supabase/migrations/20261107000001_handoff.sql`)
@@ -32,7 +32,7 @@ Maqsad: tizimni quruvchiga sinovga berishga tayyorlash.
   "created_at": "<timestamptz>" }
 ```
 
-Qabul qiluvchilar — `public.svc_outbox_recipients(p_outbox_id)` (Batch 12 RPC, create or replace): xabar firmasining faol `admin` lari **va** barcha faol `super_admin` lar (qaysi firmada bo'lishidan qat'i nazar; ularning firmasi ham faol bo'lishi shart), `telegram_chat_id` bor, bitta chat — bir marta. Rasmning o'zi Telegram'ga yuborilmaydi (`has_photo` — faqat belgi; ko'rish — veb paneldagi ro'yxatda, signed URL).
+Qabul qiluvchilar — `public.svc_outbox_recipients(p_outbox_id)` (Batch 12 RPC, create or replace): **faqat** barcha faol `super_admin` lar (qaysi firmada bo'lishidan qat'i nazar; ularning firmasi ham faol bo'lishi shart; `20261111000001_expenses.sql` dan firma `admin` lari qabul qiluvchi emas), bloklanmagan (`telegram_blocked_at is null`), `telegram_chat_id` bor, bitta chat — bir marta. Rasmning o'zi Telegram'ga yuborilmaydi (`has_photo` — faqat belgi; ko'rish — veb paneldagi ro'yxatda, signed URL).
 
 ## 2. Qo'llanma (har rol uchun 1 sahifa)
 

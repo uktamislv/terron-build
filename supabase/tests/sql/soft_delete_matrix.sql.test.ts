@@ -49,13 +49,16 @@ const DELETED_VIEWERS: Record<BusinessTable, UserRole[]> = {
   material_requests: [...DEFAULT_DELETED, 'taminotchi'],
   movements: DEFAULT_DELETED,
   alerts: DEFAULT_DELETED,
+  // 20261111000001_expenses
+  expense_categories: DEFAULT_DELETED,
+  expenses: DEFAULT_DELETED,
 }
 
 /**
  * "Mening yozuvlarim": muallif o'zi kiritgan o'chirilgan harakat / xaridni ko'radi
- * (movements_select_own_deleted, purchases_select_own_deleted; tekshiruvchidan tashqari).
+ * (movements_select_own_deleted, purchases_select_own_deleted, expenses_select_own_deleted; tekshiruvchidan tashqari).
  */
-const OWN_DELETED_TABLES: readonly BusinessTable[] = ['movements', 'purchases']
+const OWN_DELETED_TABLES: readonly BusinessTable[] = ['movements', 'purchases', 'expenses']
 
 /** Jadval bo'yicha o'chiriladigan fixture qatorlari (A firma). */
 function targets(t: BusinessTable): Record<string, string> {
@@ -100,6 +103,10 @@ function targets(t: BusinessTable): Record<string, string> {
       return pick('mv_obj1', 'mv_obj2')
     case 'alerts':
       return pick('alert1')
+    case 'expense_categories':
+      return pick('ec1')
+    case 'expenses':
+      return pick('ex_hay_obj1', 'ex_tam_none', 'ex_pro_obj2')
   }
 }
 
