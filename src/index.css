@@ -125,17 +125,24 @@
 
 /* Navy fon (yon menyu) uchun ingichka och aylantirish chizig'i */
 @utility scrollbar-dark {
-  scrollbar-color: rgb(255 255 255 / 0.22) transparent;
+  @media (pointer: fine) {
+    scrollbar-color: rgb(255 255 255 / 0.22) transparent;
+  }
 }
 
 @layer base {
   :root {
     color-scheme: light;
   }
-  /* Ingichka, strelkasiz aylantirish chizig'i: shaffof yo'lak, yumaloq kulrang tutqich */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-line-hover) transparent;
+  /*
+   * Ingichka, strelkasiz aylantirish chizig'i: shaffof yo'lak, yumaloq kulrang tutqich.
+   * Faqat sichqonchali qurilmalarda — telefonda (iOS) bu sozlama o'ng tomonda joy egallab qoladi.
+   */
+  @media (pointer: fine) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-line-hover) transparent;
+    }
   }
   html,
   body,

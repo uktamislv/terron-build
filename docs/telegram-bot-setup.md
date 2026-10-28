@@ -2,7 +2,7 @@
 
 Bu yo'riqnoma bir marta bajariladi. Oldin Cloudflare'ga deploy qilingan bo'lishi kerak (Mini App faqat HTTPS manzildan ochiladi) — `docs/deploy-cloudflare.md` ga qarang.
 
-Quyida `https://terron-build.SUBDOMEN.workers.dev` o'rniga o'zingizning manzilingizni qo'ying (deploy oxirida chiqadi).
+Mini App manzili: `https://terron-build.terron-build.workers.dev/tg`.
 
 ## 1. Bot yaratish
 
@@ -30,7 +30,7 @@ BotFather'da `/mybots` → botingizni tanlang → **Edit Bot**:
 **A. Menyu tugmasi (asosiy usul)**
 
 1. `/mybots` → bot → **Bot Settings** → **Menu Button** → **Configure menu button**.
-2. URL: `https://terron-build.SUBDOMEN.workers.dev/tg`
+2. URL: `https://terron-build.terron-build.workers.dev/tg`
 3. Tugma matni: `Ochish`.
 
 Endi botdagi chap pastki tugma Mini App'ni ochadi.
@@ -38,7 +38,7 @@ Endi botdagi chap pastki tugma Mini App'ni ochadi.
 **B. Asosiy Mini App (profil va havola uchun)**
 
 1. `/mybots` → bot → **Bot Settings** → **Configure Mini App** → **Enable Mini App**.
-2. URL: `https://terron-build.SUBDOMEN.workers.dev/tg`
+2. URL: `https://terron-build.terron-build.workers.dev/tg`
 3. Shundan keyin `https://t.me/terron_build_bot?startapp` havolasi to'g'ridan-to'g'ri Mini App'ni ochadi (kunlik hisobotdagi tugma uchun kerak bo'ladi).
 
 ## 4. `.env` ga qo'shish
@@ -55,7 +55,7 @@ GitHub'da ham: **Settings → Secrets and variables → Actions → Variables** 
 
 1. Telefonda botni oching → **Ochish** tugmasi.
 2. Mini App ochiladi, bosh ekranda **"Telegram ichida ochilgan"** yashil belgisi ko'rinadi.
-3. Brauzerda `https://terron-build.SUBDOMEN.workers.dev/tg` ochsangiz — sariq **"Brauzerda ochilgan"** belgisi chiqadi. Bu to'g'ri.
+3. Brauzerda `https://terron-build.terron-build.workers.dev/tg` ochsangiz — sariq **"Brauzerda ochilgan"** belgisi chiqadi. Bu to'g'ri.
 
 Kirish (telefon raqami orqali bog'lash, `tg-auth`) Batch 2 da qo'shiladi.
 

@@ -1,13 +1,7 @@
-import { createContext, useContext, useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { colors } from '@/components/ui/tokens'
 import { t } from '@/i18n'
 import { getWebApp } from './telegram'
-
-/**
- * Mini App "qobig'i" holati: MainButton ko'rinib turganda pastki menyu yashiriladi (Telegram tugmasi
- * ekran pastini egallaydi, ikkita pastki panel bir-birini to'sib qo'ymasin). Provider — TgLayout.
- */
-export const TgChromeContext = createContext<{ /** true — yana bitta MainButton ko'rindi, false — yashirildi (hisoblagich). */ setMainButtonVisible: (visible: boolean) => void } | null>(null)
 
 // ---- BackButton va ochiq varaqlar (BottomSheet) ----
 // Telegram BackButton'ga bitta dispetcher ulanadi. Ochiq varaq bo'lsa — faqat eng yuqori varaq yopiladi
@@ -116,49 +110,56 @@ function subscribeSaved(cb: () => void): () => void {
  * `progress` — jarayon belgisi (spinner) va tugma bosilmaydi.
  */
 export function useMainButton(text: string, onClick: (() => void) | null, disabled = false, progress = false): void {
-  const chrome = useContext(TgChromeContext)
   const flashing = useSyncExternalStore(subscribeSaved, () => savedFlash, () => false)
-  // Varaq ochiq — MainButton yashirin (varaq yopilganda effekt qayta ishlaydi va tugma qaytadi)
+  // Varaq ochiq — MainButton yashirin (varaq yopilganda tugma qaytadi)
   const sheetOpen = useSheetOpen()
+  const visible = !sheetOpen && (flashing || onClick !== null)
 
+  // Sahifa har harf kiritilganda yangi onClick beradi — tugma qayta ulanmasin va miltillamasin:
+  // Telegram'ga bitta doimiy ishlovchi ulanadi, u eng oxirgi onClick'ni chaqiradi.
+  const clickRef = useRef(onClick)
+  useEffect(() => {
+    clickRef.current = onClick
+  }, [onClick])
+
+  // Matn / holat — tugma ko'rinib turgan joyda yangilanadi, yashirilmaydi
   useEffect(() => {
     const main = getWebApp()?.MainButton
-    if (!main) return
-    if (sheetOpen) {
-      main.hide()
-      return
-    }
+    if (!main || !visible) return
     if (flashing) {
       main.hideProgress()
       main.setText(t.ui.saved)
       main.setParams?.({ color: colors.ok, text_color: colors.paper })
       main.disable()
-      main.show()
-      chrome?.setMainButtonVisible(true)
       return () => {
         main.setParams?.({ color: colors.brand, text_color: colors.paper })
-        main.hide()
-        chrome?.setMainButtonVisible(false)
       }
     }
-    if (!onClick) {
-      main.hide()
-      return
-    }
-    main.setText(text).onClick(onClick)
+    main.setText(text)
     if (disabled || progress) main.disable()
     else main.enable()
     if (progress) main.showProgress(false)
     else main.hideProgress()
+  }, [visible, flashing, text, disabled, progress])
+
+  // Ko'rsatish / yashirish — faqat ko'rinish haqiqatan o'zgarganda
+  useEffect(() => {
+    const main = getWebApp()?.MainButton
+    if (!main) return
+    if (!visible) {
+      main.hide()
+      return
+    }
+    // "Saqlandi" paytida tugma disable — Telegram bosishni yubormaydi
+    const handler = () => clickRef.current?.()
+    main.onClick(handler)
     main.show()
-    chrome?.setMainButtonVisible(true)
     return () => {
-      main.offClick(onClick)
+      main.offClick(handler)
       main.hideProgress()
       main.hide()
-      chrome?.setMainButtonVisible(false)
     }
-  }, [text, onClick, disabled, progress, flashing, chrome, sheetOpen])
+  }, [visible])
 }
 
 /**

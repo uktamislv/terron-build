@@ -13,7 +13,7 @@ Cloudflare faqat frontendni beradi (veb panel va Mini App). Baza, kirish va rasm
    ```bash
    npm run deploy
    ```
-   Oxirida manzil chiqadi: `https://terron-build.SUBDOMEN.workers.dev`. Shu manzil Mini App uchun ham ishlatiladi.
+   Oxirida manzil chiqadi: `https://terron-build.terron-build.workers.dev`. Shu manzil Mini App uchun ham ishlatiladi.
 
 Lokal `npm run deploy` build paytida `.env` faylidagi `VITE_` qiymatlarini oladi.
 

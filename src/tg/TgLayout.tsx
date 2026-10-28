@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router'
 import { Bug, CircleHelp } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
@@ -11,7 +11,7 @@ import { tgBottomNavForRole, tgNavForRole } from './nav'
 import { deepLinkTarget } from './deepLinks'
 import { tgNavIcons } from './navIcons'
 import { haptic, initTelegram } from './telegram'
-import { registerSheet, TgChromeContext } from './useTelegramButtons'
+import { registerSheet } from './useTelegramButtons'
 
 /** Mini App sarlavhasidagi sahifa nomi (yo'l bo'yicha). Bosh ekranda — salomlashish sahifa ichida. */
 function pageTitle(pathname: string): string | null {
@@ -45,9 +45,14 @@ function isTextEntry(el: EventTarget | null): boolean {
   return !['checkbox', 'radio', 'file', 'button', 'submit', 'reset', 'range', 'color', 'hidden'].includes(el.type)
 }
 
-/** Klaviatura ochiq (matn maydoni fokusda) — pastki menyu yashiriladi. */
+/**
+ * Klaviatura ochiq — pastki menyu yashiriladi. iOS'da klaviatura yopilgach ham maydon fokusda
+ * qolib ketadi, shuning uchun fokusning o'zi yetmaydi: ko'rinadigan oyna (visualViewport)
+ * haqiqatan qisqargan bo'lishi kerak. visualViewport yo'q joyda — faqat fokus.
+ */
 function useTextEntryFocused(): boolean {
   const [focused, setFocused] = useState(false)
+  const [keyboard, setKeyboard] = useState(true)
   useEffect(() => {
     const onIn = (e: FocusEvent) => setFocused(isTextEntry(e.target))
     const onOut = (e: FocusEvent) => {
@@ -55,12 +60,25 @@ function useTextEntryFocused(): boolean {
     }
     document.addEventListener('focusin', onIn)
     document.addEventListener('focusout', onOut)
+    const vv = window.visualViewport
+    let maxHeight = vv?.height ?? 0
+    const onResize = () => {
+      if (!vv) return
+      maxHeight = Math.max(maxHeight, vv.height)
+      // Klaviatura odatda ekranning 1/4 qismidan ko'pini egallaydi
+      setKeyboard(vv.height < maxHeight * 0.8)
+    }
+    if (vv) {
+      onResize()
+      vv.addEventListener('resize', onResize)
+    }
     return () => {
       document.removeEventListener('focusin', onIn)
       document.removeEventListener('focusout', onOut)
+      vv?.removeEventListener('resize', onResize)
     }
   }, [])
-  return focused
+  return focused && keyboard
 }
 
 export function TgLayout({ children }: { children?: ReactNode } = {}) {
@@ -70,15 +88,12 @@ export function TgLayout({ children }: { children?: ReactNode } = {}) {
   const { pathname } = useLocation()
   const [bugOpen, setBugOpen] = useState(false)
   const closeBug = useCallback(() => setBugOpen(false), [])
-  const [mainButtons, setMainButtons] = useState(0)
-  const chrome = useMemo(
-    () => ({ setMainButtonVisible: (visible: boolean) => setMainButtons((n) => Math.max(0, n + (visible ? 1 : -1))) }),
-    [],
-  )
   const typing = useTextEntryFocused()
-  // Telegram MainButton ko'rinib turganda yoki klaviatura ochiq bo'lsa — pastki menyu yashiriladi
+  // Klaviatura ochiq bo'lsa — pastki menyu yashiriladi. MainButton ko'rinib turganda menyu qoladi
+  // (Telegram oynani tugma balandligiga qisqartiradi, menyu tugma ustida turadi) — aks holda
+  // forma to'ldirilgan paytda boshqa bo'limga o'tib bo'lmay qolardi.
   // Rolda bitta band bo'lsa — menyu kerak emas (bitta tugmali menyu joy egallaydi, xolos)
-  const navHidden = mainButtons > 0 || typing || nav.length <= 1
+  const navHidden = typing || nav.length <= 1
   const title = pageTitle(pathname)
 
   useEffect(() => {
@@ -86,7 +101,6 @@ export function TgLayout({ children }: { children?: ReactNode } = {}) {
   }, [])
 
   return (
-    <TgChromeContext.Provider value={chrome}>
       <SheetChromeContext.Provider value={registerSheet}>
       <div className="min-h-app mx-auto flex max-w-md flex-col bg-canvas [--header-h:3.5rem]">
         {profile && (
@@ -173,7 +187,6 @@ export function TgLayout({ children }: { children?: ReactNode } = {}) {
         )}
       </div>
       </SheetChromeContext.Provider>
-    </TgChromeContext.Provider>
   )
 }
 
