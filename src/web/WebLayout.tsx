@@ -71,7 +71,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
         </div>
         <nav
           aria-label={t.app.name}
-          className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2 lg:overflow-visible lg:px-3 xl:overflow-y-auto"
+          className="scrollbar-dark flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-2 lg:overflow-visible lg:px-3 xl:overflow-y-auto"
         >
           {nav.map((item) => (
             <NavLink
