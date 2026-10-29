@@ -49,6 +49,12 @@ export interface TgAuthDeps extends AuthAdminDeps {
   /** initData takroriy ishlatilishidan himoya (index.ts — izolyat bo'yicha bitta nusxa). */
   replayGuard?: InitDataReplayGuard
   /**
+   * Audit 3 (E9): izolyatlararo umumiy himoya (DB: `svc_use_init_data`). `true` — ishlatish mumkin
+   * (yangi yoki grace ichida takror), `false` — qayta ishlatish, `null` — jadval / funksiya hali yo'q
+   * (faqat izolyat xotirasidagi himoya ishlaydi). Xato tashlasa — log, kirish to'xtamaydi.
+   */
+  sharedReplayCheck?: (hash: string, expiresAtMs: number, graceMs: number) => Promise<boolean | null>
+  /**
    * Muvaffaqiyatli kirish — `svc_touch_chat(p_chat_id)` (shaxsiy chat id = Telegram user id).
    * Xato — faqat log.
    */
@@ -177,18 +183,28 @@ export async function handleTgAuth(body: unknown, deps: TgAuthDeps): Promise<Han
     }
 
     // Klientda shu akkauntning amaldagi sessiyasi bo'lsa — yangisi yaratilmaydi.
-    if (accessToken !== null && profile.auth_user_id !== null) {
+    /**
+     * Audit 3 (E1): klient yuborgan yaroqli token BOSHQA auth user'niki (masalan qurilmada avvalgi
+     * odamning sessiyasi). Yangi sessiya berilmasa — `session_mismatch`, klient lokal sessiyani o'chiradi.
+     */
+    let sessionMismatch = false
+    if (accessToken !== null) {
       const uid = await deps.getAuthUserIdFromJwt(accessToken)
-      if (uid !== null && uid === profile.auth_user_id) {
+      if (uid !== null && profile.auth_user_id !== null && uid === profile.auth_user_id) {
         await touchChat(deps, tgUserId)
         return respond(200, { status: 'ok', session: null, profile: publicProfile(profile) })
       }
+      sessionMismatch = uid !== null
+    }
+    const rejectError = (code: 'invalid_init_data' | 'init_data_replayed') => {
+      if (sessionMismatch) deps.log('warn', 'tg-auth: klient sessiyasi boshqa foydalanuvchiniki', { telegram_user_id: tgUserId })
+      return respond(401, { error: sessionMismatch ? 'session_mismatch' : code })
     }
 
     // Yangi sessiya — faqat yangi initData bilan (eski initData — faqat amaldagi sessiyani tasdiqlash uchun).
     if (!freshForNewSession) {
       deps.log('warn', 'tg-auth: initData yangi sessiya uchun eski', { telegram_user_id: tgUserId })
-      return respond(401, { error: 'invalid_init_data' })
+      return rejectError('invalid_init_data')
     }
 
     // Yangi sessiya: shu initData bilan avval sessiya berilgan bo'lsa (grace'dan keyin) — rad.
@@ -198,7 +214,20 @@ export async function handleTgAuth(body: unknown, deps: TgAuthDeps): Promise<Han
       const expiresAtMs = (verified.authDate + maxAgeSec) * 1000
       if (!deps.replayGuard.use(hash, nowMs, expiresAtMs)) {
         deps.log('warn', 'tg-auth: initData qayta ishlatildi', { telegram_user_id: tgUserId })
-        return respond(401, { error: 'init_data_replayed' })
+        return rejectError('init_data_replayed')
+      }
+    }
+    // Izolyatlararo (DB) tekshiruv — jadval bo'lsa
+    if (deps.sharedReplayCheck !== undefined && hash !== null) {
+      let fresh: boolean | null = null
+      try {
+        fresh = await deps.sharedReplayCheck(hash, (verified.authDate + maxAgeSec) * 1000, REPLAY_GRACE_MS)
+      } catch (e) {
+        deps.log('warn', 'tg-auth: umumiy replay tekshiruvi xatosi', { error: errMessage(e), telegram_user_id: tgUserId })
+      }
+      if (fresh === false) {
+        deps.log('warn', 'tg-auth: initData qayta ishlatildi (boshqa izolyat)', { telegram_user_id: tgUserId })
+        return rejectError('init_data_replayed')
       }
     }
 

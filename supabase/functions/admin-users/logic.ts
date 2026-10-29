@@ -15,6 +15,8 @@ export interface CallerProfile {
   id: string
   company_id: string
   role: string
+  /** `profiles.login_kind` — `change_password` faqat 'web' akkauntga ruxsat etiladi. */
+  login_kind: LoginKind
 }
 
 export interface TargetProfile {
@@ -48,6 +50,11 @@ export interface AdminUsersDeps extends AuthAdminDeps {
   alertLoginSet: (targetProfileId: string, actorProfileId: string, firstLogin: boolean) => Promise<void>
   /** `profiles.login_kind` ni yozadi (auth_user_id bor profil). */
   setLoginKind: (profileId: string, kind: LoginKind) => Promise<void>
+  /**
+   * Audit 3 (E2): `svc_phone_in_other_company(p_company_id, p_phone)` — shu telefon BOSHQA firmaning
+   * o'chirilmagan profilida bormi (telefon login emaili global — to'qnashuv).
+   */
+  phoneInOtherCompany: (companyId: string, phone: string) => Promise<boolean>
   logAuthEvent: LogAuthEventFn
   log: LogFn
 }
@@ -76,7 +83,72 @@ const err = (status: number, error: string): HandlerResult => respond(status, { 
 /** Ichki xato: javobda `internal`, logda sabab. */
 class AdminUsersError extends Error {}
 
+/** Parol tekshiruvi: xato kodi yoki null (yaroqli). */
+function passwordError(password: unknown): HandlerResult | null {
+  if (typeof password !== 'string') return err(400, 'invalid_request')
+  if (password.length < MIN_PASSWORD_LEN) return err(400, 'weak_password')
+  if (new TextEncoder().encode(password).length > MAX_PASSWORD_LEN) return err(400, 'password_too_long')
+  return null
+}
+
+/**
+ * Amallar:
+ *  - `set_login` — admin xodimga login (email / telefon) va vaqtinchalik parol beradi;
+ *    `app_metadata.must_change_password = true`.
+ *  - `change_password` — foydalanuvchi O'Z parolini almashtiradi (audit 3, E3): parol server
+ *    tomonidan o'rnatiladi va shu bilan birga belgi olib tashlanadi. Belgi `app_metadata` da —
+ *    foydalanuvchi uni `auth.updateUser` bilan o'zi o'chira olmaydi.
+ */
 export async function handleAdminUsers(
+  authHeader: string | null,
+  body: unknown,
+  deps: AdminUsersDeps,
+): Promise<HandlerResult> {
+  if (isRecord(body) && body.action === 'change_password') return handleChangePassword(authHeader, body, deps)
+  return handleSetLogin(authHeader, body, deps)
+}
+
+async function handleChangePassword(
+  authHeader: string | null,
+  body: Record<string, unknown>,
+  deps: AdminUsersDeps,
+): Promise<HandlerResult> {
+  const password = body.password
+  const bad = passwordError(password)
+  if (bad !== null) return bad
+  const jwt = bearer(authHeader)
+  if (jwt === null) return err(401, 'unauthorized')
+  try {
+    const authUserId = await deps.getAuthUserIdFromJwt(jwt)
+    if (authUserId === null) return err(401, 'unauthorized')
+    const me = await deps.getActiveProfileByAuthUserId(authUserId)
+    if (me === null) return err(403, 'forbidden')
+    // Audit 3 tekshiruvi (1): faqat veb login (admin `set_login` bergan). Telegram sintetik akkaunti
+    // (`login_kind = 'tg'`) o'ziga parol qo'ysa — initData/HMAC va admin nazoratini chetlab veb'ga
+    // email+parol bilan kirar edi (o'g'irlangan 1 soatlik tg JWT doimiy parolga aylanardi).
+    if (me.login_kind !== 'web') {
+      deps.log('warn', 'admin-users: change_password — veb login emas, rad etildi', { profile_id: me.id })
+      return err(403, 'forbidden')
+    }
+    const res = await deps.updateAuthUser(authUserId, {
+      password: password as string,
+      appMetadata: { must_change_password: false },
+      // Eski akkauntlar (belgi user_metadata da edi) — u ham tozalanadi
+      userMetadata: { must_change_password: false },
+    })
+    if (!res.ok) {
+      if (res.reason === 'weak_password') return weak(deps, me.id)
+      throw new AdminUsersError(`updateAuthUser: ${res.reason}`)
+    }
+    deps.log('info', 'admin-users: change_password', { profile_id: me.id })
+    return respond(200, { ok: true })
+  } catch (e) {
+    deps.log('error', 'admin-users: ichki xato (change_password)', { error: errMessage(e) })
+    return err(500, 'internal')
+  }
+}
+
+async function handleSetLogin(
   authHeader: string | null,
   body: unknown,
   deps: AdminUsersDeps,
@@ -88,9 +160,9 @@ export async function handleAdminUsers(
   const profileId = body.profile_id.toLowerCase()
 
   const password = body.password
+  const bad = passwordError(password)
+  if (bad !== null) return bad
   if (typeof password !== 'string') return err(400, 'invalid_request')
-  if (password.length < MIN_PASSWORD_LEN) return err(400, 'weak_password')
-  if (new TextEncoder().encode(password).length > MAX_PASSWORD_LEN) return err(400, 'password_too_long')
 
   let email: string | null = null
   if (body.email !== undefined && body.email !== null) {
@@ -142,16 +214,27 @@ export async function handleAdminUsers(
 
     const loginEmail = email ?? loginEmailFromPhone(target.phone)
     const login = email ?? target.phone
-    const userMetadata = { must_change_password: true }
+    const isSuper = caller.role === 'super_admin'
+
+    // Audit 3 (E2): telefon login emaili global. Shu telefon boshqa firmada ham bo'lsa — rad
+    // (umumiy 'conflict', boshqa firma haqida ma'lumot berilmaydi). Tizim egasi — istisno.
+    if (email === null && !isSuper && (await deps.phoneInOtherCompany(target.company_id, target.phone))) {
+      deps.log('warn', 'admin-users: telefon boshqa firmada ham bor — login berilmadi', { profile_id: target.id, by: caller.id })
+      return err(409, 'conflict')
+    }
+
+    // Audit 3 (E3): belgi app_metadata da (foydalanuvchi o'zgartira olmaydi). GoTrue app_metadata ni
+    // birlashtiradi — kind / company_id saqlanadi.
+    const appFlag = { must_change_password: true }
 
     // 4. Auth user yaratish yoki yangilash
     let created: boolean
     if (target.auth_user_id !== null) {
       const authUserId = target.auth_user_id
-      const update = () => deps.updateAuthUser(authUserId, { email: loginEmail, password, userMetadata })
+      const update = () => deps.updateAuthUser(authUserId, { email: loginEmail, password, appMetadata: appFlag })
       let res = await update()
       if (!res.ok && res.reason === 'email_exists') {
-        const freed = await freeEmail(deps, loginEmail, authUserId, target.company_id)
+        const freed = await freeEmail(deps, loginEmail, authUserId, target.company_id, isSuper)
         if (freed !== 'freed') return err(409, freed)
         res = await update()
       }
@@ -167,12 +250,11 @@ export async function handleAdminUsers(
         deps.createAuthUser({
           email: loginEmail,
           password,
-          appMetadata: { kind: 'web', company_id: target.company_id },
-          userMetadata,
+          appMetadata: { kind: 'web', company_id: target.company_id, ...appFlag },
         })
       let res = await create()
       if (!res.ok && res.reason === 'email_exists') {
-        const freed = await freeEmail(deps, loginEmail, null, target.company_id)
+        const freed = await freeEmail(deps, loginEmail, null, target.company_id, isSuper)
         if (freed !== 'freed') return err(409, freed)
         res = await create()
       }
@@ -225,28 +307,37 @@ function weak(deps: AdminUsersDeps, profileId: string): HandlerResult {
  *  - hech bir o'chirilmagan profilga bog'lanmagan;
  *  - `app_metadata.kind = 'web'` (tg sintetik yoki begona akkaunt emas);
  *  - firmasi shu firma: `app_metadata.company_id` yoki oxirgi bog'langan profil firmasi.
- * Aks holda 'login_taken' (409) — boshqa firmaning / noma'lum akkaunt o'chirilmaydi.
+ * Shu firma profilida band — 'login_taken' (409). Boshqa firma / noma'lum akkaunt — o'chirilmaydi va
+ * umumiy 'conflict' (audit 3, E2: boshqa firmada login borligi oshkor qilinmaydi; tizim egasiga —
+ * 'login_taken').
  */
 async function freeEmail(
   deps: AdminUsersDeps,
   email: string,
   selfAuthUserId: string | null,
   companyId: string,
+  isSuper: boolean,
 ): Promise<'freed' | 'login_taken' | 'conflict'> {
   const owner = await deps.findAuthUserByEmail(email)
   if (owner === null) return 'freed' // poyga: allaqachon bo'shagan — qayta urinib ko'ramiz
   if (owner.id === selfAuthUserId) return 'conflict'
+  const taken = isSuper ? 'login_taken' : 'conflict'
   const linkedProfile = await deps.findProfileIdByAuthUserId(owner.id)
-  if (linkedProfile !== null) return 'login_taken'
+  if (linkedProfile !== null) {
+    const linked = await deps.getProfileById(linkedProfile)
+    if (linked !== null && linked.company_id === companyId) return 'login_taken'
+    deps.log('warn', 'admin-users: login boshqa firma profilida band', { auth_user_id: owner.id })
+    return taken
+  }
   if (owner.app_metadata.kind !== 'web') {
     deps.log('warn', "admin-users: yetim auth user web emas — o'chirilmadi", { auth_user_id: owner.id })
-    return 'login_taken'
+    return taken
   }
   const metaCompany = typeof owner.app_metadata.company_id === 'string' ? owner.app_metadata.company_id : null
   const ownCompany = metaCompany === companyId || (await deps.lastProfileCompanyByAuthUserId(owner.id)) === companyId
   if (!ownCompany) {
     deps.log('warn', "admin-users: yetim auth user boshqa / noma'lum firmaniki — o'chirilmadi", { auth_user_id: owner.id })
-    return 'login_taken'
+    return taken
   }
   await deps.deleteAuthUser(owner.id)
   deps.log('warn', 'admin-users: yetim auth user o\'chirildi', { auth_user_id: owner.id })

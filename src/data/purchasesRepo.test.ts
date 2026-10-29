@@ -101,12 +101,20 @@ describe('purchasesRepo', () => {
 
   it('createPurchase: purchases_pkey 23505 (hint\'siz) — saqlangan qator qaytadi', async () => {
     fake.results.push({ data: null, error: { code: '23505', message: 'violates "purchases_pkey"', hint: null } })
-    fake.results.push({ data: raw, error: null })
+    fake.results.push({ data: { ...raw, object_id: 'o', material_id: 'm', unit_id: 'u' }, error: null })
     fake.results.push({ data: [{ purchase_id: 'pu1', received_qty_base: '100', remaining_qty_base: '50', receipt_count: 1 }], error: null })
     fake.results.push({ data: [], error: null })
     const saved = await createPurchase(input)
     expect(saved.id).toBe('pu1')
     expect(saved.receipt).toMatchObject({ received_qty_base: '100', remaining_qty_base: '50' })
+  })
+
+  it('createPurchase: 23505, saqlangan xarid boshqa summa bilan — draft_conflict', async () => {
+    fake.results.push({ data: null, error: { code: '23505', message: 'violates "purchases_pkey"', hint: null } })
+    fake.results.push({ data: { ...raw, object_id: 'o', material_id: 'm', unit_id: 'u', total_amount: '999' }, error: null })
+    fake.results.push({ data: [], error: null })
+    fake.results.push({ data: [], error: null })
+    await expect(createPurchase(input)).rejects.toMatchObject({ code: 'draft_conflict' })
   })
 
   it('createPurchase: hint\'li 23505 — xato', async () => {

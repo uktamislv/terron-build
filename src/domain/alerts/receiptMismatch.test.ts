@@ -72,8 +72,19 @@ describe('evaluateReceipt', () => {
   it('chegara 0: 0.01 % dan kichik farq yaxlitlanib 0 → ok (bazadagi kabi)', () => {
     expect(ev('100', '100.000001', '0')).toEqual({ status: 'ok', diffPct: '0', severity: null })
   })
-  it('chegara 0 va farq 0.01 % → over jiddiy', () => {
-    expect(ev('100', '100.01', '0')).toEqual({ status: 'over', diffPct: '0.01', severity: 'jiddiy' })
+  it('chegara 0 va farq 0.01 % → over ogohlantirish (chegara 0 da jiddiy yo`q, bazadagi kabi)', () => {
+    expect(ev('100', '100.01', '0')).toEqual({ status: 'over', diffPct: '0.01', severity: 'ogohlantirish' })
+    expect(ev('100', '0', '0', H24)).toEqual({ status: 'under', diffPct: '100', severity: 'ogohlantirish' })
+  })
+  it('createdAt: orqa sanali xarid — kutish kiritilgan vaqtdan (max(purchasedAt, createdAt) + 24 soat)', () => {
+    const base = { purchasedQtyBase: '100', receivedQtyBase: '50', thresholdPct: '2', purchasedAt: '2026-10-20T08:00:00Z' }
+    expect(evaluateReceipt({ ...base, createdAt: T0, nowIso: H23 }).status).toBe('pending')
+    expect(evaluateReceipt({ ...base, createdAt: T0, nowIso: H24 }).status).toBe('under')
+    // createdAt berilmasa — avvalgidek xarid vaqtidan
+    expect(evaluateReceipt({ ...base, nowIso: H23 }).status).toBe('under')
+    // createdAt xarid vaqtidan oldin bo'lsa — xarid vaqti
+    expect(evaluateReceipt({ ...base, purchasedAt: T0, createdAt: '2026-10-20T08:00:00Z', nowIso: H23 }).status).toBe('pending')
+    expect(() => evaluateReceipt({ ...base, createdAt: 'kecha', nowIso: H24 })).toThrow()
   })
   it('kasrli chegara', () => {
     expect(ev('100', '102.5', '2.5')).toEqual({ status: 'ok', diffPct: '2.5', severity: null })

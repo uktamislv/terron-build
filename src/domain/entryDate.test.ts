@@ -1,4 +1,4 @@
-import { ENTRY_DATE_MARGIN_MS, entryDateBounds, entryDateFor, entryDateToIso, tashkentDateOf } from './entryDate'
+import { ENTRY_DATE_MARGIN_MS, entryDateBounds, entryDateFor, entryDateToIso, tashkentDateOf, yesterdayIsoDate } from './entryDate'
 import { occurredAtAllowed } from './movements'
 
 // 26.10.2026 15:30 Toshkent (10:30 UTC)
@@ -19,6 +19,16 @@ describe('entryDate — "Bugun / Kecha / Boshqa sana"', () => {
     const iso = entryDateFor('yesterday', '', NOW, false)
     expect(iso).toBe('2026-10-25T10:30:00.000Z')
     expect(occurredAtAllowed(iso as string, NOW, false)).toBe(true)
+  })
+
+  it('Kecha — chip bosilganda qotirilgan sana yarim tundan keyin ham o‘zgarmaydi', () => {
+    // 26.10 23:59 Toshkentda bosildi → kecha = 25.10; saqlash 27.10 00:01 da
+    const tapped = yesterdayIsoDate('2026-10-26T18:59:00.000Z')
+    expect(tapped).toBe('2026-10-25')
+    const iso = entryDateFor('yesterday', tapped, '2026-10-26T19:01:00.000Z', false) as string
+    expect(tashkentDateOf(Date.parse(iso))).toBe('2026-10-25')
+    // Qayd etilmagan (eski holat) — hozirgi kechagi kun
+    expect(tashkentDateOf(Date.parse(entryDateFor('yesterday', '', '2026-10-26T19:01:00.000Z', false) as string))).toBe('2026-10-26')
   })
 
   it('3 kun oldin — oyna chetiga yaqin bo‘lsa chegara + 15 daqiqa', () => {

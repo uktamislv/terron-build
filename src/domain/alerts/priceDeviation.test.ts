@@ -16,7 +16,13 @@ describe('weightedAverage', () => {
   })
   it('sum(total) / sum(qty), 4 xona', () => {
     expect(weightedAverage(unitPts('100', '200'))).toBe('150')
-    expect(weightedAverage([pt('4', '3'), pt('0', '0.000001')])).toBe('1.3333')
+    expect(weightedAverage([pt('4', '3'), pt('0.01', '0.000001')])).toBe('1.3367')
+  })
+  it('total = 0 (bepul) nuqtalar hisobga olinmaydi (bazadagi q.total_amount > 0)', () => {
+    expect(weightedAverage([pt('0', '100'), pt('0', '100'), pt('10000', '100'), pt('10000', '100')])).toBe('100')
+    // qolgan pullik nuqta 2 tadan kam → null
+    expect(weightedAverage([pt('0', '100'), pt('10000', '100')])).toBeNull()
+    expect(ev('100', [pt('0', '100'), pt('0', '100'), pt('10000', '100'), pt('10000', '100')])).toMatchObject({ direction: 'ok', avgN: '100' })
   })
   it('miqdor bo\'yicha og\'irlik: 1 dona qimmat + 200 qop arzon', () => {
     // 100 000 × 1 + 50 000 × 200 → 10 100 000 / 201
@@ -74,8 +80,8 @@ describe('evaluatePrice', () => {
   it('high low dan ustun (biri yuqori, biri past)', () => {
     expect(ev('100', unitPts('300', '300'), unitPts('50', '50')).direction).toBe('high')
   })
-  it('avg = 0 → diff null', () => {
-    expect(ev('500', unitPts('0', '0'))).toEqual({ direction: 'ok', avgN: '0', diffN: null, avg90: null, diff90: null })
+  it('faqat 0 so`mlik xaridlar → o`rtacha yo`q (diff null)', () => {
+    expect(ev('500', unitPts('0', '0'))).toEqual({ direction: 'ok', avgN: null, diffN: null, avg90: null, diff90: null })
   })
   it('narx 0 → −100 % → low', () => {
     expect(ev('0', unitPts('100', '100'))).toMatchObject({ direction: 'low', diffN: '-100' })

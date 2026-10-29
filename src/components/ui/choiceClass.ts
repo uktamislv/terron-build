@@ -25,7 +25,8 @@ const selectedTone: Record<ChoiceTone, string> = {
 export const focusWithinRing = 'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-brand'
 
 const shapes: Record<ChoiceShape, string> = {
-  pill: 'min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full whitespace-nowrap',
+  // max-w-full: uzun (ma'lumotdan kelgan) nom ota-ona kengligidan chiqmaydi — ichidagi matn `truncate`
+  pill: 'min-h-11 max-w-full min-w-0 shrink-0 items-center justify-center gap-1.5 rounded-full whitespace-nowrap',
   box: 'min-h-11 items-center justify-center gap-1.5 rounded-xl px-3 text-center',
   stack: 'min-h-13 flex-col items-start justify-center gap-0.5 rounded-xl px-3 text-left',
   // Material plitkasi: 76 px (nom 2 qatorgacha + izoh)

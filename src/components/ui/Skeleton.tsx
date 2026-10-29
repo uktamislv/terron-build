@@ -65,10 +65,12 @@ export function Wordmark({ className, onDark = false }: { className?: string; on
   return (
     <span role="img" aria-label={t.app.name} className={cx('inline-flex items-baseline leading-none whitespace-nowrap', className)}>
       <span className={cx('font-black tracking-[-0.03em]', onDark ? 'text-white' : 'text-navy')}>terron</span>
-      <span aria-hidden className="ml-[0.05em] inline-block size-[0.24em] rounded-full bg-brand" />
+      {/* Navy fonda ko'k nuqta ko'rinmaydi — och ko'k */}
+      <span aria-hidden className={cx('ml-[0.05em] inline-block size-[0.24em] rounded-full', onDark ? 'bg-brand-300' : 'bg-brand')} />
       <span
         aria-hidden
-        className={cx('ml-[0.3em] text-[0.38em] font-bold tracking-[0.18em]', onDark ? 'text-brand-300' : 'text-brand')}
+        // Kichik o'lchamlarda (sarlavha) BUILD o'qilsin — kamida 11 px
+        className={cx('ml-[0.3em] text-[length:max(0.38em,11px)] font-bold tracking-[0.18em]', onDark ? 'text-brand-300' : 'text-brand')}
       >
         BUILD
       </span>

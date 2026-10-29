@@ -24,11 +24,12 @@ import {
   validateExpenseAmount,
 } from '@/domain/expenses'
 import { parseReceiptQr, type ReceiptQr } from '@/domain/receipt'
-import { receiptVerified } from '@/domain/rules'
+import { receiptPhotoExempt, receiptVerified } from '@/domain/rules'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatSum } from '@/lib/format'
-import { uuid } from '@/lib/uuid'
+import { draftFingerprint, useDraftId } from '../entry/useDraftId'
+import { scrollToPhotoField } from '../entry/scrollToField'
 import { DateChips } from '../entry/DateChips'
 import { TODAY_CHOICE, type DateChipsValue } from '../entry/dateChoice'
 import { DuplicateWarning } from '../entry/DuplicateWarning'
@@ -83,10 +84,11 @@ function ObjectChips({
               aria-pressed={selected}
               data-testid={o.id ? 'expense-object' : 'expense-object-general'}
               className={choiceClass({ selected, size: 'md' })}
+              title={o.label}
               onClick={() => onChange(o.id)}
             >
-              {o.label}
-              {o.id === null && <span className="text-sm font-normal text-muted">({te.generalHint})</span>}
+              <span className="min-w-0 truncate">{o.label}</span>
+              {o.id === null && <span className="shrink-0 text-sm font-normal text-muted">({te.generalHint})</span>}
             </button>
           )
         })}
@@ -124,7 +126,16 @@ function CategoryGrid({ categories, onPick }: { categories: ExpenseCategory[]; o
   )
 }
 
-export function ExpenseEntry({ profile, onSaved }: { profile: Profile; onSaved: () => void }) {
+export function ExpenseEntry({
+  profile,
+  onSaved,
+  onDirtyChange,
+}: {
+  profile: Profile
+  onSaved: () => void
+  /** Formada kiritilgan ma'lumot bor/yo'q — sahifa chiqishdan oldin tasdiq so'raydi. */
+  onDirtyChange?: (dirty: boolean) => void
+}) {
   const companyId = profile.company_id
   const isAdmin = profile.role === 'admin' || profile.role === 'super_admin'
   const settings = useCompanySettings(companyId)
@@ -149,7 +160,8 @@ export function ExpenseEntry({ profile, onSaved }: { profile: Profile; onSaved: 
   const [receiptNotice, setReceiptNotice] = useState<string | null>(null)
   const [receiptUsed, setReceiptUsed] = useState(false)
   const [duplicate, setDuplicate] = useState(false)
-  const [draftId, setDraftId] = useState(() => uuid())
+  // Qoralama id'si: xatodan keyin tur, obyekt yoki summa o'zgarsa — yangi id (useDraftId)
+  const draftIds = useDraftId()
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -195,7 +207,7 @@ export function ExpenseEntry({ profile, onSaved }: { profile: Profile; onSaved: 
   const geo = useGeoCapture(step === 'details')
   const amountDec = parseSumInput(amount)
 
-  const qrVerified = receipt?.lookup
+  const qrVerified = receipt?.lookup?.verified
     ? receiptVerified({
         lookupTotal: receipt.lookup.total,
         lookupItems: receipt.lookup.items,
@@ -208,12 +220,16 @@ export function ExpenseEntry({ profile, onSaved }: { profile: Profile; onSaved: 
           new Date().toISOString(),
       })
     : false
+  // Rasmdan ozod — server guard bilan bir xil: tasdiqlangan, jami ma'lum va bir qatorli chek
+  const photoExempt = receipt?.lookup
+    ? receiptPhotoExempt({ verified: qrVerified, total: receipt.lookup.total, itemCount: receipt.lookup.items.length })
+    : false
   const photoRule = category
     ? expensePhotoRequired({
         amount: amountDec,
         thresholdAmount: settings.photoRequiredAmount,
         categoryPhotoRequired: category.photo_required,
-        qrVerified,
+        qrVerified: photoExempt,
       })
     : null
   const photoRequiredReason =
@@ -235,7 +251,7 @@ export function ExpenseEntry({ profile, onSaved }: { profile: Profile; onSaved: 
     setReceiptNotice(null)
     setReceiptUsed(false)
     setDuplicate(false)
-    setDraftId(uuid())
+    draftIds.renew()
     photo.reset()
     geo.reset()
   }
@@ -303,10 +319,13 @@ export function ExpenseEntry({ profile, onSaved }: { profile: Profile; onSaved: 
         return
       }
       if (photoMissing) {
+        // Tugma faol qoladi: bosilsa — chek rasmi maydoniga aylantiriladi
         haptic.error()
+        scrollToPhotoField()
         return
       }
       const nowIso = new Date().toISOString()
+      const draftId = draftIds.idFor(draftFingerprint([category.id, objectId, parsed.value]))
       // Takroriy xarajat — ogohlantirish, bloklamaydi
       if (!opts.confirmDuplicate) {
         const dup = findDuplicateExpense(
@@ -339,7 +358,7 @@ export function ExpenseEntry({ profile, onSaved }: { profile: Profile; onSaved: 
             fiscalSign: receipt.qr.fiscalSign,
             terminalId: receipt.qr.terminalId,
             receiptNo: receipt.qr.receiptNo,
-            verified: receipt.lookup !== null,
+            verified: receipt.lookup?.verified === true,
             total: receipt.lookup?.total ?? receipt.qr.total ?? null,
             sellerTin: receipt.lookup?.sellerTin ?? null,
           }
@@ -377,6 +396,8 @@ export function ExpenseEntry({ profile, onSaved }: { profile: Profile; onSaved: 
         reset()
       } catch (err) {
         haptic.error()
+        // Shu id bilan avval boshqa xarajat saqlangan — keyingi urinish yangi id bilan
+        if (errorCodeOf(err) === 'draft_conflict') draftIds.renew()
         if (!photo.handleSaveError(err)) setSaveError(errorText(err))
         if (errorCodeOf(err) === 'receipt_already_used') setReceiptUsed(true)
         // Tur nofaol bo'lib qolgan — ro'yxat yangilanadi
@@ -388,7 +409,7 @@ export function ExpenseEntry({ profile, onSaved }: { profile: Profile; onSaved: 
     },
     // reset — faqat setState va photo/geo (deps ichida)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [category, amount, receipt, entryDate, isAdmin, photoMissing, recent, draftId, profile.id, objectId, settings.duplicateWindowMinutes, photo, geo, companyId, note, suppliers, objects, preparingPhoto, onSaved],
+    [category, amount, receipt, entryDate, isAdmin, photoMissing, recent, draftIds, profile.id, objectId, settings.duplicateWindowMinutes, photo, geo, companyId, note, suppliers, objects, preparingPhoto, onSaved],
   )
 
   const onMain = useCallback(() => void save(), [save])
@@ -401,8 +422,14 @@ export function ExpenseEntry({ profile, onSaved }: { profile: Profile; onSaved: 
   }, [photo])
 
   useBackButton(step === 'details' ? back : null)
-  useMainButton(duplicate ? ta.duplicateSave : te.save, step === 'details' ? (duplicate ? onDuplicate : onMain) : null, preparingPhoto || photoMissing, saving)
+  // Rasm majburiy, lekin tanlanmagan — tugma faol: bosilsa rasm maydoniga aylantiriladi (save)
+  useMainButton(duplicate ? ta.duplicateSave : te.save, step === 'details' ? (duplicate ? onDuplicate : onMain) : null, preparingPhoto, saving)
   useClosingConfirmation(Boolean(categoryId) || amount.trim() !== '' || note.trim() !== '')
+  const dirty = amount.trim() !== '' || note.trim() !== '' || photo.photo !== null
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
   const insideTelegram = getWebApp() !== null
 
   const receiptView = receipt
@@ -506,7 +533,7 @@ export function ExpenseEntry({ profile, onSaved }: { profile: Profile; onSaved: 
             />
           )}
           {!insideTelegram && (
-            <Button size="lg" onClick={onMain} disabled={preparingPhoto || photoMissing} loading={saving}>
+            <Button size="lg" onClick={onMain} disabled={preparingPhoto} loading={saving}>
               {saving ? t.common.saving : te.save}
             </Button>
           )}

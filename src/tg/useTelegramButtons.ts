@@ -78,8 +78,11 @@ export function useBackButton(onBack: (() => void) | null): void {
 }
 
 // "Saqlandi" holati: saqlangandan keyin MainButton qisqa vaqt yashil "Saqlandi" bo'lib turadi.
+// Faqat saqlangan ekranga tegishli: boshqa bo'limga o'tilsa (yo'l o'zgarsa) darhol o'chadi —
+// u yerdagi MainButton "Saqlandi" ni ko'rsatmaydi (TgLayout `clearMainButtonSaved` ni chaqiradi).
 const SAVED_MS = 1200
 let savedFlash = false
+let savedPath: string | null = null
 let savedTimer: ReturnType<typeof setTimeout> | null = null
 const savedListeners = new Set<() => void>()
 
@@ -91,13 +94,30 @@ function emitSaved(): void {
 export function flashMainButtonSaved(): void {
   if (!getWebApp()) return
   savedFlash = true
+  savedPath = window.location.pathname
   if (savedTimer) clearTimeout(savedTimer)
   savedTimer = setTimeout(() => {
     savedFlash = false
+    savedPath = null
     savedTimer = null
     emitSaved()
   }, SAVED_MS)
   emitSaved()
+}
+
+/** "Saqlandi" holatini darhol o'chirish (ekran almashganda). */
+export function clearMainButtonSaved(): void {
+  if (!savedFlash) return
+  savedFlash = false
+  savedPath = null
+  if (savedTimer) clearTimeout(savedTimer)
+  savedTimer = null
+  emitSaved()
+}
+
+/** Shu yo'ldagi ekran uchun "Saqlandi" ko'rinib turibdimi. */
+function savedFlashHere(): boolean {
+  return savedFlash && savedPath === window.location.pathname
 }
 
 function subscribeSaved(cb: () => void): () => void {
@@ -108,9 +128,16 @@ function subscribeSaved(cb: () => void): () => void {
 /**
  * Telegram MainButton (masalan "Saqlash"). onClick null bo'lsa yashiriladi.
  * `progress` — jarayon belgisi (spinner) va tugma bosilmaydi.
+ * `color` — tugma rangi (standart — brand; masalan kirimda yashil `colors.ok`).
  */
-export function useMainButton(text: string, onClick: (() => void) | null, disabled = false, progress = false): void {
-  const flashing = useSyncExternalStore(subscribeSaved, () => savedFlash, () => false)
+export function useMainButton(
+  text: string,
+  onClick: (() => void) | null,
+  disabled = false,
+  progress = false,
+  color: string = colors.brand,
+): void {
+  const flashing = useSyncExternalStore(subscribeSaved, savedFlashHere, () => false)
   // Varaq ochiq — MainButton yashirin (varaq yopilganda tugma qaytadi)
   const sheetOpen = useSheetOpen()
   const visible = !sheetOpen && (flashing || onClick !== null)
@@ -136,11 +163,16 @@ export function useMainButton(text: string, onClick: (() => void) | null, disabl
       }
     }
     main.setText(text)
+    main.setParams?.({ color, text_color: colors.paper })
     if (disabled || progress) main.disable()
     else main.enable()
     if (progress) main.showProgress(false)
     else main.hideProgress()
-  }, [visible, flashing, text, disabled, progress])
+    return () => {
+      // Boshqa ekran o'z rangini beradi; bermasa — standart brand
+      if (color !== colors.brand) main.setParams?.({ color: colors.brand, text_color: colors.paper })
+    }
+  }, [visible, flashing, text, disabled, progress, color])
 
   // Ko'rsatish / yashirish — faqat ko'rinish haqiqatan o'zgarganda
   useEffect(() => {

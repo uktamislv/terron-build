@@ -2,6 +2,7 @@
 // har kim faqat o'zi ko'ra oladigan qismni oladi. Pul `text` (Dec satr), sonlar — int.
 import type { Dec } from '@/domain/decimal'
 import { toRepoError } from './errors'
+import { companyScopeArg, scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 
 export interface DashboardSummary {
@@ -132,7 +133,7 @@ function decOrNull(v: unknown): Dec | null {
 }
 
 function rangeArgs(r: ReportRange) {
-  return { p_from: r.from, p_to: r.to, p_object_id: r.objectId || null }
+  return { p_from: r.from, p_to: r.to, p_object_id: r.objectId || null, ...companyScopeArg() }
 }
 
 export function normalizeSummary(raw: unknown): DashboardSummary {
@@ -193,7 +194,7 @@ export async function getSpendBreakdown(r: ReportRange, group: SpendGroup): Prom
 
 /** Smeta va haqiqiy sarf (joriy smetali obyektlar). */
 export async function getNormOverview(objectId?: string | null): Promise<NormOverviewRow[]> {
-  const { data, error } = await getSupabase().rpc('norm_overview', { p_object_id: objectId || null })
+  const { data, error } = await getSupabase().rpc('norm_overview', { p_object_id: objectId || null, ...companyScopeArg() })
   if (error) throw toRepoError(error)
   return ((data ?? []) as Record<string, unknown>[]).map((d) => ({
     object_id: String(d.object_id),
@@ -229,7 +230,7 @@ export interface EstimateSpendRow {
  */
 export async function getEstimateVsSpend(r: ReportRange): Promise<EstimateSpendRow[]> {
   const sb = getSupabase()
-  let q = sb.from('estimates').select('id, object_id').eq('is_current', true).is('deleted_at', null)
+  let q = scopeCompany(sb.from('estimates').select('id, object_id').eq('is_current', true).is('deleted_at', null))
   if (r.objectId) q = q.eq('object_id', r.objectId)
   const [{ data: estimates, error: estError }, spend] = await Promise.all([q, getSpendBreakdown(r, 'object')])
   if (estError) throw toRepoError(estError)

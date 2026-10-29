@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { photoRequired, type PhotoRequiredInput } from './photoRequired'
+import { photoRequired, receiptPhotoExempt, type PhotoRequiredInput } from './photoRequired'
 
 const base: PhotoRequiredInput = { totalAmount: '1000000', thresholdAmount: '5000000', materialPhotoRequired: false, qrVerified: false }
 
@@ -28,5 +28,19 @@ describe('photoRequired', () => {
   })
   it('chegara 0 → har qanday summa (0 ham) majburiy', () => {
     expect(photoRequired({ ...base, thresholdAmount: '0', totalAmount: '0' })).toBe('amount')
+  })
+})
+
+describe('receiptPhotoExempt (server guard bilan bir xil)', () => {
+  it('tasdiqlangan, jami ma\'lum, bir qatorli → ozod', () => {
+    expect(receiptPhotoExempt({ verified: true, total: '150000', itemCount: 1 })).toBe(true)
+    expect(receiptPhotoExempt({ verified: true, total: '150000', itemCount: 0 })).toBe(true)
+  })
+  it('ko\'p qatorli chek → ozod emas (server rasm talab qiladi)', () => {
+    expect(receiptPhotoExempt({ verified: true, total: '150000', itemCount: 2 })).toBe(false)
+  })
+  it('jami noma\'lum yoki tasdiqlanmagan → ozod emas', () => {
+    expect(receiptPhotoExempt({ verified: true, total: null, itemCount: 1 })).toBe(false)
+    expect(receiptPhotoExempt({ verified: false, total: '150000', itemCount: 1 })).toBe(false)
   })
 })

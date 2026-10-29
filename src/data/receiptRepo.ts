@@ -23,6 +23,11 @@ export interface ReceiptLookup {
   fiscalSign: string | null
   terminalId: string | null
   receiptNo: string | null
+  /**
+   * Audit 3 (E6): server javobidagi `verified` — sahifadagi fiskal belgi QR bilan mos (keshdan — true).
+   * false — chek o'qildi, lekin tasdiqlanmadi: rasmdan ozod emas, "tasdiqlangan" deb ko'rsatilmaydi.
+   */
+  verified: boolean
 }
 
 function str(v: unknown): string | null {
@@ -32,7 +37,7 @@ function str(v: unknown): string | null {
   return s ? s : null
 }
 
-export function normalizeReceipt(raw: unknown): ReceiptLookup {
+export function normalizeReceipt(raw: unknown, verified = false): ReceiptLookup {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const items = (Array.isArray(r.items) ? r.items : [])
     .filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
@@ -47,6 +52,7 @@ export function normalizeReceipt(raw: unknown): ReceiptLookup {
     fiscalSign: str(r.fiscalSign),
     terminalId: str(r.terminalId),
     receiptNo: str(r.receiptNo),
+    verified,
   }
 }
 
@@ -60,8 +66,8 @@ export function normalizeReceipt(raw: unknown): ReceiptLookup {
 export async function receiptLookup(url: string): Promise<ReceiptLookup> {
   const res = await invokeFunction<unknown>('receipt-lookup', { url })
   if (res.ok) {
-    const body = (res.data ?? {}) as { receipt?: unknown }
-    return normalizeReceipt(body.receipt ?? res.data)
+    const body = (res.data ?? {}) as { receipt?: unknown; verified?: unknown }
+    return normalizeReceipt(body.receipt ?? res.data, body.verified === true)
   }
   if (res.network) throw new RepoError('network')
   if (res.status === 400) throw new RepoError('receipt_url_invalid', res.body?.error)

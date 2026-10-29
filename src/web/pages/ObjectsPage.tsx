@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react'
+import { useCompanyId } from '@/auth/activeCompany'
 import { useAuth } from '@/auth/authContext'
 import { Building2, CalendarDays, LocateFixed, MapPin, Pencil, Plus, UserPlus, Users } from 'lucide-react'
 import { Badge, Button, choiceClass, EmptyState, inputClass, Modal, Notice, PageHeader, RetryNotice, SkeletonRows, TextField } from '@/components/ui'
@@ -256,6 +257,8 @@ function MembersDialog({
 
 export function ObjectsPage() {
   const { profile: me } = useAuth()
+  // super_admin — faol firma (yon menyudagi tanlagich), boshqalar — o'z firmasi
+  const companyId = useCompanyId()
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
@@ -280,7 +283,7 @@ export function ObjectsPage() {
     }
   }, [reloadKey])
 
-  if (!me) return null
+  if (!me || !companyId) return null
   const canManage = can(me.role, 'manage_objects')
   const membersObject = dialog?.kind === 'members' ? data?.objects.find((o) => o.id === dialog.objectId) : undefined
 
@@ -361,7 +364,7 @@ export function ObjectsPage() {
 
       {(dialog?.kind === 'create' || dialog?.kind === 'edit') && (
         <ObjectFormDialog
-          companyId={me.company_id}
+          companyId={companyId}
           object={dialog.kind === 'edit' ? dialog.object : undefined}
           onClose={closeDialog}
           onSaved={() => {
@@ -372,7 +375,7 @@ export function ObjectsPage() {
       )}
       {data && membersObject && (
         <MembersDialog
-          companyId={me.company_id}
+          companyId={companyId}
           object={membersObject}
           data={data}
           onClose={closeDialog}

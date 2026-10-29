@@ -132,7 +132,7 @@ export function PhotoField({
   onRemove: () => void
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div data-photo-field="" data-missing={requiredReason && !photo ? 'true' : undefined} className="flex scroll-mt-20 flex-col gap-1.5">
       <span className="flex items-center gap-2 text-sm font-medium text-ink">
         <Camera aria-hidden className="size-4 text-muted" strokeWidth={1.75} />
         {label}

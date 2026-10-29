@@ -20,13 +20,14 @@ Shartnoma: db-architect, domain-logic va frontend shu hujjatga tayanadi.
 - Sotuvchi: `suppliers` dan tanlash yoki yangi nom yozish → yangi `suppliers` qatori. Yangi sotuvchi qo'shish huquqi: admin, super_admin (istalgan maydon); taminotchi, haydovchi, prorab — **faqat nom** (`phone`, `note` — null, aks holda RLS 42501). `update`/soft delete — faqat admin. Nom 1..120 belgi (CHECK 23514). Dublikat (katta-kichik harf, bo'shliqlar, ё/е farqsiz) — `hint: supplier_duplicate` → mavjudini tanlash.
 - Idempotent: klient `id` yuboradi (Batch 4 dagidek, `purchases_pkey` 23505 → saqlangan).
 - **O'chirish va tahrirlash (O1, P5):** bog'langan (o'chirilmagan) kirimi bor xaridni soft delete qilish yoki `object_id`/`material_id` ni o'zgartirish — rad (`hint: purchase_has_receipts`): avval kirimni o'chirish yoki boshqa xaridga bog'lash kerak.
-- **Jonli narx belgisi:** `public.check_purchase_price(p_material_id uuid, p_price_per_base numeric) → text` — `'ok' | 'high' | 'low'` (pastda 3-qoida). Raqam (o'rtacha, foiz) **qaytarmaydi** — narxni chegaraga moslab kiritishning oldini olish. `p_price_per_base` = summa / asosiy birlikdagi miqdor (4 xonagacha yaxlitlanadi). Boshqa firma materiali yoki noma'lum id — `'ok'`.
+- **Jonli narx belgisi:** `public.check_purchase_price(p_material_id uuid, p_price_per_base numeric, p_purchased_at timestamptz default now()) → text` — `'ok' | 'high' | 'low'` (pastda 3-qoida; orqa sanali xaridda `p_purchased_at` — xarid sanasi). Raqam (o'rtacha, foiz) **qaytarmaydi** — narxni chegaraga moslab kiritishning oldini olish. `p_price_per_base` = summa / asosiy birlikdagi miqdor (4 xonagacha yaxlitlanadi). Boshqa firma materiali yoki noma'lum id — `'ok'`.
 
 ## Xaridni kirim bilan bog'lash
 
 - Kirim (`movements.type = 'kirim'`) yaratishda ixtiyoriy `purchase_id` (Batch 1 dagi trigger: material va obyekt mos bo'lishi shart — `ops_purchase_mismatch`). Xarid topilmasa yoki o'chirilgan bo'lsa — `hint: purchase_not_open` (23503; avval `ops_purchase_not_found` edi).
 - Mini App kirim ekranida material va obyekt tanlangach: "Bog'langan xarid" ro'yxati — shu obyekt va materialdagi oxirgi 14 kunlik, to'liq qabul qilinmagan xaridlar (RPC `public.open_purchases(p_object_id, p_material_id)` → `id, purchased_at, buyer_id, buyer_name, qty_base, received_qty_base, remaining_qty_base, unit_input, unit_variant, qty_input`, eng yangisi birinchi). Bitta bo'lsa avtomatik taklif qilinadi; bog'lash ixtiyoriy.
-- View `public.purchase_receipts` (`security_invoker`, faqat o'chirilmagan xaridlar): `purchase_id, company_id, object_id, material_id, buyer_id, purchased_at, qty_base, received_qty_base, remaining_qty_base` (manfiy — ortiqcha), `receipt_count, last_received_at`. Yig'indi harakatlar RLS'idan qat'i nazar (haydovchi o'z xaridining qabulini ko'radi).
+- View `public.purchase_receipts` (`security_invoker`, faqat o'chirilmagan xaridlar): `purchase_id, company_id, object_id, material_id, buyer_id, purchased_at, qty_base, received_qty_base, remaining_qty_base` (manfiy — ortiqcha), `receipt_count, last_received_at`, `unlinked_qty_base` (bog'lanmagan nomzod kirimlar — server "covered" holati). Yig'indi harakatlar RLS'idan qat'i nazar (haydovchi o'z xaridining qabulini ko'radi).
+- Mini App: `public.open_purchases_for_my_objects()` — chaqiruvchining obyektlaridagi (prorab/omborchi — a'zo obyektlar, admin — firma) oxirgi 60 kunlik to'liq qabul qilinmagan xaridlar: `purchase_id, object_id, object_name, material_id, material_name, base_unit, qty_base, received_qty_base, remaining_qty_base, purchased_at, buyer_id, buyer_name`.
 
 ## Farq qoidalari 1–3 (`alerts`)
 
@@ -79,6 +80,6 @@ Alert yaratish faqat tizim tomonidan (`security definer` funksiyalar/triggerlar)
 
 - `cash.ts`: `cashBalance(issued: Dec[], spent: Dec[]): Dec`, `parseSumInput(input): Dec | null` (bo'sh joy, vergul/nuqta; so'm — 2 xonagacha), `formatSumInput` (yozish paytida minglik bo'sh joy).
 - `alerts/receiptMismatch.ts`: `evaluateReceipt({ purchasedQtyBase, receivedQtyBase, purchasedAt, nowIso, thresholdPct }): { status: 'ok' | 'over' | 'under' | 'pending'; diffPct: Dec; severity: 'ogohlantirish' | 'jiddiy' | null }` (`pending` — kam, lekin 24 soat o'tmagan).
-- `alerts/selfReceived.ts`: `isSelfReceived(buyerId, receiverId): boolean`.
+- Qoida 2 ("O'zi tekshirmagan", `ozi_qabul_qilgan`) — faqat bazada: `supabase/migrations/20261029000001_purchases.sql` ("Qoida 2"); klientda alohida sof funksiya yo'q (`alerts/selfReceived.ts` o'chirilgan — takrorlanuvchi mantiq edi).
 - `alerts/priceDeviation.ts`: 3-qoidaning yuqoridagi formulasi (miqdorga tortilgan `avg_n`, `avg_90`, `high`/`low`) — bazadagi `private.price_check` bilan bit-bit bir xil; aniq TS imzosi — domain-logic.
 - Hammasi `Dec` (decimal.ts), foizlar 2 xonagacha `round` (bazadagi bilan bir xil).

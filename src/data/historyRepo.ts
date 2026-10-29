@@ -1,6 +1,7 @@
 // O'zgarishlar tarixi (Batch 10, docs/history-design.md): audit_feed, deleted_records, restore_record.
 // Hammasi `security invoker` — audit_log va jadvallar RLS'i chaqiruvchi huquqida ishlaydi.
 import { unitLabel } from '@/domain/units'
+import { companyScopeArg } from './companyScope'
 import { RepoError, toRepoError } from './errors'
 import { EXPORT_MAX_ROWS, inChunks } from './fetchAll'
 import { getSupabase } from './supabaseClient'
@@ -88,6 +89,7 @@ function feedArgs(f: AuditFilters, beforeId: number | null, limit: number) {
     p_record_id: f.recordId || null,
     p_before_id: beforeId,
     p_limit: limit,
+    ...companyScopeArg(),
   }
 }
 
@@ -152,6 +154,7 @@ export async function listDeletedRecords(f: DeletedFilters, offset = 0, pageSize
     p_table: f.table || null,
     p_limit: pageSize + 1,
     p_offset: offset,
+    ...companyScopeArg(),
   })
   if (error) throw toRepoError(error)
   const rows = ((data ?? []) as Record<string, unknown>[]).map((r) => ({

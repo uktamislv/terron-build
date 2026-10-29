@@ -4,6 +4,7 @@
 //   unit_price     = round(total_amount / qty_input, 2)
 //   price_per_base = round(total_amount / qty_base, 4)
 
+import { normalizeAlias } from './aliases'
 import {
   cmp,
   div,
@@ -71,13 +72,12 @@ export function unitLabel(u: Pick<UnitDef, 'unit' | 'variant'>): string {
   return variant ? `${u.unit.trim()} · ${variant}` : u.unit.trim()
 }
 
-function norm(s: string): string {
-  return s.trim().replace(/\s+/g, ' ').toLowerCase()
-}
+/** Bazadagi `private.norm_name` bilan bir xil (birlik nomining noyobligi shu bo'yicha). */
+const norm = normalizeAlias
 
 /**
- * Birlikni nomi (va varianti) bo'yicha topadi — katta-kichik harf va chetdagi bo'sh joylar
- * hisobga olinmaydi.
+ * Birlikni nomi (va varianti) bo'yicha topadi — bazadagi `norm_name` kabi: katta-kichik harf, ichki va
+ * chetdagi bo'sh joylar (NBSP ham), ё/е farqi hisobga olinmaydi.
  * - `variant` satr → aynan shu variantli birlik;
  * - `variant === null` → faqat variantsiz birlik (bazadagi `unit_input` qulayligi kabi);
  * - `variant` berilmagan → avval variantsiz birlik; u bo'lmasa va shu nomli birlik bitta
@@ -130,6 +130,19 @@ export function validateQtyInput(
   if (intDigitsOf(value) > QTY_INT_DIGITS) return { ok: false, reason: 'too_large' }
   if (scaleOf(value) > QTY_SCALE) return { ok: false, reason: 'too_precise' }
   return { ok: true, value }
+}
+
+/**
+ * "1,500" / "1.500" — kasr (1,5) yoki minglik (1 500) deb o'qilishi mumkin. Ilova doim kasr deb o'qiydi
+ * (`parseDec`); bu funksiya formada tasdiq qatori ("1,5 kg (1 500 emas)") ko'rsatish uchun ikkala
+ * qiymatni qaytaradi. "0,500" — noaniq emas (null).
+ */
+export function thousandsAmbiguity(input: string): { value: Dec; thousands: Dec } | null {
+  const m = /^\s*([1-9]\d{0,2})[.,](\d{3})\s*$/.exec(input)
+  if (!m) return null
+  const value = parseDec(input)
+  if (value === null) return null
+  return { value, thousands: `${m[1]}${m[2]}` }
 }
 
 /**

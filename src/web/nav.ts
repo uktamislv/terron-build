@@ -21,6 +21,7 @@ export const webNavItems: Record<WebNavKey, WebNavItem> = {
   users: { key: 'users', to: '/users', label: t.web.nav.users },
   objects: { key: 'objects', to: '/objects', label: t.web.nav.objects },
   settings: { key: 'settings', to: '/settings', label: t.web.nav.settings },
+  companies: { key: 'companies', to: '/companies', label: t.web.nav.companies },
 }
 
 export function webNavForRole(role: Role): WebNavItem[] {

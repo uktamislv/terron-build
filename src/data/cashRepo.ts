@@ -2,6 +2,7 @@ import { isPkeyConflict, toRepoError } from './errors'
 import { EXPORT_MAX_ROWS, fetchAll } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
 import { directoryNames } from './profileDirectory'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { CashAdvance, CashAdvanceKind, CashBalance } from './types'
 
@@ -50,7 +51,7 @@ export async function getMyBalance(companyId: string, profileId: string): Promis
 
 /** Odamlar bo'yicha qo'limdagi pul (admin, direktor, buxgalter — hamma; boshqalar — o'zi). */
 export async function listBalances(): Promise<CashBalance[]> {
-  const { data, error } = await getSupabase().from('cash_balances').select(BALANCE_COLUMNS)
+  const { data, error } = await scopeCompany(getSupabase().from('cash_balances').select(BALANCE_COLUMNS))
   if (error) throw toRepoError(error)
   return (data ?? []) as unknown as CashBalance[]
 }
@@ -174,17 +175,25 @@ interface RawExpenseSpent {
   object: { name: string } | null
 }
 
+/** Tarix filtrlari: odam, o'chirilganlar, davr (`from` kiradi, `to` kirmaydi — ISO vaqt). */
+export interface CashHistoryFilters {
+  profileId?: string
+  includeDeleted?: boolean
+  from?: string
+  to?: string
+}
+
 /**
  * Berilgan va sarflangan pul tarixi (yangisi birinchi). `profileId` — bitta odam bo'yicha. Sarflangan —
  * podotchetdan to'langan xaridlar va xarajatlar. `includeDeleted` — o'chirilganlar ham (RLS ruxsat bergan rollarga).
+ * Ko'pi bilan `limit` ta (standart `CASH_HISTORY_LIMIT`) — natija shuncha bo'lsa, yana bor bo'lishi mumkin.
  */
-export async function listCashHistory(
-  opts: { profileId?: string; includeDeleted?: boolean } = {},
-): Promise<CashHistoryEntry[]> {
-  let issuedQ = getSupabase().from('cash_advances').select(ADVANCE_SELECT)
+export async function listCashHistory(opts: CashHistoryFilters & { limit?: number } = {}): Promise<CashHistoryEntry[]> {
+  const limit = opts.limit ?? CASH_HISTORY_LIMIT
+  let issuedQ = scopeCompany(getSupabase().from('cash_advances').select(ADVANCE_SELECT))
   // Firma to'lagan xaridlar / xarajatlar ('firma') podotchet hisobiga kirmaydi
-  let spentQ = getSupabase().from('purchases').select(SPENT_SELECT).eq('payment_source', 'podotchet')
-  let expenseQ = getSupabase().from('expenses').select(EXPENSE_SPENT_SELECT).eq('payment_source', 'podotchet')
+  let spentQ = scopeCompany(getSupabase().from('purchases').select(SPENT_SELECT).eq('payment_source', 'podotchet'))
+  let expenseQ = scopeCompany(getSupabase().from('expenses').select(EXPENSE_SPENT_SELECT).eq('payment_source', 'podotchet'))
   if (!opts.includeDeleted) {
     issuedQ = issuedQ.is('deleted_at', null)
     spentQ = spentQ.is('deleted_at', null)
@@ -195,10 +204,20 @@ export async function listCashHistory(
     spentQ = spentQ.eq('buyer_id', opts.profileId)
     expenseQ = expenseQ.eq('payer_id', opts.profileId)
   }
+  if (opts.from) {
+    issuedQ = issuedQ.gte('issued_at', opts.from)
+    spentQ = spentQ.gte('purchased_at', opts.from)
+    expenseQ = expenseQ.gte('spent_at', opts.from)
+  }
+  if (opts.to) {
+    issuedQ = issuedQ.lt('issued_at', opts.to)
+    spentQ = spentQ.lt('purchased_at', opts.to)
+    expenseQ = expenseQ.lt('spent_at', opts.to)
+  }
   const [issued, spent, expenses] = await Promise.all([
-    issuedQ.order('issued_at', { ascending: false }).limit(CASH_HISTORY_LIMIT),
-    spentQ.order('purchased_at', { ascending: false }).limit(CASH_HISTORY_LIMIT),
-    expenseQ.order('spent_at', { ascending: false }).limit(CASH_HISTORY_LIMIT),
+    issuedQ.order('issued_at', { ascending: false }).limit(limit),
+    spentQ.order('purchased_at', { ascending: false }).limit(limit),
+    expenseQ.order('spent_at', { ascending: false }).limit(limit),
   ])
   if (issued.error) throw toRepoError(issued.error)
   if (spent.error) throw toRepoError(spent.error)
@@ -209,7 +228,7 @@ export async function listCashHistory(
     (expenses.data ?? []) as unknown as RawExpenseSpent[],
   )
   // Manbalar birlashtirilgach sana bo'yicha tartiblanadi, keyin umumiy chegara bo'yicha kesiladi
-  return entries.slice(0, CASH_HISTORY_LIMIT)
+  return entries.slice(0, limit)
 }
 
 async function mergeHistory(issued: RawAdvance[], spent: RawSpent[], expenses: RawExpenseSpent[] = []): Promise<CashHistoryEntry[]> {
@@ -270,7 +289,7 @@ async function mergeHistory(issued: RawAdvance[], spent: RawSpent[], expenses: R
  * Eksport: berilgan va sarflangan pulning to'liq tarixi (har manba 1000 tadan, jami ≤ 50 000).
  */
 export async function listAllCashHistory(
-  opts: { profileId?: string; includeDeleted?: boolean } = {},
+  opts: CashHistoryFilters = {},
   signal?: AbortSignal,
 ): Promise<CashHistoryEntry[]> {
   const issued = await fetchAll<RawAdvance>(
@@ -279,8 +298,11 @@ export async function listAllCashHistory(
         .from('cash_advances')
         .select(ADVANCE_SELECT, req.first ? { count: 'exact' } : undefined)
         .lte('created_at', req.before)
+      q = scopeCompany(q)
       if (!opts.includeDeleted) q = q.is('deleted_at', null)
       if (opts.profileId) q = q.eq('recipient_id', opts.profileId)
+      if (opts.from) q = q.gte('issued_at', opts.from)
+      if (opts.to) q = q.lt('issued_at', opts.to)
       let ranged = q.order('issued_at', { ascending: false }).order('id').range(req.from, req.to)
       if (req.signal) ranged = ranged.abortSignal(req.signal)
       const { data, error, count } = await ranged
@@ -296,8 +318,11 @@ export async function listAllCashHistory(
         .select(SPENT_SELECT, req.first ? { count: 'exact' } : undefined)
         .eq('payment_source', 'podotchet')
         .lte('created_at', req.before)
+      q = scopeCompany(q)
       if (!opts.includeDeleted) q = q.is('deleted_at', null)
       if (opts.profileId) q = q.eq('buyer_id', opts.profileId)
+      if (opts.from) q = q.gte('purchased_at', opts.from)
+      if (opts.to) q = q.lt('purchased_at', opts.to)
       let ranged = q.order('purchased_at', { ascending: false }).order('id').range(req.from, req.to)
       if (req.signal) ranged = ranged.abortSignal(req.signal)
       const { data, error, count } = await ranged
@@ -313,8 +338,11 @@ export async function listAllCashHistory(
         .select(EXPENSE_SPENT_SELECT, req.first ? { count: 'exact' } : undefined)
         .eq('payment_source', 'podotchet')
         .lte('created_at', req.before)
+      q = scopeCompany(q)
       if (!opts.includeDeleted) q = q.is('deleted_at', null)
       if (opts.profileId) q = q.eq('payer_id', opts.profileId)
+      if (opts.from) q = q.gte('spent_at', opts.from)
+      if (opts.to) q = q.lt('spent_at', opts.to)
       let ranged = q.order('spent_at', { ascending: false }).order('id').range(req.from, req.to)
       if (req.signal) ranged = ranged.abortSignal(req.signal)
       const { data, error, count } = await ranged

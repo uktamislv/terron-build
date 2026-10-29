@@ -49,7 +49,16 @@ export function entryDateToIso(isoDate: string, nowIso: string, isAdmin: boolean
   return occurredAtAllowed(iso, nowIso, isAdmin) ? iso : undefined
 }
 
-/** Chip → sana: "Bugun" — null, "Kecha" — kechagi kun, "Boshqa sana" — tanlangan `otherDate`. */
+/** Kechagi Toshkent sanasi (`yyyy-mm-dd`) — "Kecha" chipi bosilgan paytda bir marta hisoblanadi. */
+export function yesterdayIsoDate(nowIso: string): string {
+  return tashkentDateOf(Date.parse(nowIso) - DAY_MS)
+}
+
+/**
+ * Chip → sana: "Bugun" — null, "Kecha" — chip bosilganda qayd etilgan sana (`otherDate`; bo'sh bo'lsa —
+ * hozirgi kechagi kun), "Boshqa sana" — tanlangan `otherDate`. "Kecha" sanasi bosilgan paytda qotiriladi:
+ * yarim tundan keyin saqlansa ham foydalanuvchi ko'rgan kun yoziladi.
+ */
 export function entryDateFor(
   choice: EntryDateChoice,
   otherDate: string,
@@ -57,6 +66,6 @@ export function entryDateFor(
   isAdmin: boolean,
 ): string | null | undefined {
   if (choice === 'today') return null
-  if (choice === 'yesterday') return entryDateToIso(tashkentDateOf(Date.parse(nowIso) - DAY_MS), nowIso, isAdmin)
+  if (choice === 'yesterday') return entryDateToIso(otherDate || yesterdayIsoDate(nowIso), nowIso, isAdmin)
   return otherDate ? entryDateToIso(otherDate, nowIso, isAdmin) : undefined
 }

@@ -1,4 +1,5 @@
 import { mul, round, type Dec } from '@/domain/decimal'
+import { companyScopeArg } from './companyScope'
 import { toRepoError } from './errors'
 import { inChunks } from './fetchAll'
 import { getSupabase } from './supabaseClient'
@@ -191,7 +192,7 @@ export async function createEstimateMaterials(items: readonly EstimateMaterialIn
   const out: EstimateMaterialResult[] = []
   for (let i = 0; i < items.length; i += CREATE_MATERIALS_CHUNK) {
     const chunk = items.slice(i, i + CREATE_MATERIALS_CHUNK)
-    const { data, error } = await getSupabase().rpc('estimate_create_materials', { p_items: chunk })
+    const { data, error } = await getSupabase().rpc('estimate_create_materials', { p_items: chunk, ...companyScopeArg() })
     if (error) throw toRepoError(error)
     const rows = (data ?? []) as { key: string | number; material_id: string; created: boolean }[]
     for (const r of rows) out.push({ key: String(r.key), material_id: r.material_id, created: Boolean(r.created) })

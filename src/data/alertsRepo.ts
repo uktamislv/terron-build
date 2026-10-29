@@ -1,6 +1,7 @@
 import { RepoError, toRepoError } from './errors'
 import { chunkOpts, fetchAll, type ChunkOpts } from './fetchAll'
 import { updateById } from './rowUpdate'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { Alert, AlertSeverity, AlertStatus, AlertType } from './types'
 
@@ -62,7 +63,7 @@ async function loadAlerts(
   to: number,
   opts: ChunkOpts = { count: true },
 ): Promise<{ rows: Alert[]; total: number | null }> {
-  let q = getSupabase().from('alerts').select(ALERT_SELECT, opts.count ? { count: 'exact' } : undefined).is('deleted_at', null)
+  let q = scopeCompany(getSupabase().from('alerts').select(ALERT_SELECT, opts.count ? { count: 'exact' } : undefined).is('deleted_at', null))
   if (filters.statuses && filters.statuses.length > 0) q = q.in('status', filters.statuses)
   if (filters.type) q = q.eq('type', filters.type)
   if (filters.severity) q = q.eq('severity', filters.severity)

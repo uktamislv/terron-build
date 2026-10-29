@@ -201,7 +201,15 @@ describe('/tg/purchase — "Xarajat" rejimi', () => {
     fireEvent.click(tiles.find((x) => x.textContent?.includes('ijarasi')) as HTMLElement)
     fireEvent.change(screen.getByLabelText(te.amount), { target: { value: '5000' } })
     expect(screen.getByText(te.photoRequiredCategory)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: te.save })).toBeDisabled()
+    // Tugma faol: bosilsa saqlanmaydi, rasm maydoniga aylantiriladi
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    const btn = screen.getByRole('button', { name: te.save })
+    expect(btn).toBeEnabled()
+    fireEvent.click(btn)
+    expect(expensesRepo.createExpense).not.toHaveBeenCalled()
+    expect(scroll).toHaveBeenCalled()
+    expect(scroll.mock.contexts[0]).toHaveAttribute('data-photo-field')
   })
 
   it('takroriy xarajat — ogohlantirish, tasdiqlansa saqlanadi', async () => {

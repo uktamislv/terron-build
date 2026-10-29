@@ -12,6 +12,11 @@ export interface ReceiptInput {
   receivedQtyBase: Dec
   /** Xarid vaqti (ISO 8601). */
   purchasedAt: string
+  /**
+   * Xarid kiritilgan vaqt (`created_at`, ISO 8601). Berilsa, kutish `max(purchasedAt, createdAt)`
+   * dan hisoblanadi — orqa sana bilan kiritilgan xarid darhol "kam" bo'lmaydi (bazadagi kabi).
+   */
+  createdAt?: string
   /** Joriy vaqt (ISO 8601) — argument sifatida, `Date.now()` emas. */
   nowIso: string
   /** Firma sozlamasi `receipt_mismatch_pct`. */
@@ -45,8 +50,8 @@ function parseTime(iso: string, name: string): number {
  * Xarid va bog'langan kirim(lar)ni solishtiradi.
  * - `diffPct <= threshold` → ok;
  * - ortiqcha → over (darhol);
- * - kam → xariddan ≥ 24 soat o'tgan bo'lsa under, aks holda pending.
- * severity: ok/pending → null; `diffPct >= 3 × threshold` → jiddiy; aks holda ogohlantirish.
+ * - kam → max(xarid, kiritilgan) vaqtidan ≥ 24 soat o'tgan bo'lsa under, aks holda pending.
+ * severity: ok/pending → null; chegara > 0 va `diffPct >= 3 × threshold` → jiddiy; aks holda ogohlantirish.
  */
 export function evaluateReceipt(p: ReceiptInput): ReceiptResult {
   const diffPct = receiptDiffPct(p.purchasedQtyBase, p.receivedQtyBase)
@@ -55,10 +60,15 @@ export function evaluateReceipt(p: ReceiptInput): ReceiptResult {
   if (cmp(p.receivedQtyBase, p.purchasedQtyBase) > 0) {
     status = 'over'
   } else {
-    const elapsed = parseTime(p.nowIso, 'nowIso') - parseTime(p.purchasedAt, 'purchasedAt')
+    const start = Math.max(
+      parseTime(p.purchasedAt, 'purchasedAt'),
+      p.createdAt === undefined ? -Infinity : parseTime(p.createdAt, 'createdAt'),
+    )
+    const elapsed = parseTime(p.nowIso, 'nowIso') - start
     status = elapsed >= UNDER_DELAY_MS ? 'under' : 'pending'
   }
   if (status === 'pending') return { status, diffPct, severity: null }
-  const severity = cmp(diffPct, mul(p.thresholdPct, '3')) >= 0 ? 'jiddiy' : 'ogohlantirish'
+  // chegara 0 bo'lsa har qanday farq "jiddiy" bo'lib qolmasin
+  const severity = cmp(p.thresholdPct, '0') > 0 && cmp(diffPct, mul(p.thresholdPct, '3')) >= 0 ? 'jiddiy' : 'ogohlantirish'
   return { status, diffPct, severity }
 }

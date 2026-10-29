@@ -120,6 +120,7 @@ export async function updateAuthUser(authUserId: string, input: UpdateAuthUserIn
   const { error } = await getAdminClient().auth.admin.updateUserById(authUserId, {
     ...(input.email !== undefined ? { email: input.email, email_confirm: true } : {}),
     ...(input.password !== undefined ? { password: input.password } : {}),
+    ...(input.appMetadata ? { app_metadata: input.appMetadata } : {}),
     ...(input.userMetadata ? { user_metadata: input.userMetadata } : {}),
   })
   if (error) {

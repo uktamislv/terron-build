@@ -1,9 +1,11 @@
+import { decEq, ensureSameDraft } from './draftConflict'
 import { isPkeyConflict, toRepoError } from './errors'
 import { chunkOpts, fetchAll, inChunks, type ChunkOpts } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
 import { geoColumns, GEO_SELECT } from './geo'
 import { attachNames } from './profileDirectory'
 import { cleanTin } from './suppliersRepo'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { AlertType, GeoFix, PaymentSource, Purchase, PurchaseReceipt } from './types'
 
@@ -24,6 +26,8 @@ const PURCHASE_SELECT =
 /** `purchase_receipts` view: kalit ustuni va qiymatlar. */
 const RECEIPT_KEY = 'purchase_id'
 const RECEIPT_COLUMNS = `${RECEIPT_KEY}, received_qty_base::text, remaining_qty_base::text, receipt_count, last_received_at`
+// unlinked_qty_base har qator uchun hisoblanadi (receipt_candidates) — faqat sahifali ro'yxat va tafsilotda, eksportda emas
+const RECEIPT_COLUMNS_UNLINKED = `${RECEIPT_COLUMNS}, unlinked_qty_base::text`
 
 export const PURCHASES_PAGE_SIZE = 50
 
@@ -118,7 +122,8 @@ function clean(value: string | null | undefined): string | null {
 /**
  * Xarid yaratadi. Javob — saqlangan qator (bazada hisoblangan narxlar bilan).
  * Idempotent: oldingi urinish aslida saqlangan bo'lsa, shu `id` bilan `purchases_pkey` 23505 keladi —
- * unda saqlangan qator o'qib qaytariladi.
+ * unda saqlangan qator o'qib qaytariladi; boshqa yozuv bo'lsa (obyekt, material, birlik, miqdor yoki
+ * summa farq qiladi) — `draft_conflict`.
  */
 export async function createPurchase(input: NewPurchase): Promise<Purchase> {
   const row: Record<string, unknown> = {
@@ -151,7 +156,16 @@ export async function createPurchase(input: NewPurchase): Promise<Purchase> {
   if (error) {
     if (isPkeyConflict(error, 'purchases_pkey')) {
       const existing = await getPurchaseById(input.id).catch(() => null)
-      if (existing) return existing
+      if (existing) {
+        return ensureSameDraft(
+          existing,
+          existing.object_id === input.objectId &&
+            existing.material_id === input.materialId &&
+            existing.unit_id === input.unitId &&
+            decEq(existing.qty_input, input.qtyInput) &&
+            decEq(existing.total_amount, input.totalAmount),
+        )
+      }
     }
     throw toRepoError(error)
   }
@@ -172,12 +186,12 @@ export async function getPurchaseById(id: string): Promise<Purchase> {
 }
 
 /** Qabul holati (`purchase_receipts`) va ochiq alert turlari. Alertlarni ko'ra olmaydiganlarga — bo'sh. */
-async function attachStatus(rows: Purchase[]): Promise<Purchase[]> {
+async function attachStatus(rows: Purchase[], withUnlinked = true): Promise<Purchase[]> {
   if (rows.length === 0) return rows
   const ids = rows.map((r) => r.id)
   // .in() — 100 talik bo'laklar, ketma-ket (URL uzunligi)
   const receipts = await inChunks(ids, async (chunk) => {
-    const { data, error } = await getSupabase().from('purchase_receipts').select(RECEIPT_COLUMNS).in(RECEIPT_KEY, chunk)
+    const { data, error } = await getSupabase().from('purchase_receipts').select(withUnlinked ? RECEIPT_COLUMNS_UNLINKED : RECEIPT_COLUMNS).in(RECEIPT_KEY, chunk)
     if (error) throw toRepoError(error)
     return (data ?? []) as unknown as Record<string, unknown>[]
   })
@@ -188,6 +202,7 @@ async function attachStatus(rows: Purchase[]): Promise<Purchase[]> {
       remaining_qty_base: String(r.remaining_qty_base ?? '0'),
       receipt_count: Number(r.receipt_count ?? 0),
       last_received_at: (r.last_received_at as string | null) ?? null,
+      ...(r.unlinked_qty_base !== undefined && r.unlinked_qty_base !== null ? { unlinked_qty_base: String(r.unlinked_qty_base) } : {}),
     })
   }
   // Alertlar — qo'shimcha belgi: xato bo'lsa jadval baribir ko'rsatiladi
@@ -219,7 +234,7 @@ export async function listPurchases(filters: PurchaseFilters = {}, page = 0): Pr
 
 /** Eksport: joriy filtr bo'yicha barcha xaridlar qabul holati bilan (1000 tadan, ≤ 50 000). */
 export function listAllPurchases(filters: PurchaseFilters = {}, signal?: AbortSignal): Promise<Purchase[]> {
-  return fetchAll((req) => loadPurchases(filters, req.from, req.to, chunkOpts(req)), { signal })
+  return fetchAll((req) => loadPurchases(filters, req.from, req.to, chunkOpts(req), false), { signal })
 }
 
 async function loadPurchases(
@@ -227,8 +242,9 @@ async function loadPurchases(
   from: number,
   to: number,
   opts: ChunkOpts = { count: true },
+  withUnlinked = true,
 ): Promise<{ rows: Purchase[]; total: number | null }> {
-  let q = getSupabase().from('purchases').select(PURCHASE_SELECT, opts.count ? { count: 'exact' } : undefined)
+  let q = scopeCompany(getSupabase().from('purchases').select(PURCHASE_SELECT, opts.count ? { count: 'exact' } : undefined))
   if (!filters.includeDeleted) q = q.is('deleted_at', null)
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.materialId) q = q.eq('material_id', filters.materialId)
@@ -245,7 +261,7 @@ async function loadPurchases(
   if (opts.signal) ranged = ranged.abortSignal(opts.signal)
   const { data, error, count } = await ranged
   if (error) throw toRepoError(error)
-  const rows = await attachStatus(await withNames(((data ?? []) as unknown as RawPurchase[]).map(normalize)))
+  const rows = await attachStatus(await withNames(((data ?? []) as unknown as RawPurchase[]).map(normalize)), withUnlinked)
   return { rows, total: count ?? null }
 }
 
@@ -272,10 +288,12 @@ export type PriceCheck = 'ok' | 'high' | 'low'
  * (o'rtacha, foiz) qaytarilmaydi — kalibrlashning oldini olish. `pricePerBase` — Dec satr
  * (`purchasePrices` bilan hisoblangan).
  */
-export async function checkPurchasePrice(materialId: string, pricePerBase: string): Promise<PriceCheck> {
+export async function checkPurchasePrice(materialId: string, pricePerBase: string, purchasedAt?: string | null): Promise<PriceCheck> {
+  // `purchasedAt` (orqa sana bilan xarid) — o'rtacha shu vaqtgacha bo'lgan xaridlardan; berilmasa — hozir
   const { data, error } = await getSupabase().rpc('check_purchase_price', {
     p_material_id: materialId,
     p_price_per_base: pricePerBase,
+    ...(purchasedAt ? { p_purchased_at: purchasedAt } : {}),
   })
   if (error) throw toRepoError(error)
   return data === 'high' || data === 'low' ? data : 'ok'

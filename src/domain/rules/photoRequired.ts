@@ -30,3 +30,12 @@ export function photoRequired(p: PhotoRequiredInput): PhotoRequirement {
   }
   return null
 }
+
+/**
+ * Chek QR rasmdan ozod qiladimi — bazadagi guard (`(4) rasm`) bilan aynan bir xil:
+ * tasdiqlangan (`receiptVerified`) VA chek jami ma'lum VA chek bir qatorli (≤ 1). Ko'p qatorli chekda
+ * server rasm talab qiladi — klient ham `qrVerified: false` beradi (MainButton va xato bir xil bo'lsin).
+ */
+export function receiptPhotoExempt(p: { verified: boolean; total: Dec | null; itemCount: number }): boolean {
+  return p.verified && p.total !== null && p.itemCount <= 1
+}

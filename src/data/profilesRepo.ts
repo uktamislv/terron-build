@@ -2,6 +2,7 @@ import { normalizePhone } from '@shared/phone'
 import type { Role } from '@/domain/roles'
 import { RepoError, toRepoError } from './errors'
 import { softDeleteById } from './rowUpdate'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { Profile } from './types'
 
@@ -39,13 +40,18 @@ function requirePhone(input: string): string {
 
 /** Firma foydalanuvchilari (o'chirilmaganlar), ism bo'yicha. */
 export async function listProfiles(): Promise<Profile[]> {
-  const { data, error } = await getSupabase()
-    .from('profiles')
-    .select(PROFILE_COLUMNS)
-    .is('deleted_at', null)
-    .order('full_name')
+  let q = getSupabase().from('profiles').select(PROFILE_COLUMNS).is('deleted_at', null)
+  q = scopeCompany(q)
+  const { data, error } = await q.order('full_name')
   if (error) throw toRepoError(error, PROFILE_ERRORS)
   return (data ?? []) as Profile[]
+}
+
+/** Bitta profil (masalan yangi firma administratori — veb login berish uchun). */
+export async function getProfile(id: string): Promise<Profile> {
+  const { data, error } = await getSupabase().from('profiles').select(PROFILE_COLUMNS).eq('id', id).single()
+  if (error) throw toRepoError(error, PROFILE_ERRORS)
+  return data as Profile
 }
 
 export async function createProfile(input: NewProfile): Promise<Profile> {

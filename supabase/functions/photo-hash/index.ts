@@ -125,7 +125,8 @@ const userDeps: PhotoHashDeps = {
       .maybeSingle()
     if (error) throw new Error(`${table}: ${error.message}`)
     if (data === null) return null
-    const row = data as Record<string, unknown>
+    // select satri dinamik (`${col}`) — supabase-js tur tahlilchisi uni o'qiy olmaydi (ParserError)
+    const row = data as unknown as Record<string, unknown>
     return {
       company_id: String(row.company_id),
       created_by: typeof row.created_by === 'string' ? row.created_by : null,

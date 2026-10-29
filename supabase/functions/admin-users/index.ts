@@ -36,7 +36,7 @@ const deps: AdminUsersDeps = {
   getAuthUserIdFromJwt,
   getActiveProfileByAuthUserId: async (authUserId: string) => {
     const p = await activeProfileByAuthUserId(authUserId)
-    return p === null ? null : { id: p.id, company_id: p.company_id, role: p.role }
+    return p === null ? null : { id: p.id, company_id: p.company_id, role: p.role, login_kind: p.login_kind }
   },
   getProfileById: async (profileId: string) => {
     const p = await profileById(profileId)
@@ -52,6 +52,15 @@ const deps: AdminUsersDeps = {
   linkAuthUser,
   lastProfileCompanyByAuthUserId,
   setLoginKind,
+  // Audit 3 (E2): xato (funksiya yo'q ham) — login berilmaydi (500), to'qnashuv jim o'tkazib yuborilmasin
+  phoneInOtherCompany: async (companyId, phone) => {
+    const { data, error } = await getAdminClient().rpc('svc_phone_in_other_company', {
+      p_company_id: companyId,
+      p_phone: phone,
+    })
+    if (error) throw new Error(`svc_phone_in_other_company: ${error.message}`)
+    return data === true
+  },
   logAuthEvent,
   log,
 }

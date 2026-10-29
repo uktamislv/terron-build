@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useCompanyId } from '@/auth/activeCompany'
 import { useAuth } from '@/auth/authContext'
 import { ArrowLeft, Building2, CalendarDays, FileSpreadsheet, GitCompare, Rows3, Upload } from 'lucide-react'
 import { Badge, Button, DataTable, EmptyState, EntryRow, FilterBar, Money, Notice, PageHeader, SkeletonRows } from '@/components/ui'
@@ -154,6 +155,8 @@ function ComparePanel({ estimates }: { estimates: readonly Estimate[] }) {
 /** Smeta: obyekt bo'yicha versiyalar, ko'rish, solishtirish, joriy qilish va Excel importi. */
 export function EstimatesPage() {
   const { profile: me } = useAuth()
+  // super_admin — faol firma (yon menyudagi tanlagich), boshqalar — o'z firmasi
+  const companyId = useCompanyId()
   const [objects, setObjects] = useState<ObjectRow[] | null>(null)
   const [objectId, setObjectId] = useState('')
   const [estimates, setEstimates] = useState<Estimate[] | null>(null)
@@ -194,7 +197,7 @@ export function EstimatesPage() {
     }
   }, [objectId, reloadKey])
 
-  if (!me) return null
+  if (!me || !companyId) return null
   const canManage = can(me.role, 'manage_estimates')
   const canCatalog = can(me.role, 'manage_catalog')
 
@@ -216,7 +219,7 @@ export function EstimatesPage() {
     return (
       <div>
         <ImportWizard
-          companyId={me.company_id}
+          companyId={companyId}
           objects={objects}
           initialObjectId={objectId}
           canCatalog={canCatalog}

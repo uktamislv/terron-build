@@ -386,7 +386,7 @@ Shartnoma: `docs/purchase-design.md`.
 ### Xarid qabul holati
 
 - `private.purchase_receipt_stats(p_company_id, p_purchase_id)` — `security definer`, `stable`: bog'langan `kirim`, o'chirilmagan harakatlar yig'indisi (`received_qty_base numeric(20,6)`, `receipt_count bigint`, `last_received_at`). Definer — haydovchi harakatlarni ko'rmaydi, lekin o'z xaridi qabulini ko'rishi kerak. Faqat yig'indi, faqat chaqiruvchi firmasi uchun (`auth.uid() is null or can_access_company`). Execute: `authenticated`, `service_role`.
-- View `public.purchase_receipts` (`security_invoker = true`): `purchase_id, company_id, object_id, material_id, buyer_id, purchased_at, qty_base, received_qty_base, remaining_qty_base` (= `qty_base − received`, manfiy — ortiqcha), `receipt_count bigint, last_received_at`. Faqat o'chirilmagan xaridlar.
+- View `public.purchase_receipts` (`security_invoker = true`): `purchase_id, company_id, object_id, material_id, buyer_id, purchased_at, qty_base, received_qty_base, remaining_qty_base` (= `qty_base − received`, manfiy — ortiqcha), `receipt_count bigint, last_received_at`, `unlinked_qty_base` (audit 3-tur D15: xaridga bog'lanmagan nomzod kirimlar ulushi — server qoida 1 "covered" holatida hisoblaydigan miqdor; to'liq qabul qilinganda 0). Faqat o'chirilmagan xaridlar.
 - `public.open_purchases(p_object_id uuid, p_material_id uuid)` — `sql stable security invoker`, `search_path = ''`; execute: `authenticated`, `service_role`. Qaytaradi: `id, purchased_at, buyer_id, buyer_name, qty_base, received_qty_base, remaining_qty_base, unit_input, unit_variant, qty_input`. Shart: `purchased_at >= now() − 14 kun`, `remaining_qty_base > 0`. Tartib: `purchased_at desc, created_at desc, id`.
 
 ### alerts
@@ -421,7 +421,7 @@ Hammasi `private`, `security definer`, `search_path = ''`, execute — hech kimg
 
 **Qoida 3 — `narx_ogishi`, `severity = 'ogohlantirish'`.** "Oldingi": shu firma, shu material, o'chirilmagan, `(purchased_at, created_at)` bo'yicha qat'iy oldin. `avg_n = round(sum(total_amount) / sum(qty_base), 4)` — oxirgi `price_avg_window` tasi (< 2 → null); `avg_90` — xuddi shunday, `purchased_at >= xarid purchased_at − 90 kun` bo'lganlarning hammasi (< 2 → null). `diff_x = round((price_per_base − avg_x) * 100 / avg_x, 2)` (avg null/0 → null). `high`: `diff_n > chegara` yoki `diff_90 > chegara`; aks holda `low`: `diff_n <= −50` yoki `diff_90 <= −50`; aks holda `ok`. `details`: `avg_n, diff_n, avg_90, diff_90, price, direction, window_size, threshold_pct`. Bitta ochiq alert; `ok` bo'lsa avtomatik yopiladi.
 
-**`public.check_purchase_price(p_material_id uuid, p_price_per_base numeric) → text`** — `'ok' | 'high' | 'low'`. `plpgsql stable security definer`, `search_path = ''` (firma bo'yicha butun oyna kerak — prorab/haydovchi boshqalar xaridini ko'rmaydi). Faqat `my_company_id()` va shu firmaning o'chirilmagan materiali (aks holda `'ok'`); "oldingi" = `(purchased_at, created_at) < (now(), infinity)`; narx `round(p, 4)`. O'rtacha yoki foiz qaytarilmaydi (kalibrlashning oldini olish). Execute: faqat `authenticated`.
+**`public.check_purchase_price(p_material_id uuid, p_price_per_base numeric, p_purchased_at timestamptz default now()) → text`** — `'ok' | 'high' | 'low'` (audit 3-tur D14: `p_purchased_at` — "oldingi" shu vaqtgacha; orqa sanali xarid server bahosi bilan bir xil). `plpgsql stable security definer`, `search_path = ''` (firma bo'yicha butun oyna kerak — prorab/haydovchi boshqalar xaridini ko'rmaydi). Faqat `my_company_id()` va shu firmaning o'chirilmagan materiali (aks holda `'ok'`); "oldingi" = `(purchased_at, created_at) < (now(), infinity)`; narx `round(p, 4)`. O'rtacha yoki foiz qaytarilmaydi (kalibrlashning oldini olish). Execute: faqat `authenticated`.
 
 **Triggerlar** (AFTER, `zz_*` — `z_audit` dan keyin; security definer):
 
@@ -829,7 +829,7 @@ Qayta ishlatiladi: `photo_required`, `photo_sha256_invalid`, `receipt_already_us
 
 ## Seed va shablon
 
-- `private.apply_material_template(company_id uuid)` — yangi firma uchun materiallar shabloni (SaaS'da har yangi firmaga chaqiriladi). Idempotent (material nom bo'yicha, birlik `(unit, variant)` bo'yicha, alias — hammasi `private.norm_name` bo'yicha (Batch 3) tekshiriladi). Execute — faqat `service_role` (va egasi); foydalanuvchi sessiyasida faqat super_admin. Sement M400 va M500 — ikki alohida material.
+- `private.apply_material_template(company_id uuid)` — yangi firma uchun materiallar shabloni (SaaS'da har yangi firmaga chaqiriladi). Idempotent (material nom bo'yicha, birlik `(unit, variant)` bo'yicha, alias — hammasi `private.norm_name` bo'yicha (Batch 3) tekshiriladi). Execute — faqat `service_role` (va egasi); foydalanuvchi sessiyasida faqat super_admin. Sement M400 va M500 — ikki alohida material. Audit 3-tur D1: `companies` ga INSERT bo'lganda trigger `zz_material_template` uni o'zi chaqiradi; firma qo'shish — `public.create_company(p_name, p_admin_full_name, p_admin_phone) → jsonb` (super_admin).
 - `supabase/seed.sql`: namuna firma, 3 obyekt, shablon qo'llanadi. Auth foydalanuvchilarisiz (ular Batch 2 da). **Production'ga qo'llanmaydi** — faqat lokal/sinov uchun namuna ma'lumot.
 
 ## Xavfsizlik chegaralari va eslatmalar

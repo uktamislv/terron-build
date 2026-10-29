@@ -75,6 +75,8 @@ export const uz = {
     phone_format: 'Telefon raqami noto‘g‘ri. Masalan: +998 90 123 45 67',
     already_member: 'Foydalanuvchi bu obyektga allaqachon biriktirilgan.',
     duplicate: 'Bunday yozuv allaqachon mavjud.',
+    draft_conflict:
+      'Oldingi urinish boshqa ma’lumot bilan saqlangan ekan (“Yozuvlar”da ko‘ring). Shu yozuvni ham saqlash uchun yana bosing.',
     invalid_value: 'Kiritilgan qiymat noto‘g‘ri.',
     not_found: 'Yozuv topilmadi.',
     login_taken: 'Bu login boshqa foydalanuvchida band.',
@@ -182,6 +184,11 @@ export const uz = {
     expense_category_duplicate: 'Shu nomdagi xarajat turi allaqachon bor.',
     expense_category_inactive: 'Xarajat turi o‘chirilgan yoki nofaol — boshqa turni tanlang.',
     expense_payer_invalid: 'To‘lovchi sifatida xarajat kirita oladigan faol xodimni tanlang.',
+    company_create_forbidden: 'Firmani faqat tizim egasi qo‘sha oladi.',
+    company_name_invalid: 'Firma nomini kiriting (ko‘pi bilan 200 belgi).',
+    profile_name_invalid: 'Administrator ismini kiriting (ko‘pi bilan 200 belgi).',
+    phone_invalid: 'Telefon raqami noto‘g‘ri. Masalan: +998 90 123 45 67',
+    phone_in_other_company: 'Bu telefon raqami boshqa firmada ro‘yxatdan o‘tgan — administrator uchun boshqa raqam kiriting.',
     chat_reset_forbidden: 'Bot blokini faqat administrator tozalaydi.',
     profile_not_found: 'Foydalanuvchi topilmadi.',
     purchase_buyer_invalid: 'Xaridor sifatida faqat xarid kirita oladigan faol xodimni tanlang.',
@@ -277,9 +284,47 @@ export const uz = {
       users: 'Foydalanuvchilar',
       objects: 'Obyektlar',
       settings: 'Sozlamalar',
+      companies: 'Firmalar',
     },
     welcome: 'Xush kelibsiz',
     batchNote: 'Sinov versiyasi — bo‘limlar navbatma-navbat qo‘shiladi.',
+  },
+  /** Firmalar (faqat tizim egasi — super_admin) va faol firma tanlagichi. */
+  companies: {
+    title: 'Firmalar',
+    add: 'Firma qo‘shish',
+    addTitle: 'Yangi firma',
+    addIntro: 'Firma va uning administratori yaratiladi. Materiallar shabloni va xarajat turlari avtomatik qo‘shiladi.',
+    name: 'Firma nomi',
+    adminName: 'Administrator ismi',
+    adminPhone: 'Administrator telefoni',
+    adminPhoneHint: 'Administrator Telegram orqali shu raqam bilan kiradi',
+    colName: 'Firma',
+    colStatus: 'Holat',
+    colCreated: 'Qo‘shilgan',
+    colActions: 'Amallar',
+    active: 'Faol',
+    inactive: 'Nofaol',
+    current: 'Tanlangan',
+    activate: 'Faollashtirish',
+    deactivate: 'Nofaol qilish',
+    rename: 'Nomini o‘zgartirish',
+    renameTitle: 'Firma nomini o‘zgartirish',
+    switchTo: 'Shu firmaga o‘tish',
+    empty: 'Firmalar yo‘q.',
+    errName: 'Firma nomini kiriting (ko‘pi bilan 200 belgi).',
+    errAdminName: 'Administrator ismini kiriting.',
+    errPhone: 'Telefon raqami noto‘g‘ri. Masalan: +998 90 123 45 67',
+    created: (name: string) => `Firma qo‘shildi: ${name}`,
+    createdText: (admin: string) => `Administrator: ${admin}. Endi unga veb login bering yoki firmaga o‘tib foydalanuvchilarni qo‘shing.`,
+    setAdminLogin: 'Administratorga veb login berish',
+    openUsers: 'Firma foydalanuvchilari',
+    saved: 'Saqlandi',
+    deactivateConfirm: (name: string) => `“${name}” nofaol qilinsinmi? Firma xodimlari tizimga kira olmaydi.`,
+    /** Yon menyudagi tanlagich. */
+    switcher: 'Firma',
+    switcherHint: 'Ro‘yxatlar va yangi yozuvlar shu firma bo‘yicha',
+    otherCompany: (name: string) => `Boshqa firma ko‘rilmoqda: ${name}`,
   },
   users: {
     title: 'Foydalanuvchilar',
@@ -370,6 +415,10 @@ export const uz = {
     errAmount: 'Summani to‘g‘ri kiriting yoki bo‘sh qoldiring.',
     saved: 'Sozlamalar saqlandi.',
     readOnly: 'Sozlamalarni faqat admin o‘zgartiradi.',
+    /** Firma nomi (admin — o'z firmasi). */
+    companyName: 'Firma nomi',
+    companyNameSaved: 'Firma nomi saqlandi.',
+    errCompanyName: 'Firma nomini kiriting (ko‘pi bilan 200 belgi).',
     /** Batch 11: sahifa bo'limlari. */
     tabsLabel: 'Sozlamalar bo‘limlari',
     tabCompany: 'Firma sozlamalari',
@@ -894,6 +943,8 @@ export const uz = {
       pending: 'Kutilmoqda',
       none: 'Qabul qilinmagan',
       unknown: 'Noma’lum',
+      // Qoida 1: bog'lanmagan kirim(lar) yetishmayotgan miqdorni qoplaydi — xaridga bog'lash kerak
+      covered: 'Bog‘lanmagan kirim bilan qoplangan',
     },
     receivedOf: (received: string, purchased: string, unit: string) => `${received} / ${purchased} ${unit}`,
     linkedMovements: 'Bog‘langan kirimlar',
@@ -988,6 +1039,14 @@ export const uz = {
     sendAsNew: 'Yangi yozuv sifatida berish',
     editNote: 'Izohni tahrirlash',
     editNoteHint: 'Faqat izoh o‘zgaradi. Summa va sana o‘zgarmaydi — xato bo‘lsa, yozuvni o‘chirib, qayta bering.',
+    // Tarix: davr filtri va chegara
+    filterDate: 'Sana',
+    more: 'Ko‘proq ko‘rsatish',
+    limitHint: (n: number) => `Oxirgi ${n} ta yozuv ko‘rsatilmoqda. Davrni tanlang yoki “Ko‘proq ko‘rsatish” ni bosing.`,
+    // Sarf tafsiloti: xarajat (xarid emas)
+    expenseCategory: 'Xarajat turi',
+    /** Ta'minotchi: faqat o'z podotcheti. */
+    ownIntro: 'Sizga berilgan pul va undan qilingan xarid/xarajatlar.',
   },
   estimates: {
     title: 'Smeta',
@@ -1418,11 +1477,20 @@ export const uz = {
       } as Record<string, string>,
       settingsChanged: (changes: string, who: string) =>
         `Sozlama o‘zgardi${changes ? `: ${changes}` : ''}${who ? ` (${who})` : ''}`,
+      /** Material / xarajat turi nazorat bayroqlari (details.kind = *_control): qaysi yozuv. */
+      controlChanged: (target: string, changes: string, who: string) =>
+        `“${target}” nazorati o‘zgardi${changes ? `: ${changes}` : ''}${who ? ` (${who})` : ''}`,
       settingsOff: 'o‘chiq',
       settingsKeys: {
         quiet_hours_start: 'Tinch soatlar boshlanishi',
         quiet_hours_end: 'Tinch soatlar tugashi',
         timezone: 'Vaqt zonasi',
+        // Material / xarajat turi nazorat bayroqlari (sozlama_ozgardi, details.kind = *_control)
+        material_outside_estimate: 'Material: smetaga kirmaydi',
+        material_photo_required: 'Material: rasm majburiy',
+        category_monthly_limit: 'Xarajat turi: oylik limit',
+        category_photo_required: 'Xarajat turi: rasm majburiy',
+        category_is_active: 'Xarajat turi: faol',
       } as Record<string, string>,
       loginChanged: (target: string, role: string, who: string) =>
         `${target || 'Foydalanuvchi'}${role ? ` (${role})` : ''} uchun veb login o‘zgartirildi${who ? ` — ${who}` : ''}`,
@@ -1456,6 +1524,24 @@ export const uz = {
     /** Pastki menyu uchun qisqa yorliqlar (bir qatorga sig'ishi uchun); yo'q bo'lsa — `nav`. */
     navShort: {} as Partial<Record<'home' | 'movement' | 'purchase' | 'request' | 'inventory' | 'mine', string>>,
     hello: 'Salom',
+    /** Formadan chiqish (pastki menyu, bo'lim almashtirish) — to'ldirilgan ma'lumot yo'qolishidan oldin. */
+    discard: {
+      title: 'Formadan chiqish',
+      text: 'Kiritilgan ma’lumot o‘chadi. Chiqasizmi?',
+      stay: 'Qolish',
+      leave: 'Chiqish',
+    },
+    /** "Qabul kutilmoqda": xarid qilingan, lekin hali kirim qilinmagan materiallar. */
+    pending: {
+      banner: (n: number) => `Qabul kutilmoqda (${n})`,
+      hint: 'Xarid qilingan, hali kirim qilinmagan',
+      title: 'Qabul kutilmoqda',
+      bought: (date: string, buyer: string) => (buyer ? `${date} · ${buyer}` : date),
+      remainingLabel: 'qolgan',
+      tileFlag: 'Qabul kutilmoqda',
+      /** Xarid saqlangandan keyin (kirim qila oladigan rollar). */
+      receiveNow: 'Qabul qilish (kirim)',
+    },
     home: {
       actions: 'Yangi yozuv',
       kirimHint: 'Material keldi',
@@ -1475,12 +1561,16 @@ export const uz = {
       search: 'Material qidirish',
       frequent: 'Ko‘p ishlatiladi',
       allMaterials: 'Barcha materiallar',
+      showMore: (n: number) => `Yana ko‘rsatish (${n})`,
       noMaterials: 'Faol material yo‘q.',
       notFound: 'Hech narsa topilmadi.',
       change: 'O‘zgartirish',
       qty: 'Miqdor',
       unit: 'Birlik',
       equals: (qty: string, unit: string) => `= ${qty} ${unit}`,
+      /** "1,500" kiritilganda: ilova kasr deb o'qiydi. */
+      ambiguousQty: (qty: string, unit: string, thousands: string) =>
+        `${qty}${unit ? ` ${unit}` : ''} deb saqlanadi (${thousands} emas)`,
       stock: (from: string, to: string, unit: string) => `Qoldiq: ${from} ${unit} → ${to} ${unit}`,
       warnings: {
         exceeds_stock: 'Chiqim qoldiqdan ko‘p. Tekshirib ko‘ring — saqlash mumkin.',
@@ -1496,6 +1586,20 @@ export const uz = {
       note: 'Izoh (ixtiyoriy)',
       notePlaceholder: 'masalan, mashina raqami',
       save: 'Saqlash',
+      /** MainButton — tur bilan (adashib chiqim yozilmasin). */
+      saveKirim: 'Kirimni saqlash',
+      saveChiqim: 'Chiqimni saqlash',
+      /** Chiqim: qoldiq (forma ochilishi bilan). */
+      stockNow: (qty: string, unit: string) => `Qoldiq: ${qty} ${unit}`,
+      stockUnknown: 'Qoldiqni tekshirib bo‘lmadi',
+      stockEmpty: 'Bu obyektda shu material qoldig‘i yo‘q. Material kelgan bo‘lsa — avval kirim qiling.',
+      stockEmptyPending: 'Xarid qilingan, lekin hali qabul qilinmagan (kirim qilinmagan).',
+      toKirim: 'Kirimga o‘tish',
+      negativeTitle: 'Qoldiq manfiy bo‘ladi',
+      negativeText: (after: string, unit: string) =>
+        `Chiqimdan keyin qoldiq ${after} ${unit} bo‘ladi. Rostdan ham shu miqdorni chiqim qilasizmi?`,
+      negativeCancel: 'Miqdorni tekshirish',
+      negativeConfirm: 'Baribir chiqim',
       /** Ikkinchi qator (obyekt) — SavedBanner `meta` sida alohida. */
       saved: (type: string, qty: string, unit: string, material: string) => `${type} saqlandi: ${qty} ${unit} ${material}`,
       next: 'Keyingi yozuv',
@@ -1626,6 +1730,7 @@ export const uz = {
         `So‘ralgan miqdor smetada qolgandan ${qty} ${unit} ko‘p. Yuborish mumkin — admin ko‘rib chiqadi.`,
       notInEstimate: 'Bu material joriy smetada yo‘q — so‘rovni admin ko‘rib chiqadi.',
       noEstimate: 'Obyektda joriy smeta yo‘q — so‘rovni admin ko‘rib chiqadi.',
+      outsideEstimate: 'Bu material smetaga kirmaydi — smeta bo‘yicha tekshirilmaydi.',
       save: 'So‘rov yuborish',
       saved: (qty: string, unit: string, material: string) => `So‘rov yuborildi: ${qty} ${unit} ${material}`,
       mine: 'Mening so‘rovlarim',
@@ -2264,9 +2369,15 @@ export const uz = {
       lineSum: 'Summa (so‘m)',
       normBase: 'Norma (asosiy birlikda)',
       rowNumber: '№',
+      outsideEstimate: 'Smetaga kirmaydi',
+      paymentSource: 'Pul manbai',
+      source: 'Manba',
+      expenseCategory: 'Xarajat turi',
     },
     itemTypes: { ish: 'Ish', material: 'Material' },
-    cashKinds: { issued: 'Berildi', returned: 'Qaytarildi', spent: 'Xaridga sarflandi' },
+    cashKinds: { issued: 'Berildi', returned: 'Qaytarildi', spent: 'Xaridga sarflandi', spentExpense: 'Xarajatga sarflandi' },
+    /** Podotchet tarixi: sarf manbai. */
+    sources: { purchase: 'Xarid', expense: 'Xarajat' },
   },
   /** Sotuvchilar (Materiallar → Sotuvchilar, admin). */
   suppliers: {

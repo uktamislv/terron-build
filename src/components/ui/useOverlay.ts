@@ -7,6 +7,27 @@ function focusables(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE))
 }
 
+/** Matn kiritiladigan maydon (fokus olsa telefonda klaviatura ochiladi). */
+function isTextEntry(el: HTMLElement): boolean {
+  if (el instanceof HTMLTextAreaElement) return true
+  if (el.isContentEditable) return true
+  if (!(el instanceof HTMLInputElement)) return false
+  return !['checkbox', 'radio', 'file', 'button', 'submit', 'reset', 'range', 'color', 'hidden', 'image'].includes(el.type)
+}
+
+/** Sensorli (barmoq bilan) qurilma. */
+function isCoarsePointer(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches
+}
+
+/**
+ * Oyna yopilgach fokus qaytariladimi: telefonda matn maydoniga qaytarilmaydi — aks holda varaq
+ * yopilishi bilan klaviatura yana ochilib, ekranni yopib qo'yadi.
+ */
+export function shouldRestoreFocus(el: HTMLElement, coarse: boolean = isCoarsePointer()): boolean {
+  return !(coarse && isTextEntry(el))
+}
+
 /**
  * Modal oyna / varaq / popover xatti-harakati: Esc bilan yopish, fokus tuzog'i (Tab aylanadi),
  * ochilganda fokus ichkariga, yopilganda — avvalgi elementga qaytadi. `lockScroll` — sahifa aylanmaydi.
@@ -69,7 +90,7 @@ export function useOverlay(
       const i = stack.lastIndexOf(onKey)
       if (i >= 0) stack.splice(i, 1)
       if (lockScroll) document.body.style.overflow = prevOverflow
-      if (previous && document.contains(previous)) previous.focus({ preventScroll: true })
+      if (previous && document.contains(previous) && shouldRestoreFocus(previous)) previous.focus({ preventScroll: true })
     }
   }, [ref, trap, lockScroll])
 }

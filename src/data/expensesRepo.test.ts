@@ -103,8 +103,16 @@ describe('expensesRepo', () => {
   it('createExpense: qayta urinish (expenses_pkey 23505) — saqlangan qator o‘qiladi', async () => {
     fake.results.push({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "expenses_pkey"' } })
     fake.results.push({ data: raw, error: null })
-    const e = await createExpense({ id: 'e1', companyId: 'c', categoryId: 'k1', objectId: 'o1', amount: '1' })
+    const e = await createExpense({ id: 'e1', companyId: 'c', categoryId: 'k1', objectId: null, amount: '41000.00' })
     expect(e.id).toBe('e1')
+  })
+
+  it('createExpense: 23505, saqlangan xarajat boshqa (obyekt yoki summa) — draft_conflict', async () => {
+    fake.results.push({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "expenses_pkey"' } })
+    fake.results.push({ data: raw, error: null })
+    await expect(createExpense({ id: 'e1', companyId: 'c', categoryId: 'k1', objectId: 'o1', amount: '41000' })).rejects.toMatchObject({
+      code: 'draft_conflict',
+    })
   })
 
   it('listExpenses: filtrlar ("Umumiy" — object_id is null), tartib, alert belgilari details.record_id bo‘yicha', async () => {

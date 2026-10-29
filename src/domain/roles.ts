@@ -42,6 +42,8 @@ export type WebNavKey =
   | 'users'
   | 'objects'
   | 'settings'
+  // Audit 3: firmalar ro'yxati va yangi firma — faqat tizim egasi
+  | 'companies'
 
 export type TgNavKey = 'home' | 'movement' | 'purchase' | 'request' | 'inventory' | 'mine'
 
@@ -66,6 +68,7 @@ const WEB_ORDER: readonly WebNavKey[] = [
   'objects',
   // Batch 11: firma sozlamalari va xatolik xabarlari — faqat admin, super_admin
   'settings',
+  'companies',
 ]
 
 /** Barcha Mini App bandlar — barqaror tartib (pastki menyudagi tartib). */
@@ -73,10 +76,11 @@ const TG_ORDER: readonly TgNavKey[] = ['home', 'movement', 'purchase', 'request'
 
 const WEB_NAV: Record<Role, readonly WebNavKey[]> = {
   super_admin: WEB_ORDER,
-  admin: WEB_ORDER,
+  admin: WEB_ORDER.filter((k) => k !== 'companies'),
   direktor: ['dashboard', 'movements', 'purchases', 'cash', 'estimates', 'requests', 'alerts', 'history'],
   buxgalter: ['dashboard', 'materials', 'movements', 'purchases', 'cash', 'estimates', 'alerts'],
-  taminotchi: ['dashboard', 'materials', 'purchases', 'requests'],
+  // Audit 3: ta'minotchi o'z podotchetini ko'radi (faqat o'z qatorlari — cash_advances / cash_balances RLS)
+  taminotchi: ['dashboard', 'materials', 'purchases', 'cash', 'requests'],
   // Prorab: smeta (faqat ko'rish) va norma sarfi
   prorab: ['dashboard', 'movements', 'estimates', 'requests'],
   omborchi: ['dashboard', 'movements'],
@@ -202,6 +206,12 @@ const ACTIONS: Record<Action, readonly Role[]> = {
 export function can(role: Role, action: Action): boolean {
   return ACTIONS[action]?.includes(role) ?? false
 }
+
+/**
+ * Podotchetni butun firma bo'yicha ko'radigan rollar (cash_balances / cash_advances RLS bilan bir xil).
+ * Qolganlari (masalan ta'minotchi) — faqat o'zinikini.
+ */
+export const CASH_COMPANY_WIDE_ROLES: readonly Role[] = ['super_admin', 'admin', 'direktor', 'buxgalter']
 
 /** Himoyalangan profil rollari (docs/audit-fixes.md B2, `profile_protected`). */
 export const PROTECTED_PROFILE_ROLES: readonly Role[] = ['admin', 'direktor']

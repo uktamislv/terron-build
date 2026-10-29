@@ -10,8 +10,12 @@ import { t } from '@/i18n'
 import { tgBottomNavForRole, tgNavForRole } from './nav'
 import { deepLinkTarget } from './deepLinks'
 import { tgNavIcons } from './navIcons'
-import { haptic, initTelegram } from './telegram'
-import { registerSheet } from './useTelegramButtons'
+import { haptic } from './telegram'
+import { clearMainButtonSaved, registerSheet } from './useTelegramButtons'
+import { trackViewport, type ViewportTrack } from './viewport'
+
+/** Pastki xavfsiz hudud: iOS `env()` yoki Telegram (Bot API 8.0+) `--tg-safe-area-inset-bottom` — kattasi. */
+const SAFE_BOTTOM = 'max(env(safe-area-inset-bottom),var(--tg-safe-area-inset-bottom,0px))'
 
 /** Mini App sarlavhasidagi sahifa nomi (yo'l bo'yicha). Bosh ekranda — salomlashish sahifa ichida. */
 function pageTitle(pathname: string): string | null {
@@ -61,12 +65,13 @@ function useTextEntryFocused(): boolean {
     document.addEventListener('focusin', onIn)
     document.addEventListener('focusout', onOut)
     const vv = window.visualViewport
-    let maxHeight = vv?.height ?? 0
+    // Ekran burilsa (kenglik o'zgarsa) eng katta balandlik qaytadan o'lchanadi (trackViewport)
+    let track: ViewportTrack = { maxHeight: vv?.height ?? 0, width: vv?.width ?? 0 }
     const onResize = () => {
       if (!vv) return
-      maxHeight = Math.max(maxHeight, vv.height)
-      // Klaviatura odatda ekranning 1/4 qismidan ko'pini egallaydi
-      setKeyboard(vv.height < maxHeight * 0.8)
+      const next = trackViewport(track, vv)
+      track = next
+      setKeyboard(next.keyboard)
     }
     if (vv) {
       onResize()
@@ -96,13 +101,23 @@ export function TgLayout({ children }: { children?: ReactNode } = {}) {
   const navHidden = typing || nav.length <= 1
   const title = pageTitle(pathname)
 
+  // Boshqa ekranga o'tildi — oldingi ekrandagi "Saqlandi" holati bu yerda ko'rinmasin
   useEffect(() => {
-    initTelegram()
+    clearMainButtonSaved()
+  }, [pathname])
+
+  // Uzun nom yoki chip gorizontal aylantirish chizig'ini chiqarmasin (iPhone'da o'ngda bo'shliq)
+  useEffect(() => {
+    const prev = document.body.style.overflowX
+    document.body.style.overflowX = 'clip'
+    return () => {
+      document.body.style.overflowX = prev
+    }
   }, [])
 
   return (
       <SheetChromeContext.Provider value={registerSheet}>
-      <div className="min-h-app mx-auto flex max-w-md flex-col bg-canvas [--header-h:3.5rem]">
+      <div data-testid="tg-root" className="min-h-app mx-auto flex max-w-md flex-col overflow-x-clip bg-canvas [--header-h:3.5rem]">
         {profile && (
           // Sarlavha: chapda sahifa nomi, o'ngda kichik yordamchi tugmalar (Yordam, Xatolik haqida xabar)
           <header className="sticky top-0 z-20 flex min-h-14 items-center gap-1 bg-canvas/95 pr-2 pl-4 backdrop-blur print:hidden">
@@ -110,7 +125,7 @@ export function TgLayout({ children }: { children?: ReactNode } = {}) {
               <h1 className="min-w-0 flex-1 truncate text-xl font-semibold tracking-tight text-ink">{title}</h1>
             ) : (
               <span className="flex min-w-0 flex-1 items-center">
-                <Wordmark className="text-2xl" />
+                <NavLink to="/tg" end className="inline-flex min-h-11 items-center rounded-lg"><Wordmark className="text-2xl" /></NavLink>
               </span>
             )}
             <NavLink
@@ -138,19 +153,20 @@ export function TgLayout({ children }: { children?: ReactNode } = {}) {
           </header>
         )}
         <main
-          className={cx(
-            'flex-1 px-4 pt-1',
-            navHidden ? 'pb-[calc(1.5rem+env(safe-area-inset-bottom))]' : 'pb-[calc(6rem+env(safe-area-inset-bottom))]',
-          )}
+          className="min-w-0 flex-1 px-4 pt-1"
+          style={{ paddingBottom: `calc(${navHidden ? '1.5rem' : '6rem'} + ${SAFE_BOTTOM})` }}
         >
           {children ?? <Outlet />}
         </main>
         {!navHidden && (
           <nav
             aria-label={t.app.name}
-            className="fixed inset-x-0 bottom-0 z-30 mx-auto grid max-w-md border-t border-line bg-paper/95 px-0.5 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] backdrop-blur print:hidden"
+            className="fixed inset-x-0 bottom-0 z-30 mx-auto grid max-w-md border-t border-line bg-paper/95 px-0.5 pt-1 backdrop-blur print:hidden"
             // Band soni rolga qarab 1–5 ta — ustunlar soni shunga moslashadi
-            style={{ gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))` }}
+            style={{
+              gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))`,
+              paddingBottom: `max(0.25rem, ${SAFE_BOTTOM})`,
+            }}
           >
             {nav.map((item) => (
               <NavLink

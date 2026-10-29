@@ -1,5 +1,6 @@
 import { isPkeyConflict, RepoError, toRepoError } from './errors'
 import { softDeleteById, updateById } from './rowUpdate'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { Supplier } from './types'
 
@@ -24,11 +25,7 @@ export function findByTin(list: Supplier[], tin: string | null | undefined): Sup
 
 /** Firma sotuvchilari (o'chirilmaganlar), nom bo'yicha. */
 export async function listSuppliers(): Promise<Supplier[]> {
-  const { data, error } = await getSupabase()
-    .from('suppliers')
-    .select(SUPPLIER_COLUMNS)
-    .is('deleted_at', null)
-    .order('name')
+  const { data, error } = await scopeCompany(getSupabase().from('suppliers').select(SUPPLIER_COLUMNS).is('deleted_at', null)).order('name')
   if (error) throw toRepoError(error)
   return (data ?? []) as Supplier[]
 }
@@ -72,7 +69,7 @@ export async function createSupplier(input: NewSupplier): Promise<Supplier> {
 
 /** Admin (Sotuvchilar bo'limi): o'chirilganlari ham — tiklash uchun. */
 export async function listAllSuppliers(includeDeleted = false): Promise<Supplier[]> {
-  let q = getSupabase().from('suppliers').select(SUPPLIER_COLUMNS)
+  let q = scopeCompany(getSupabase().from('suppliers').select(SUPPLIER_COLUMNS))
   if (!includeDeleted) q = q.is('deleted_at', null)
   const { data, error } = await q.order('name')
   if (error) throw toRepoError(error)

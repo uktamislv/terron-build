@@ -109,19 +109,20 @@ export function StockPage() {
         </p>
       )}
       {objects && objects.length > 1 && (
-        <div role="group" aria-label={t.tg.movement.object} className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+        <div role="group" aria-label={t.tg.movement.object} className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
           {objects.map((o) => (
             <button
               key={o.id}
               type="button"
               aria-pressed={o.id === objectId}
               className={choiceClass({ selected: o.id === objectId, size: 'md' })}
+              title={o.name}
               onClick={() => {
                 haptic.select()
                 setObjectId(o.id)
               }}
             >
-              {o.name}
+              <span className="min-w-0 truncate">{o.name}</span>
             </button>
           ))}
         </div>

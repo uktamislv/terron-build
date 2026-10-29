@@ -213,7 +213,7 @@ describe('/tg/purchase — haydovchi, bitta obyekt', () => {
     fill('3', '1 250 000')
     expect(await screen.findByText(tp.priceHigh)).toBeInTheDocument()
     // price_per_base satr sifatida, purchasePrices bilan hisoblangan
-    expect(purchasesRepo.checkPurchasePrice).toHaveBeenLastCalledWith('m-sem', '8333.3333')
+    expect(purchasesRepo.checkPurchasePrice).toHaveBeenLastCalledWith('m-sem', '8333.3333', null)
     expect(screen.queryByText(/%/)).not.toBeInTheDocument()
     save()
     await waitFor(() => expect(purchasesRepo.createPurchase).toHaveBeenCalledTimes(1))
@@ -236,7 +236,7 @@ describe('/tg/purchase — haydovchi, bitta obyekt', () => {
     }
     await waitFor(() => expect(purchasesRepo.checkPurchasePrice).toHaveBeenCalledTimes(1))
     // 12500 / 3 = 4166.6667 (1 kg = asosiy birlik)
-    expect(purchasesRepo.checkPurchasePrice).toHaveBeenCalledWith('m-sem', '4166.6667')
+    expect(purchasesRepo.checkPurchasePrice).toHaveBeenCalledWith('m-sem', '4166.6667', null)
     expect(screen.queryByText(tp.priceHigh)).not.toBeInTheDocument()
     expect(screen.queryByText(tp.priceLow)).not.toBeInTheDocument()
   })

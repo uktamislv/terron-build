@@ -1,9 +1,11 @@
 import { useSearchParams } from 'react-router'
 import { Bug, Building2, Receipt, Send, Settings } from 'lucide-react'
+import { useActiveCompany, useCompanyId } from '@/auth/activeCompany'
 import { useAuth } from '@/auth/authContext'
 import { PageHeader, Tabs, type TabItem } from '@/components/ui'
 import { t } from '@/i18n'
 import { BugReportsList } from '../settings/BugReportsList'
+import { CompanyNameForm } from '../settings/CompanyNameForm'
 import { CompanySettingsForm } from '../settings/CompanySettingsForm'
 import { ExpenseCategoriesTab } from '../settings/ExpenseCategoriesTab'
 import { TelegramHealthCard } from '../settings/TelegramHealthCard'
@@ -25,8 +27,11 @@ const icon = { className: 'size-5', strokeWidth: 1.75, 'aria-hidden': true } as 
  */
 export function SettingsPage() {
   const { profile } = useAuth()
+  // super_admin — faol firma sozlamalari (yon menyudagi tanlagich)
+  const companyId = useCompanyId()
+  const active = useActiveCompany()
   const [params, setParams] = useSearchParams()
-  if (!profile) return null
+  if (!profile || !companyId) return null
   const canEdit = profile.role === 'admin' || profile.role === 'super_admin'
   const raw = params.get('tab')
   const tab: SettingsTab = isTab(raw) ? raw : 'company'
@@ -45,8 +50,13 @@ export function SettingsPage() {
         value={tab}
         onChange={(next) => setParams(next === 'company' ? {} : { tab: next }, { replace: true })}
       />
-      {tab === 'company' && <CompanySettingsForm companyId={profile.company_id} canEdit={canEdit} />}
-      {tab === 'expenses' && <ExpenseCategoriesTab companyId={profile.company_id} canEdit={canEdit} />}
+      {tab === 'company' && (
+        <>
+          <CompanyNameForm companyId={companyId} canEdit={canEdit} onSaved={active?.reloadCompanies} />
+          <CompanySettingsForm companyId={companyId} canEdit={canEdit} />
+        </>
+      )}
+      {tab === 'expenses' && <ExpenseCategoriesTab companyId={companyId} canEdit={canEdit} />}
       {tab === 'telegram' && <TelegramHealthCard />}
       {tab === 'bugs' && <BugReportsList />}
     </div>

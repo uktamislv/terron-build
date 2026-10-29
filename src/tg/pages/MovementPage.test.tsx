@@ -8,7 +8,7 @@ import * as objectsRepo from '@/data/objectsRepo'
 import * as openPurchasesRepo from '@/data/openPurchasesRepo'
 import * as photosRepo from '@/data/photosRepo'
 import * as stockRepo from '@/data/stockRepo'
-import type { Movement, OpenPurchase } from '@/data/types'
+import type { Movement, MyOpenPurchase, OpenPurchase } from '@/data/types'
 import { t } from '@/i18n'
 import { routes } from '@/routes'
 import { makeMaterial, makeObject, makeProfile, makeUnit } from '@/test/fixtures'
@@ -55,7 +55,10 @@ vi.mock('@/data/movementsRepo', () => ({
   listMyMovements: vi.fn(),
   MOVEMENTS_PAGE_SIZE: 50,
 }))
-vi.mock('@/data/openPurchasesRepo', () => ({ listOpenPurchases: vi.fn(async () => []) }))
+vi.mock('@/data/openPurchasesRepo', () => ({
+  listOpenPurchases: vi.fn(async () => []),
+  listMyOpenPurchases: vi.fn(async () => []),
+}))
 vi.mock('@/data/requestsRepo', () => ({ listMyRequests: vi.fn(async () => []) }))
 vi.mock('@/data/transfersRepo', () => ({ listMyTransfers: vi.fn(async () => []), listIncomingTransfers: vi.fn(async () => []) }))
 vi.mock('@/data/purchasesRepo', () => ({ listMyPurchases: vi.fn(async () => []) }))
@@ -75,6 +78,24 @@ const qum = makeMaterial('m-qum', 'Qum', 'm³')
 const eski = makeMaterial('m-old', 'Eski material', 'dona', { is_active: false })
 const objA = makeObject('o-a', 'Obyekt A')
 const objB = makeObject('o-b', 'Obyekt B')
+
+function myOpen(id: string, overrides: Partial<MyOpenPurchase> = {}): MyOpenPurchase {
+  return {
+    purchase_id: id,
+    object_id: 'o-a',
+    object_name: 'Obyekt A',
+    material_id: 'm-sem',
+    material_name: 'Sement',
+    base_unit: 'kg',
+    qty_base: '150',
+    received_qty_base: '0',
+    remaining_qty_base: '150',
+    purchased_at: '2026-10-24T05:00:00Z',
+    buyer_id: 'p-haydovchi',
+    buyer_name: 'Ali haydovchi',
+    ...overrides,
+  }
+}
 
 function savedRow(overrides: Partial<Movement> = {}): Movement {
   return {
@@ -235,19 +256,54 @@ describe('/tg/movement — boshqa holatlar', () => {
     expect(arg?.qtyInput).toBe('1.5')
   })
 
-  it('chiqim qoldiqdan ko‘p — sariq ogohlantirish, lekin saqlanadi', async () => {
+  it('chiqim qoldiqdan ko‘p — sariq ogohlantirish; manfiy qoldiq — ikkinchi bosish ("Baribir chiqim") bilan saqlanadi', async () => {
     open()
     fireEvent.click(await screen.findByRole('button', { name: t.movements.types.chiqim }))
     await pickMaterial('Sement')
+    // Forma ochilishi bilan (miqdorsiz ham) — joriy qoldiq
+    expect(await screen.findByTestId('stock-now')).toHaveTextContent('Qoldiq: 420 kg')
     typeQty('10')
     fireEvent.click(within(screen.getByRole('group', { name: tm.unit })).getByRole('button', { name: 'qop' }))
     expect(await screen.findByText('Qoldiq: 420 kg → \u221280 kg')).toBeInTheDocument()
     expect(screen.getByText(tm.warnings.exceeds_stock)).toBeInTheDocument()
     save()
-    await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalled())
+    // Birinchi bosish — saqlanmaydi, tasdiq so'raladi
+    const warn = await screen.findByTestId('negative-warning')
+    expect(movementsRepo.createMovement).not.toHaveBeenCalled()
+    fireEvent.click(within(warn).getByRole('button', { name: tm.negativeConfirm }))
+    await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalledTimes(1))
     expect(vi.mocked(movementsRepo.createMovement).mock.calls[0]?.[0].type).toBe('chiqim')
-    // tanlov eslab qolinadi
-    expect(window.localStorage.getItem('terron.movement.type')).toBe('chiqim')
+    // tanlov faqat shu sessiya ichida eslab qolinadi (Mini App qayta ochilsa — "Kirim")
+    expect(window.sessionStorage.getItem('terron.movement.type')).toBe('chiqim')
+    expect(window.localStorage.getItem('terron.movement.type')).toBeNull()
+  })
+
+  it('chiqim, qoldiq 0 — ogohlantirish va "Kirimga o‘tish" (material saqlanadi)', async () => {
+    vi.mocked(stockRepo.getStock).mockResolvedValue('0')
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: t.movements.types.chiqim }))
+    await pickMaterial('Sement')
+    const empty = await screen.findByTestId('stock-empty')
+    expect(empty).toHaveTextContent(tm.stockEmpty)
+    fireEvent.click(within(empty).getByRole('button', { name: tm.toKirim }))
+    expect(screen.getByRole('button', { name: t.movements.types.kirim })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('region', { name: 'Sement' })).toBeInTheDocument()
+    expect(screen.queryByTestId('stock-empty')).not.toBeInTheDocument()
+  })
+
+  it('chiqim qoldig‘i 0, lekin ochiq xarid bor — "hali qabul qilinmagan"', async () => {
+    vi.mocked(stockRepo.getStock).mockResolvedValue('0')
+    vi.mocked(openPurchasesRepo.listMyOpenPurchases).mockResolvedValue([myOpen('pu9')])
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: t.movements.types.chiqim }))
+    await pickMaterial('Sement')
+    expect(await screen.findByTestId('stock-empty')).toHaveTextContent(tm.stockEmptyPending)
+  })
+
+  it('Mini App qayta ochilganda — doim "Kirim" (eski localStorage tanlovi e’tiborsiz)', async () => {
+    window.localStorage.setItem('terron.movement.type', 'chiqim')
+    open()
+    expect(await screen.findByRole('button', { name: t.movements.types.kirim })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('server ops_occurred_at_range xatosi ko‘rsatiladi, ma’lumot saqlanadi', async () => {
@@ -415,16 +471,20 @@ describe('/tg/movement — super_admin va qoldiq', () => {
     expect(screen.queryByText('Begona obyekt')).not.toBeInTheDocument()
   })
 
-  it('qoldiq so‘rovi xato — qoldiq va ogohlantirish ko‘rsatilmaydi', async () => {
+  it('qoldiq so‘rovi xato — neytral "Qoldiqni tekshirib bo‘lmadi", ogohlantirish va tasdiq yo‘q', async () => {
     vi.mocked(stockRepo.getStock).mockRejectedValue(toRepoError(new TypeError('Failed to fetch')))
     open()
     fireEvent.click(await screen.findByRole('button', { name: t.movements.types.chiqim }))
     await pickMaterial('Sement')
+    expect(await screen.findByText(tm.stockUnknown)).toBeInTheDocument()
     typeQty('100')
     await waitFor(() => expect(stockRepo.getStock).toHaveBeenCalled())
     expect(screen.getByText(textOf('= 100 kg'))).toBeInTheDocument()
+    expect(screen.getByText(tm.stockUnknown)).toBeInTheDocument()
     expect(screen.queryByText(/Qoldiq:/)).not.toBeInTheDocument()
     expect(screen.queryByText(tm.warnings.exceeds_stock)).not.toBeInTheDocument()
+    save()
+    await waitFor(() => expect(movementsRepo.createMovement).toHaveBeenCalledTimes(1))
   })
 })
 

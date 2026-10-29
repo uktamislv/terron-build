@@ -24,6 +24,21 @@ const deps: TgAuthDeps = {
   now: () => Date.now(),
   // Izolyat bo'yicha xotirada (cheklov: boshqa izolyat / qayta ishga tushish — ko'rmaydi).
   replayGuard: new InitDataReplayGuard(),
+  // Audit 3 (E9): izolyatlararo himoya — `svc_use_init_data` (private.used_init_data,
+  // 20261113000001_audit3_review_fixes.sql). Migratsiya hali qo'llanmagan bo'lsa (PGRST202) — null:
+  // faqat izolyat xotirasidagi himoya ishlaydi.
+  sharedReplayCheck: async (hash, expiresAtMs, graceMs) => {
+    const { data, error } = await getAdminClient().rpc('svc_use_init_data', {
+      p_hash: hash,
+      p_expires_at: new Date(expiresAtMs).toISOString(),
+      p_grace_ms: graceMs,
+    })
+    if (error) {
+      if (error.code === 'PGRST202' || error.code === '42P01') return null
+      throw new Error(`svc_use_init_data: ${error.message}`)
+    }
+    return data === true
+  },
   touchChat: async (chatId) => {
     const { error } = await getAdminClient().rpc('svc_touch_chat', { p_chat_id: chatId })
     if (!error) return

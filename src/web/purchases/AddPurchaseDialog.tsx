@@ -2,6 +2,7 @@
 // (tanlash yoki yangi), sana, ixtiyoriy chek rasmi, ixtiyoriy tasdiqlangan so'rov, admin — xaridor.
 // Qoidalar umumiy: narx og'ishi (check_purchase_price), rasm majburiyligi, takroriy yozuv ogohlantirishi.
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCompanyId } from '@/auth/activeCompany'
 import { useAuth } from '@/auth/authContext'
 import { Button, choiceClass, DateField, Modal, Notice, RetryNotice, SelectField, SkeletonRows, TextAreaField, TextField } from '@/components/ui'
 import { DEFAULT_COMPANY_SETTINGS, getCompanySettings, type CompanySettings } from '@/data/companiesRepo'
@@ -16,7 +17,7 @@ import type { Material, MaterialRequest, ObjectRow, PaymentSource, PersonRef, Pu
 import { PAYMENT_SOURCES } from '@/data/types'
 import { formatSumInput, parseSumInput } from '@/domain/cash'
 import { cmp } from '@/domain/decimal'
-import { entryDateBounds, tashkentDateOf } from '@/domain/entryDate'
+import { entryDateBounds, entryDateToIso, tashkentDateOf } from '@/domain/entryDate'
 import { can, ROLES } from '@/domain/roles'
 import { findDuplicateEntry, photoRequired } from '@/domain/rules'
 import { purchasePrices, toBaseQty, unitLabel, validateQtyInput } from '@/domain/units'
@@ -70,7 +71,8 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
   const [draftId] = useState(() => uuid())
   const [supplierDraftId] = useState(() => uuid())
   const photo = usePhotoDraft()
-  const companyId = me?.company_id
+  // super_admin — faol firma (yon menyudagi tanlagich), boshqalar — o'z firmasi
+  const companyId = useCompanyId()
 
   useEffect(() => {
     if (!companyId || !me) return
@@ -130,12 +132,14 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
     [requests, form.objectId, form.materialId],
   )
 
-  // Narx og'ishi — faqat ogohlantirish (raqamlar ko'rsatilmaydi)
+  // Narx og'ishi — faqat ogohlantirish (raqamlar ko'rsatilmaydi). Orqa sana — o'sha kungacha bo'lgan xaridlar bilan
+  const priceDate = form.date
   useEffect(() => {
     if (!material || pricePerBase === null) return
     let alive = true
     const timer = setTimeout(() => {
-      checkPurchasePrice(material.id, pricePerBase)
+      const purchasedAt = entryDateToIso(priceDate, new Date().toISOString(), isAdmin) ?? null
+      checkPurchasePrice(material.id, pricePerBase, purchasedAt)
         .then((v) => alive && setPriceVerdict(v))
         .catch(() => alive && setPriceVerdict(null))
     }, 400)
@@ -143,7 +147,7 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
       alive = false
       clearTimeout(timer)
     }
-  }, [material, pricePerBase])
+  }, [material, pricePerBase, priceDate, isAdmin])
 
   const rule =
     material && refs
@@ -190,7 +194,7 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
 
   const submit = async (e: FormEvent | null, confirmDuplicate = false) => {
     e?.preventDefault()
-    if (!me || !refs || saving || photo.preparing) return
+    if (!me || !companyId || !refs || saving || photo.preparing) return
     const nowIso = new Date().toISOString()
     const result = validateAddPurchase(form, { nowIso, isAdmin })
     if (!result.ok) {
@@ -238,12 +242,12 @@ export function AddPurchaseDialog({ onClose, onSaved }: { onClose: () => void; o
       if (form.supplierMode === 'existing') supplierId = form.supplierId
       if (form.supplierMode === 'new') {
         const same = refs.suppliers.find((s) => supplierKey(s.name) === supplierKey(form.supplierName))
-        supplierId = same ? same.id : (await createSupplier({ id: supplierDraftId, companyId: me.company_id, name: form.supplierName })).id
+        supplierId = same ? same.id : (await createSupplier({ id: supplierDraftId, companyId, name: form.supplierName })).id
       }
-      const receiptPhotoPath = await photo.resolvePath(me.company_id)
+      const receiptPhotoPath = await photo.resolvePath(companyId)
       const saved = await createPurchase({
         id: draftId,
-        companyId: me.company_id,
+        companyId,
         objectId: form.objectId,
         materialId: form.materialId,
         unitId: form.unitId,

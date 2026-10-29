@@ -118,8 +118,8 @@ describe('alerts formulalari = PostgreSQL (PGlite)', () => {
       const r = await db.query<{ avg_n: string | null; diff_n: string | null; avg_90: string | null; diff_90: string | null; dir: string }>(
         `with n as (select (e->>'t')::numeric(18,2) as t, (e->>'q')::numeric(20,6) as q from jsonb_array_elements($2::jsonb) e),
               d as (select (e->>'t')::numeric(18,2) as t, (e->>'q')::numeric(20,6) as q from jsonb_array_elements($3::jsonb) e),
-              a as (select (select case when count(*) >= 2 then round(sum(t) / nullif(sum(q), 0), 4) end from n) as avg_n,
-                           (select case when count(*) >= 2 then round(sum(t) / nullif(sum(q), 0), 4) end from d) as avg_90,
+              a as (select (select case when count(*) >= 2 then round(sum(t) / nullif(sum(q), 0), 4) end from n where t > 0) as avg_n,
+                           (select case when count(*) >= 2 then round(sum(t) / nullif(sum(q), 0), 4) end from d where t > 0) as avg_90,
                            $1::numeric(18,4) as price),
               f as (select avg_n, avg_90,
                            case when avg_n <> 0 then round((price - avg_n) * 100 / avg_n, 2) end as diff_n,
@@ -155,7 +155,7 @@ describe('alerts formulalari = PostgreSQL (PGlite)', () => {
       expect(receiptDiffPct(p, rcv), `${rcv} vs ${p}`).toBe(parseDec(r.rows[0]!.r))
     }
     const fixed: PricePoint[][] = [
-      [{ totalAmount: '4', qtyBase: '3' }, { totalAmount: '0', qtyBase: '0.000001' }],
+      [{ totalAmount: '4', qtyBase: '3' }, { totalAmount: '0.01', qtyBase: '0.000001' }],
       [{ totalAmount: '100000', qtyBase: '1' }, { totalAmount: '10000000', qtyBase: '200' }],
       [{ totalAmount: '9999999999999999.99', qtyBase: '0.000001' }, { totalAmount: '0.01', qtyBase: '0.000001' }],
       [{ totalAmount: '1', qtyBase: '3' }, { totalAmount: '1', qtyBase: '3' }, { totalAmount: '0.01', qtyBase: '7' }],

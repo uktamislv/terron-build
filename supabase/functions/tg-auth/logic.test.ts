@@ -497,3 +497,83 @@ describe('tg-auth: 2-tur — qayta yuklash (eski initData + amaldagi sessiya) va
     }
   })
 })
+
+describe('tg-auth: audit 3 — session_mismatch (E1) va izolyatlararo replay (E9)', () => {
+  const linked = () => ({ profile: profile({ auth_user_id: 'au-1' }), authEmails: { 'au-1': 'a@x.uz' }, jwtUser: { tok: 'au-1', other: 'au-other' } })
+
+  it('eski initData + boshqa foydalanuvchining yaroqli tokeni → 401 session_mismatch', async () => {
+    const old = await initDataFor(TG_ID, NOW_SEC - 3 * 3600)
+    const f = fake(linked())
+    expect(await handleTgAuth({ initData: old, access_token: 'other' }, f.deps)).toEqual({
+      status: 401,
+      body: { error: 'session_mismatch' },
+    })
+    expect(f.calls.session).toHaveLength(0)
+  })
+
+  it('profilda auth user yo‘q, lekin yaroqli begona token + eski initData → session_mismatch', async () => {
+    const old = await initDataFor(TG_ID, NOW_SEC - 3 * 3600)
+    const f = fake({ jwtUser: { other: 'au-other' } })
+    expect((await handleTgAuth({ initData: old, access_token: 'other' }, f.deps)).body).toEqual({ error: 'session_mismatch' })
+  })
+
+  it('eski initData + yaroqsiz token → invalid_init_data (mismatch emas)', async () => {
+    const old = await initDataFor(TG_ID, NOW_SEC - 3 * 3600)
+    const f = fake(linked())
+    expect((await handleTgAuth({ initData: old, access_token: 'expired' }, f.deps)).body).toEqual({ error: 'invalid_init_data' })
+  })
+
+  it('takroriy initData + begona token → session_mismatch', async () => {
+    const guard = new InitDataReplayGuard()
+    let now = NOW_SEC * 1000
+    const initData = await initDataFor()
+    expect((await handleTgAuth({ initData }, fake({ ...linked(), replayGuard: guard, nowMs: () => now }).deps)).status).toBe(200)
+    now += 60_000
+    const r = await handleTgAuth({ initData, access_token: 'other' }, fake({ ...linked(), replayGuard: guard, nowMs: () => now }).deps)
+    expect(r).toEqual({ status: 401, body: { error: 'session_mismatch' } })
+  })
+
+  it('yangi initData + begona token → yangi sessiya (to‘g‘ri foydalanuvchi uchun)', async () => {
+    const f = fake(linked())
+    const r = await handleTgAuth({ initData: await initDataFor(), access_token: 'other' }, f.deps)
+    expect(r.status).toBe(200)
+    expect(f.calls.session).toEqual(['a@x.uz'])
+  })
+
+  it('sharedReplayCheck false → init_data_replayed, sessiya yo‘q; argumentlar to‘g‘ri', async () => {
+    const seen: [string, number, number][] = []
+    const f = fake()
+    f.deps.sharedReplayCheck = async (h, exp, grace) => {
+      seen.push([h, exp, grace])
+      return false
+    }
+    const r = await handleTgAuth({ initData: await initDataFor() }, f.deps)
+    expect(r).toEqual({ status: 401, body: { error: 'init_data_replayed' } })
+    expect(f.calls.session).toHaveLength(0)
+    expect(seen[0]?.[1]).toBe((NOW_SEC - 60 + TG_AUTH_MAX_AGE_SEC) * 1000)
+    expect(seen[0]?.[2]).toBe(REPLAY_GRACE_MS)
+    expect(seen[0]?.[0]).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('sharedReplayCheck null (jadval yo‘q) yoki xato — kirish davom etadi', async () => {
+    for (const impl of [async () => null, async () => true, async () => { throw new Error('db') }]) {
+      const f = fake()
+      f.deps.sharedReplayCheck = impl
+      const r = await handleTgAuth({ initData: await initDataFor() }, f.deps)
+      expect(r.status).toBe(200)
+      expect(f.calls.session).toHaveLength(1)
+    }
+  })
+
+  it('amaldagi sessiya tasdiqlansa sharedReplayCheck chaqirilmaydi', async () => {
+    const f = fake(linked())
+    let called = 0
+    f.deps.sharedReplayCheck = async () => {
+      called++
+      return false
+    }
+    const r = await handleTgAuth({ initData: await initDataFor(), access_token: 'tok' }, f.deps)
+    expect(r.status).toBe(200)
+    expect(called).toBe(0)
+  })
+})

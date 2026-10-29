@@ -1,5 +1,6 @@
 import { toRepoError } from './errors'
 import { fetchAll } from './fetchAll'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { StockBalance } from './types'
 
@@ -7,7 +8,7 @@ const STOCK_COLUMNS = 'company_id, object_id, material_id, qty_base::text, last_
 
 /** Qoldiq (`stock_balances` view, RLS chaqiruvchi huquqida). Nomlar sahifada katalogdan qo'shiladi. */
 export async function listStock(filters: { objectId?: string } = {}): Promise<StockBalance[]> {
-  let q = getSupabase().from('stock_balances').select(STOCK_COLUMNS)
+  let q = scopeCompany(getSupabase().from('stock_balances').select(STOCK_COLUMNS))
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   const { data, error } = await q.order('object_id').order('material_id')
   if (error) throw toRepoError(error)
@@ -19,7 +20,7 @@ export function listAllStock(filters: { objectId?: string } = {}, signal?: Abort
   // View'da `created_at` yo'q — vaqt chegarasi qo'llanmaydi; kalit — obyekt × material
   return fetchAll(
     async (req) => {
-      let q = getSupabase().from('stock_balances').select(STOCK_COLUMNS, req.first ? { count: 'exact' } : undefined)
+      let q = scopeCompany(getSupabase().from('stock_balances').select(STOCK_COLUMNS, req.first ? { count: 'exact' } : undefined))
       if (filters.objectId) q = q.eq('object_id', filters.objectId)
       let ranged = q.order('object_id').order('material_id').range(req.from, req.to)
       if (req.signal) ranged = ranged.abortSignal(req.signal)

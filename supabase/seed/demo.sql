@@ -28,7 +28,8 @@
 --     auth.users qatorlari o'chiriladi. Natija: auth.users o'zgarmaydi.
 --   * created_at / alerts.created_at — seed ishga tushgan vaqt (a_before_insert
 --     server vaqtini qo'yadi); voqea sanalari — occurred_at, purchased_at,
---     issued_at, counted_at (30 kun ichida, Asia/Tashkent).
+--     issued_at, counted_at (30 kun ichida, Asia/Tashkent). Istisno: xaridlarda
+--     created_at = purchased_at (8-bo'lim, qoida 1 kutishi).
 --
 -- Ataylab yaratilgan holatlar (ogohlantirishlar):
 --   xarid_qabul_farqi   — Chilonzor, armatura 1,05 t xarid, 0,97 t qabul (−7,6 %);
@@ -533,12 +534,27 @@ begin
   -- ==========================================================================
   -- 8. Xarid ≠ qabul — soatlik cron qiladigan ishni faqat demo xaridlari uchun
   --    (qabul qilinmagan shag'al xaridi alert oladi; qolganlari — o'zgarishsiz).
+  --    Qoida 1 kutishi greatest(purchased_at, created_at) + 24 soat
+  --    (20261112000001_audit3_fixes.sql D6): demo xaridlari "o'z vaqtida kiritilgan" deb
+  --    baholanadi — purchased_at + 24 soat o'tgan xarid uchun p_now kutish oxiriga suriladi
+  --    (session_replication_role kerak emas: Supabase'da huquq yetmasligi mumkin).
+  --    Keyin alert details.evaluated_at haqiqiy vaqtga qaytariladi.
   -- ==========================================================================
   for v_pid in
     select p.id from public.purchases p where p.company_id = c and p.deleted_at is null order by p.purchased_at, p.id
   loop
-    perform private.evaluate_purchase_receipt(v_pid);
+    perform private.evaluate_purchase_receipt(
+      v_pid,
+      (select case when now() >= p.purchased_at + interval '24 hours'
+                   then greatest(now(), greatest(p.purchased_at, p.created_at) + interval '24 hours')
+                   else now() end
+         from public.purchases p where p.id = v_pid));
   end loop;
+  update public.alerts
+     set details = jsonb_set(details, '{evaluated_at}', to_jsonb(now()))
+   where company_id = c
+     and type = 'xarid_qabul_farqi'
+     and details ? 'evaluated_at';
 
   -- ==========================================================================
   -- 9. Vaqtinchalik auth bog'lanishlarini olib tashlash

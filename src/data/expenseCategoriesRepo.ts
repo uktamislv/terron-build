@@ -3,6 +3,7 @@
 // (`expense_category_duplicate`). docs/expenses-design.md, 1.
 import { toRepoError } from './errors'
 import { softDeleteById, updateById } from './rowUpdate'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { ExpenseCategory } from './types'
 
@@ -40,7 +41,7 @@ function patchRow(p: ExpenseCategoryPatch): Record<string, unknown> {
 
 /** Turlar `sort_order`, keyin nom bo'yicha. `includeDeleted` — o'chirilganlar ham (admin, direktor ko'radi). */
 export async function listExpenseCategories(opts: { includeDeleted?: boolean } = {}): Promise<ExpenseCategory[]> {
-  let q = getSupabase().from('expense_categories').select(EXPENSE_CATEGORY_COLUMNS)
+  let q = scopeCompany(getSupabase().from('expense_categories').select(EXPENSE_CATEGORY_COLUMNS))
   if (!opts.includeDeleted) q = q.is('deleted_at', null)
   const { data, error } = await q.order('sort_order').order('name')
   if (error) throw toRepoError(error)
@@ -65,6 +66,13 @@ export async function createExpenseCategory(input: NewExpenseCategory): Promise<
 /** Nom, oylik limit, "rasm majburiy", faol/nofaol, tartib. */
 export function updateExpenseCategory(id: string, patch: ExpenseCategoryPatch): Promise<void> {
   return updateById('expense_categories', id, patchRow(patch))
+}
+
+/**
+ * Tartibni qayta yozish rejasi: berilgan tartibdagi har tur `sort_order = o'rni + 1`; o'zgarmaganlari tashlanadi.
+ */
+export function sortOrderPatches(ordered: readonly Pick<ExpenseCategory, 'id' | 'sort_order'>[]): { id: string; sortOrder: number }[] {
+  return ordered.flatMap((c, i) => (c.sort_order === i + 1 ? [] : [{ id: c.id, sortOrder: i + 1 }]))
 }
 
 export function softDeleteExpenseCategory(id: string): Promise<void> {

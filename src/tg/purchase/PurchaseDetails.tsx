@@ -12,11 +12,13 @@ import type { LastEntry } from '../entry/lastEntry'
 import { LastQtyChip } from '../entry/LastQtyChip'
 import { PhotoErrorBox, PhotoField, type PickedPhoto } from '../entry/PhotoPicker'
 import { BigNumberInput, MaterialHeader, NoteField } from '../entry/QtyField'
+import { qtyAmbiguityHint } from '../entry/qtyHint'
 import { UnitChips } from '../entry/UnitChips'
 import { SupplierPicker, type SupplierChoice } from './SupplierPicker'
 
 const tm = t.tg.movement
 const tp = t.tg.purchase
+const SUM_INPUT_ID = 'purchase-sum'
 
 /**
  * "Qo'limdagi pul": summa katta, manfiy — qizil. `balance` null — yuklanmoqda. `onOpen` berilsa — butun
@@ -124,6 +126,9 @@ export function PurchaseDetails({ sumRef, ...p }: PurchaseDetailsProps) {
         onChange={(v) => p.onQty(v)}
         suffix={p.unit?.unit ?? null}
         error={errors.qty ? tm.errors.qty[errors.qty] : null}
+        hint={qtyAmbiguityHint(p.qty, p.unit?.unit)}
+        // Klaviaturadagi "Keyingi" — summa maydoniga (klaviatura yopilmaydi)
+        onEnter={() => document.getElementById(SUM_INPUT_ID)?.focus()}
       />
       {p.qty.trim() === '' && p.onUseLast && <LastQtyChip last={p.lastEntry ?? null} units={material.units} onUse={p.onUseLast} />}
 
@@ -135,7 +140,7 @@ export function PurchaseDetails({ sumRef, ...p }: PurchaseDetailsProps) {
       )}
 
       <BigNumberInput
-        id="purchase-sum"
+        id={SUM_INPUT_ID}
         inputRef={sumRef}
         label={tp.sum}
         value={p.sum}
@@ -189,7 +194,7 @@ export function PurchaseDetails({ sumRef, ...p }: PurchaseDetailsProps) {
         <Button
           size="lg"
           onClick={p.onSave}
-          disabled={p.photo.preparing || Boolean(p.photoRequiredReason && !p.photo.photo)}
+          disabled={p.photo.preparing}
           loading={p.saving}
         >
           {p.saving ? t.common.saving : tp.save}

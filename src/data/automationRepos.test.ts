@@ -320,6 +320,16 @@ describe('receiptLookup — Edge Function shartnomasi', () => {
     expect(functions.invokeFunction).toHaveBeenCalledWith('receipt-lookup', { url: 'https://ofd.soliq.uz/check?t=UZ1&r=9&s=1' })
     expect(r.total).toBe('250000')
     expect(r.items).toEqual([{ name: 'Sement', qty: '5', price: '50000', sum: '250000', unit: null }])
+    // `verified` javobda yo'q — tasdiqlanmagan deb olinadi (rasmdan ozod emas)
+    expect(r.verified).toBe(false)
+  })
+
+  it('audit 3 (E6): javobdagi verified — true faqat server tasdiqlaganda', async () => {
+    const receipt = { sellerName: 'Baza', total: 1000, items: [], fiscalSign: '1', terminalId: 'UZ1', receiptNo: '9' }
+    vi.mocked(functions.invokeFunction).mockResolvedValue({ ok: true, data: { cached: true, verified: true, receipt } })
+    expect((await receiptLookup('u')).verified).toBe(true)
+    vi.mocked(functions.invokeFunction).mockResolvedValue({ ok: true, data: { cached: false, verified: false, receipt } })
+    expect((await receiptLookup('u')).verified).toBe(false)
   })
 
   it.each([

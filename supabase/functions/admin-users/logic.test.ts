@@ -16,8 +16,8 @@ const TARGET_ID = '11111111-2222-4333-8444-555555555555'
 const AUTH = 'Bearer caller.jwt.token'
 const PHONE_EMAIL = 'p998901234567@phone.terron-build.invalid'
 
-const admin: CallerProfile = { id: 'admin-a', company_id: 'company-a', role: 'admin' }
-const superAdmin: CallerProfile = { id: 'sa', company_id: 'company-x', role: 'super_admin' }
+const admin: CallerProfile = { id: 'admin-a', company_id: 'company-a', role: 'admin', login_kind: 'web' }
+const superAdmin: CallerProfile = { id: 'sa', company_id: 'company-x', role: 'super_admin', login_kind: 'web' }
 /** Shu firmaning web yetim auth user'i (o'chirish mumkin). */
 const WEB_META = { kind: 'web', company_id: 'company-a' }
 
@@ -44,6 +44,9 @@ function fake(
     linkResult?: boolean
     lastCompanyOf?: Record<string, string>
     alertThrows?: boolean
+    /** Boshqa (maqsad bo'lmagan) profillar — id → profil. */
+    otherProfiles?: Record<string, TargetProfile>
+    phoneInOther?: boolean
   } = {},
 ) {
   const calls = {
@@ -56,6 +59,7 @@ function fake(
     loginAlerts: [] as { target: string; actor: string; first: boolean }[],
     audit: [] as AuthEvent[],
     logs: [] as unknown[],
+    phoneChecks: [] as { companyId: string; phone: string }[],
   }
   const creates = [...(opts.createResults ?? [])]
   const updates = [...(opts.updateResults ?? [])]
@@ -65,7 +69,12 @@ function fake(
       return opts.callerAuthId === undefined ? 'caller-auth' : opts.callerAuthId
     },
     getActiveProfileByAuthUserId: async () => (opts.caller === undefined ? admin : opts.caller),
-    getProfileById: async (id) => (id === TARGET_ID ? (opts.target === undefined ? target() : opts.target) : null),
+    getProfileById: async (id) =>
+      id === TARGET_ID ? (opts.target === undefined ? target() : opts.target) : (opts.otherProfiles?.[id] ?? null),
+    phoneInOtherCompany: async (companyId, phone) => {
+      calls.phoneChecks.push({ companyId, phone })
+      return opts.phoneInOther ?? false
+    },
     createAuthUser: async (input) => {
       calls.create.push(input)
       return creates.shift() ?? { ok: true, id: `auth-new-${calls.create.length}` }
@@ -210,8 +219,7 @@ describe('admin-users: set_login', () => {
       {
         email: PHONE_EMAIL,
         password: PASSWORD,
-        appMetadata: { kind: 'web', company_id: 'company-a' },
-        userMetadata: { must_change_password: true },
+        appMetadata: { kind: 'web', company_id: 'company-a', must_change_password: true },
       },
     ])
     expect(f.calls.link).toEqual([{ profileId: TARGET_ID, authUserId: 'auth-new-1', kind: 'web' }])
@@ -246,7 +254,7 @@ describe('admin-users: set_login', () => {
     expect(f.calls.update).toEqual([
       {
         id: 'auth-old',
-        input: { email: 'new@example.com', password: PASSWORD, userMetadata: { must_change_password: true } },
+        input: { email: 'new@example.com', password: PASSWORD, appMetadata: { must_change_password: true } },
       },
     ])
     expect(f.calls.loginKind).toEqual([{ profileId: TARGET_ID, kind: 'web' }])
@@ -272,6 +280,7 @@ describe('admin-users: set_login', () => {
       createResults: [exists],
       existingByEmail: { id: 'auth-busy', email: PHONE_EMAIL, app_metadata: {} },
       linkedProfileOf: { 'auth-busy': 'p-other' },
+      otherProfiles: { 'p-other': target({ id: 'p-other' }) },
     })
     expect(await handleAdminUsers(AUTH, body(), f.deps)).toEqual({ status: 409, body: { error: 'login_taken' } })
     expect(f.calls.deleted).toHaveLength(0)
@@ -296,6 +305,7 @@ describe('admin-users: set_login', () => {
       updateResults: [exists],
       existingByEmail: { id: 'auth-busy', email: 'x@example.com', app_metadata: {} },
       linkedProfileOf: { 'auth-busy': 'p-other' },
+      otherProfiles: { 'p-other': target({ id: 'p-other' }) },
     })
     expect((await handleAdminUsers(AUTH, body({ email: 'x@example.com' }), f.deps)).body).toEqual({
       error: 'login_taken',
@@ -381,10 +391,13 @@ describe('admin-users: audit — direktor, mavjud login, yetim auth user', () =>
     ['tg sintetik', { kind: 'tg', tg_user_id: 1 }],
     ['boshqa firma (metadata)', { kind: 'web', company_id: 'company-b' }],
     ['firma noma’lum (metadata ham, oxirgi profil ham yo’q)', { kind: 'web' }],
-  ])("yetim auth user o'chirilmaydi → 409 login_taken: %s", async (_n, meta) => {
+  ])("yetim auth user o'chirilmaydi → 409 conflict (super_admin — login_taken): %s", async (_n, meta) => {
     const f = fake({ createResults: [exists], existingByEmail: { id: 'auth-orphan', email: PHONE_EMAIL, app_metadata: meta } })
-    expect(await handleAdminUsers(AUTH, body(), f.deps)).toEqual({ status: 409, body: { error: 'login_taken' } })
+    expect(await handleAdminUsers(AUTH, body(), f.deps)).toEqual({ status: 409, body: { error: 'conflict' } })
     expect(f.calls.deleted).toEqual([])
+    const sa = fake({ caller: superAdmin, createResults: [exists], existingByEmail: { id: 'auth-orphan', email: PHONE_EMAIL, app_metadata: meta } })
+    expect(await handleAdminUsers(AUTH, body(), sa.deps)).toEqual({ status: 409, body: { error: 'login_taken' } })
+    expect(sa.calls.deleted).toEqual([])
   })
   it("metadata'da firma yo'q, lekin oxirgi profil shu firmaniki → o'chiriladi", async () => {
     const f = fake({
@@ -448,5 +461,96 @@ describe('admin-users: 2-tur — himoyalangan rolga birinchi login', () => {
     const f = fake({ target: target({ role: 'admin', auth_user_id: null }) })
     expect((await handleAdminUsers(AUTH, body(), f.deps)).status).toBe(403)
     expect(f.calls.loginAlerts).toEqual([])
+  })
+})
+
+describe('admin-users: audit 3 — firmalararo to‘qnashuv (E2)', () => {
+  it('email boshqa firma profiliga bog‘langan → umumiy 409 conflict (login_taken emas), o‘chirilmaydi', async () => {
+    const f = fake({
+      createResults: [exists],
+      existingByEmail: { id: 'auth-busy', email: 'x@example.com', app_metadata: { kind: 'web', company_id: 'company-b' } },
+      linkedProfileOf: { 'auth-busy': 'p-b' },
+      otherProfiles: { 'p-b': target({ id: 'p-b', company_id: 'company-b' }) },
+    })
+    expect(await handleAdminUsers(AUTH, body({ email: 'x@example.com' }), f.deps)).toEqual({ status: 409, body: { error: 'conflict' } })
+    expect(f.calls.deleted).toEqual([])
+    expect(f.calls.link).toEqual([])
+  })
+
+  it('telefon login: raqam boshqa firmada ham bor → 409 conflict, auth user yaratilmaydi', async () => {
+    const f = fake({ phoneInOther: true })
+    expect(await handleAdminUsers(AUTH, body(), f.deps)).toEqual({ status: 409, body: { error: 'conflict' } })
+    expect(f.calls.phoneChecks).toEqual([{ companyId: 'company-a', phone: '+998901234567' }])
+    expect(f.calls.create).toEqual([])
+    expect(f.calls.update).toEqual([])
+  })
+
+  it('email login — telefon tekshirilmaydi; super_admin — tekshiruvsiz', async () => {
+    const e = fake({ phoneInOther: true })
+    expect((await handleAdminUsers(AUTH, body({ email: 'a@example.com' }), e.deps)).status).toBe(200)
+    expect(e.calls.phoneChecks).toEqual([])
+    const sa = fake({ caller: superAdmin, phoneInOther: true })
+    expect((await handleAdminUsers(AUTH, body(), sa.deps)).status).toBe(200)
+    expect(sa.calls.phoneChecks).toEqual([])
+  })
+
+  it('telefon tekshiruvi xatosi → 500, login berilmaydi', async () => {
+    const f = fake()
+    f.deps.phoneInOtherCompany = async () => {
+      throw new Error('rpc yo‘q')
+    }
+    expect(await handleAdminUsers(AUTH, body(), f.deps)).toEqual({ status: 500, body: { error: 'internal' } })
+    expect(f.calls.create).toEqual([])
+  })
+})
+
+describe('admin-users: audit 3 — change_password (E3)', () => {
+  const cp = (over: Record<string, unknown> = {}) => ({ action: 'change_password', password: 'Yangi-Parol-1', ...over })
+
+  it('o‘z JWT bilan → parol o‘rnatiladi va must_change_password (app + user metadata) false', async () => {
+    const f = fake()
+    expect(await handleAdminUsers(AUTH, cp(), f.deps)).toEqual({ status: 200, body: { ok: true } })
+    expect(f.calls.jwt).toEqual(['caller.jwt.token'])
+    expect(f.calls.update).toEqual([
+      {
+        id: 'caller-auth',
+        input: { password: 'Yangi-Parol-1', appMetadata: { must_change_password: false }, userMetadata: { must_change_password: false } },
+      },
+    ])
+    expect(JSON.stringify(f.calls.logs)).not.toContain('Yangi-Parol-1')
+  })
+
+  it('profile_id / boshqa foydalanuvchi qabul qilinmaydi — faqat JWT egasi', async () => {
+    const f = fake()
+    await handleAdminUsers(AUTH, cp({ profile_id: TARGET_ID }), f.deps)
+    expect(f.calls.update.map((u) => u.id)).toEqual(['caller-auth'])
+  })
+
+  it('JWT yo‘q / yaroqsiz → 401; faol profil yo‘q → 403; hech narsa yangilanmaydi', async () => {
+    const a = fake()
+    expect((await handleAdminUsers(null, cp(), a.deps)).status).toBe(401)
+    const b = fake({ callerAuthId: null })
+    expect((await handleAdminUsers(AUTH, cp(), b.deps)).status).toBe(401)
+    const c = fake({ caller: null })
+    expect((await handleAdminUsers(AUTH, cp(), c.deps)).status).toBe(403)
+    expect([...a.calls.update, ...b.calls.update, ...c.calls.update]).toEqual([])
+  })
+
+  it('parol qisqa / uzun / turi noto‘g‘ri → 400; GoTrue weak_password → 400', async () => {
+    const f = fake()
+    expect((await handleAdminUsers(AUTH, cp({ password: '1234567' }), f.deps)).body).toEqual({ error: 'weak_password' })
+    expect((await handleAdminUsers(AUTH, cp({ password: 'a'.repeat(73) }), f.deps)).body).toEqual({ error: 'password_too_long' })
+    expect((await handleAdminUsers(AUTH, cp({ password: 5 }), f.deps)).body).toEqual({ error: 'invalid_request' })
+    expect(f.calls.update).toEqual([])
+    const g = fake({ updateResults: [{ ok: false, reason: 'weak_password' }] })
+    expect((await handleAdminUsers(AUTH, cp(), g.deps)).body).toEqual({ error: 'weak_password' })
+  })
+
+  it('Telegram sintetik akkaunt (login_kind tg) yoki none → 403, parol o‘rnatilmaydi', async () => {
+    for (const kind of ['tg', 'none'] as const) {
+      const f = fake({ caller: { ...admin, role: 'prorab', login_kind: kind } })
+      expect(await handleAdminUsers(AUTH, cp(), f.deps)).toEqual({ status: 403, body: { error: 'forbidden' } })
+      expect(f.calls.update).toEqual([])
+    }
   })
 })

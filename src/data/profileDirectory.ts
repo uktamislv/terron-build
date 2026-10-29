@@ -5,6 +5,7 @@
 import type { Role } from '@/domain/roles'
 import { toRepoError } from './errors'
 import { inChunks } from './fetchAll'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 
 export const DIRECTORY_COLUMNS = 'id, company_id, full_name, role, is_active, is_available'
@@ -30,7 +31,7 @@ export function isAvailable(p: Pick<DirectoryProfile, 'is_active' | 'is_availabl
 
 /** Firma xodimlari (o'chirilganlari ham — view filtrlamaydi), ism bo'yicha. */
 export async function listDirectory(): Promise<DirectoryProfile[]> {
-  const { data, error } = await getSupabase().from('profile_directory').select(DIRECTORY_COLUMNS).order('full_name')
+  const { data, error } = await scopeCompany(getSupabase().from('profile_directory').select(DIRECTORY_COLUMNS)).order('full_name')
   if (error) throw toRepoError(error)
   return (data ?? []) as DirectoryProfile[]
 }

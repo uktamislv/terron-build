@@ -7,6 +7,7 @@ import { useSearchParams } from 'react-router'
 import { PencilLine, Plus, Receipt, RotateCcw, Trash2 } from 'lucide-react'
 import { useAuth } from '@/auth/authContext'
 import { MovementPhoto } from '@/components/MovementPhoto'
+import { CancelOwnDialog } from '@/components/corrections/CancelOwnDialog'
 import { ExpenseCorrectionForm } from '@/components/corrections/ExpenseCorrectionForm'
 import {
   Badge,
@@ -22,10 +23,9 @@ import {
   Pager,
   RetryNotice,
   Spinner,
-  TextAreaField,
   type FilterDef,
 } from '@/components/ui'
-import { cancelOwnEntry, CORRECTION_NOTE_MAX } from '@/data/correctionsRepo'
+import { cancelOwnEntry } from '@/data/correctionsRepo'
 import { listExpenseCategories } from '@/data/expenseCategoriesRepo'
 import {
   EXPENSES_PAGE_SIZE,
@@ -155,21 +155,36 @@ export function ExpensesTab({
     }
   }, [form, page, canSeeDeleted, reloadKey])
 
-  // Ogohlantirishdan havola: ?expense=<id> — tafsilot (topilmasa — jim); parametr bir marta ishlatiladi
-  const linked = params.get('expense')
+  // Ogohlantirishdan havola: ?expense=<id> — tafsilot (topilmasa — jim); parametr bir marta ishlatiladi.
+  // Id holatga ko'chiriladi va URL'dan alohida olib tashlanadi — so'rov params o'zgarishi bilan bekor bo'lmasin.
+  const linkedParam = params.get('expense')
+  const [linkedId, setLinkedId] = useState<string | null>(null)
+  const [seenParam, setSeenParam] = useState<string | null>(null)
+  if (linkedParam !== seenParam) {
+    // Render paytida (holatdan hosila): yangi havola — id saqlanadi
+    setSeenParam(linkedParam)
+    if (isUuid(linkedParam)) setLinkedId(linkedParam)
+  }
   useEffect(() => {
-    if (!isUuid(linked)) return
-    let alive = true
-    getExpenseById(linked)
-      .then((e) => alive && setDialog({ kind: 'detail', expense: e }))
-      .catch(() => undefined)
+    if (!params.has('expense')) return
     const next = new URLSearchParams(params)
     next.delete('expense')
     setParams(next, { replace: true })
+  }, [params, setParams])
+  useEffect(() => {
+    if (!linkedId) return
+    let alive = true
+    getExpenseById(linkedId)
+      .then((e) => {
+        if (!alive) return
+        setDialog({ kind: 'detail', expense: e })
+        setLinkedId(null)
+      })
+      .catch(() => alive && setLinkedId(null))
     return () => {
       alive = false
     }
-  }, [linked, params, setParams])
+  }, [linkedId])
 
   if (!me) return null
 
@@ -182,14 +197,18 @@ export function ExpensesTab({
     return null
   }
 
-  const run = async (action: () => Promise<void>, text?: string) => {
+  /** `leavesPage` — qator joriy ro'yxatdan chiqadi (o'chirildi/bekor qilindi va o'chirilganlar ko'rsatilmayapti). */
+  const run = async (action: () => Promise<void>, text?: string, opts: { leavesPage?: boolean } = {}) => {
     setBusy(true)
     setActionError(null)
+    setNotice(null)
     try {
       await action()
       setDialog(null)
       if (text) setNotice(text)
-      reload()
+      // Oxirgi sahifadagi yagona qator ketdi — oldingi sahifaga (bo'sh sahifa qolmasin)
+      if (opts.leavesPage && !form.includeDeleted && page > 0 && data?.rows.length === 1) setPage((p) => p - 1)
+      else reload()
     } catch (err) {
       setActionError(errorText(err))
     } finally {
@@ -200,6 +219,7 @@ export function ExpensesTab({
   const update = (patch: Partial<ExpenseFilterForm>) => {
     setForm((f) => ({ ...f, ...patch }))
     setPage(0)
+    setNotice(null)
   }
 
   const all = { value: '', label: to.all }
@@ -435,7 +455,9 @@ export function ExpensesTab({
           busy={busy}
           error={actionError}
           onClose={close}
-          onConfirm={(reason) => void run(() => cancelOwnEntry('expenses', dialog.expense.id, reason), t.correction.cancelled)}
+          onConfirm={(reason) =>
+            void run(() => cancelOwnEntry('expenses', dialog.expense.id, reason), t.correction.cancelled, { leavesPage: true })
+          }
         />
       )}
 
@@ -448,7 +470,7 @@ export function ExpensesTab({
               <Button variant="secondary" onClick={close}>
                 {t.common.no}
               </Button>
-              <Button variant="danger" loading={busy} onClick={() => void run(() => softDeleteExpense(dialog.expense.id))}>
+              <Button variant="danger" loading={busy} onClick={() => void run(() => softDeleteExpense(dialog.expense.id), undefined, { leavesPage: true })}>
                 {t.common.yes}
               </Button>
             </>
@@ -461,65 +483,6 @@ export function ExpensesTab({
         </Modal>
       )}
     </>
-  )
-}
-
-function CancelOwnDialog({
-  busy,
-  error,
-  onClose,
-  onConfirm,
-}: {
-  busy: boolean
-  error: string | null
-  onClose: () => void
-  onConfirm: (reason: string) => void
-}) {
-  const [reason, setReason] = useState('')
-  const [missing, setMissing] = useState(false)
-  return (
-    <Modal
-      title={t.correction.cancelTitle}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            {t.common.back}
-          </Button>
-          <Button
-            variant="danger"
-            loading={busy}
-            onClick={() => {
-              if (!reason.trim()) {
-                setMissing(true)
-                return
-              }
-              onConfirm(reason)
-            }}
-          >
-            {t.correction.cancelConfirm}
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-4">
-        <p className="text-sm text-muted">{t.correction.cancelText}</p>
-        <TextAreaField
-          label={t.correction.cancelReason}
-          required
-          aria-required="true"
-          rows={2}
-          maxLength={CORRECTION_NOTE_MAX}
-          value={reason}
-          error={missing ? t.correction.errCancelReason : null}
-          onChange={(e) => {
-            setReason(e.target.value)
-            setMissing(false)
-          }}
-        />
-        {error && <Notice>{error}</Notice>}
-      </div>
-    </Modal>
   )
 }
 

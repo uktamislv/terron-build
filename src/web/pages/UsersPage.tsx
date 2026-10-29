@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCompanyId } from '@/auth/activeCompany'
 import { useAuth } from '@/auth/authContext'
 import { BellOff, Building2, Globe, Info, KeyRound, Pencil, Power, Send, ShieldCheck, UserPlus, Users } from 'lucide-react'
 import { Badge, Button, EmptyState, Notice, PageHeader, Popover, RetryNotice, SkeletonRows, type BadgeTone } from '@/components/ui'
@@ -35,6 +36,8 @@ type Dialog = { kind: 'create' } | { kind: 'edit'; profile: Profile } | { kind: 
 
 export function UsersPage() {
   const { profile: me } = useAuth()
+  // super_admin — faol firma (yon menyudagi tanlagich), boshqalar — o'z firmasi
+  const companyId = useCompanyId()
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -61,7 +64,7 @@ export function UsersPage() {
     }
   }, [reloadKey])
 
-  if (!me) return null
+  if (!me || !companyId) return null
   const canManage = can(me.role, 'manage_users')
 
   async function toggleActive(p: Profile) {
@@ -216,7 +219,7 @@ export function UsersPage() {
       {data && (dialog?.kind === 'create' || dialog?.kind === 'edit') && (
         <UserFormDialog
           actorRole={me.role}
-          companyId={me.company_id}
+          companyId={companyId}
           profile={dialog.kind === 'edit' ? dialog.profile : undefined}
           objects={data.objects}
           members={data.members}

@@ -2,6 +2,7 @@
 // ixtiyoriy chek rasmi va izoh; admin — to'lovchi (profile_directory → is_available); admin / buxgalter — pul manbai.
 // Qoidalar umumiy (src/domain/expenses.ts): summa, rasm majburiyligi, takroriy yozuv.
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCompanyId } from '@/auth/activeCompany'
 import { useAuth } from '@/auth/authContext'
 import { Button, choiceClass, DateField, Modal, Notice, RetryNotice, SelectField, SkeletonRows, TextAreaField, TextField } from '@/components/ui'
 import { DEFAULT_COMPANY_SETTINGS, getCompanySettings, type CompanySettings } from '@/data/companiesRepo'
@@ -43,7 +44,8 @@ export function AddExpenseDialog({ onClose, onSaved }: { onClose: () => void; on
   const { profile: me } = useAuth()
   const isAdmin = me?.role === 'admin' || me?.role === 'super_admin'
   const canPickSource = isAdmin || me?.role === 'buxgalter'
-  const companyId = me?.company_id
+  // super_admin — faol firma (yon menyudagi tanlagich), boshqalar — o'z firmasi
+  const companyId = useCompanyId()
   const [refs, setRefs] = useState<Refs | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -115,7 +117,7 @@ export function AddExpenseDialog({ onClose, onSaved }: { onClose: () => void; on
 
   const submit = async (e: FormEvent | null, confirmDuplicate = false) => {
     e?.preventDefault()
-    if (!me || !refs || saving || photo.preparing) return
+    if (!me || !companyId || !refs || saving || photo.preparing) return
     const nowIso = new Date().toISOString()
     const next: Partial<Record<Field, string>> = {}
     if (!category) next.category = te.errors.category
@@ -146,10 +148,10 @@ export function AddExpenseDialog({ onClose, onSaved }: { onClose: () => void; on
     setSaveError(null)
     setDuplicate(false)
     try {
-      const receiptPhotoPath = await photo.resolvePath(me.company_id)
+      const receiptPhotoPath = await photo.resolvePath(companyId)
       const saved = await createExpense({
         id: draftId,
-        companyId: me.company_id,
+        companyId,
         categoryId: category.id,
         objectId: object,
         amount: parsed.value,

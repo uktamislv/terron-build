@@ -637,6 +637,18 @@ export function matchesQr(parsed: Pick<ReceiptData, 'fiscalSign' | 'terminalId'>
  * Topilmagan maydonlar QR qiymatlari bilan to'ldiriladi (fiskal belgi, terminal, raqam, vaqt).
  */
 export function parseReceiptDocument(body: string, contentType: string | null, qr: ReceiptQrParams): ReceiptData | null {
+  return parseReceiptDocumentChecked(body, contentType, qr)?.receipt ?? null
+}
+
+/**
+ * Audit 3 (E6): `parseReceiptDocument` + `verified` — sahifada fiskal belgi BOR va QR `s` bilan teng.
+ * Belgi topilmasa chek qaytadi (foydalanuvchiga yordam), lekin tasdiqlanmagan: keshga yozilmaydi.
+ */
+export function parseReceiptDocumentChecked(
+  body: string,
+  contentType: string | null,
+  qr: ReceiptQrParams,
+): { receipt: ReceiptData; verified: boolean } | null {
   try {
     if (typeof body !== 'string' || body.trim() === '') return null
     let parsed: ReceiptData | null = null
@@ -653,13 +665,15 @@ export function parseReceiptDocument(body: string, contentType: string | null, q
     // Sahifa boshqa chekni ko'rsatsa (fiskal belgi / terminal QR'dagidan farq qiladi) — ishonilmaydi,
     // keshga yozilmaydi (handler 422 qaytaradi).
     if (!matchesQr(parsed, qr)) return null
-    return {
+    const receipt: ReceiptData = {
       ...parsed,
       fiscalSign: parsed.fiscalSign ?? qr.fiscalSign,
       terminalId: parsed.terminalId ?? qr.terminalId,
       receiptNo: parsed.receiptNo ?? qr.receiptNo,
       datetime: parsed.datetime ?? qr.datetime,
     }
+    // matchesQr belgi bor bo'lsa tengligini tekshirgan — bu yerda faqat borligi
+    return { receipt, verified: parsed.fiscalSign !== null }
   } catch {
     return null
   }
@@ -743,7 +757,8 @@ const err = (status: number, error: string, extra: Record<string, unknown> = {})
 
 /**
  * Javoblar:
- * - 200 `{ receipt: ReceiptData, cached: boolean }`
+ * - 200 `{ receipt: ReceiptData, cached: boolean, verified: boolean }` — `verified`: sahifadagi fiskal
+ *   belgi QR bilan teng (faqat shunda keshga yoziladi; keshdagi — doim tasdiqlangan)
  * - 400 `invalid_request` (body yaroqsiz) / `receipt_url_not_allowed` (host, sxema, yo'l, parametrlar)
  * - 401 `unauthorized` (JWT yo'q, yaroqsiz, anon); 403 `forbidden` (faol profil yo'q)
  * - 422 `receipt_unparseable` + `qr` — sahifa ochildi, lekin chek ma'lumoti topilmadi
@@ -783,7 +798,7 @@ export async function handleReceiptLookup(
 
   try {
     const hit = await deps.cacheGet(jwt, caller, qr)
-    if (hit !== null) return respond(200, { receipt: hit, cached: true })
+    if (hit !== null) return respond(200, { receipt: hit, cached: true, verified: true })
   } catch (e) {
     // Kesh — ixtiyoriy; xato bo'lsa davom etamiz.
     deps.log('warn', 'receipt-lookup: kesh o\'qilmadi', { error: errMessage(e), company_id: caller.companyId })
@@ -801,16 +816,22 @@ export async function handleReceiptLookup(
     return err(502, 'receipt_fetch_failed', { reason: page.reason, qr: qrFields(qr) })
   }
 
-  const receipt = parseReceiptDocument(page.body, page.contentType, qr)
-  if (receipt === null) {
+  const checked = parseReceiptDocumentChecked(page.body, page.contentType, qr)
+  if (checked === null) {
     deps.log('info', 'receipt-lookup: chek ajratilmadi', { bytes: page.body.length, kind: qr.kind })
     return err(422, 'receipt_unparseable', { qr: qrFields(qr) })
   }
 
-  try {
-    await deps.cachePut(jwt, caller, qr, receipt)
-  } catch (e) {
-    deps.log('warn', 'receipt-lookup: kesh yozilmadi', { error: errMessage(e), company_id: caller.companyId })
+  const { receipt, verified } = checked
+  // Audit 3 (E6): fiskal belgisi QR bilan tasdiqlanmagan chek keshga yozilmaydi
+  if (verified) {
+    try {
+      await deps.cachePut(jwt, caller, qr, receipt)
+    } catch (e) {
+      deps.log('warn', 'receipt-lookup: kesh yozilmadi', { error: errMessage(e), company_id: caller.companyId })
+    }
+  } else {
+    deps.log('info', "receipt-lookup: fiskal belgi sahifada yo'q — tasdiqlanmadi", { kind: qr.kind })
   }
-  return respond(200, { receipt, cached: false })
+  return respond(200, { receipt, cached: false, verified })
 }

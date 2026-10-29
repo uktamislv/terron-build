@@ -232,6 +232,7 @@ describe('Batch 12 (G) — chek QR', () => {
       fiscalSign: '248429044289',
       terminalId: 'UZ170703100189',
       receiptNo: '643',
+      verified: true,
     })
     open()
     fireEvent.click(await screen.findByRole('button', { name: ta.scanReceipt }))
@@ -274,6 +275,7 @@ describe('Batch 12 (G) — chek QR', () => {
       fiscalSign: '1',
       terminalId: 'UZ1',
       receiptNo: '1',
+      verified: true,
     })
     open()
     fireEvent.click(await screen.findByRole('button', { name: ta.scanReceipt }))
@@ -297,6 +299,7 @@ describe('Batch 12 (G) — chek QR', () => {
       fiscalSign: '1',
       terminalId: 'UZ1',
       receiptNo: '9',
+      verified: true,
     })
     open()
     fireEvent.click(await screen.findByRole('button', { name: ta.scanReceipt }))
@@ -386,6 +389,7 @@ describe('Batch 12 (G) — qisman bo‘sh 200 javob', () => {
       fiscalSign: null,
       terminalId: null,
       receiptNo: null,
+      verified: true,
     })
     open()
     fireEvent.click(await screen.findByRole('button', { name: ta.scanReceipt }))
@@ -396,6 +400,29 @@ describe('Batch 12 (G) — qisman bo‘sh 200 javob', () => {
     expect(await screen.findByTestId('photo-required')).toBeInTheDocument()
     await pressMain()
     expect(purchasesRepo.createPurchase).not.toHaveBeenCalled()
+  })
+
+  it('audit 3 (E6): server tasdiqlamagan chek (verified: false) — summa mos bo‘lsa ham tasdiqlanmagan, rasm majburiy', async () => {
+    tg.app = telegramApp()
+    vi.mocked(materialsRepo.listMaterials).mockResolvedValue([{ ...sement, photo_required: true }, qum])
+    vi.mocked(receiptRepo.receiptLookup).mockResolvedValue({
+      sellerName: null,
+      sellerTin: null,
+      datetime: new Date().toISOString(),
+      total: '100000',
+      items: [],
+      fiscalSign: null,
+      terminalId: null,
+      receiptNo: null,
+      verified: false,
+    })
+    open()
+    fireEvent.click(await screen.findByRole('button', { name: ta.scanReceipt }))
+    await screen.findByTestId('receipt-card')
+    await pickMaterial('Sement')
+    fill('2', '100000')
+    expect(await screen.findByTestId('receipt-card')).not.toHaveAttribute('data-verified')
+    expect(await screen.findByTestId('photo-required')).toBeInTheDocument()
   })
 
   it('chek jami summaga mos va sana ±3 kun ichida — tasdiqlangan, rasm majburiyati yo‘q', async () => {
@@ -410,6 +437,7 @@ describe('Batch 12 (G) — qisman bo‘sh 200 javob', () => {
       fiscalSign: null,
       terminalId: null,
       receiptNo: null,
+      verified: true,
     })
     open()
     fireEvent.click(await screen.findByRole('button', { name: ta.scanReceipt }))
@@ -441,7 +469,8 @@ describe('Batch 12 (H) — tasdiqlangan so‘rov', () => {
 
   it('obyekt o‘zgarsa — tanlangan so‘rov tozalanadi', async () => {
     vi.mocked(objectsRepo.listObjects).mockResolvedValue([objA, makeObject('o-b', 'Obyekt B')])
-    window.localStorage.setItem('terron.movement.object', 'o-a')
+    // Xarid obyekti — kirim/chiqimnikidan alohida kalit
+    window.localStorage.setItem('terron.purchase.object', 'o-a')
     vi.mocked(requestsRepo.listApprovedRequests).mockImplementation(async (id) => (id === 'o-a' ? [approvedRequest()] : []))
     open()
     fireEvent.click(await screen.findByTestId('approved-request'))
@@ -483,7 +512,7 @@ describe('Batch 12 (C, E) — takroriy xarid va rasm majburiy', () => {
     await waitFor(() => expect(purchasesRepo.createPurchase).toHaveBeenCalledTimes(1))
   })
 
-  it('summa chegaradan katta — chek rasmi majburiy, Saqlash nofaol', async () => {
+  it('summa chegaradan katta — chek rasmi majburiy; Saqlash bosilsa saqlanmaydi, rasm maydoniga aylantiriladi', async () => {
     vi.mocked(companiesRepo.getCompanySettings).mockResolvedValue({
       ...companiesRepo.DEFAULT_COMPANY_SETTINGS,
       photoRequiredAmount: '1000000',
@@ -494,7 +523,12 @@ describe('Batch 12 (C, E) — takroriy xarid va rasm majburiy', () => {
     expect(screen.queryByTestId('photo-required')).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText(tp.sum), { target: { value: '1000000' } })
     expect(await screen.findByTestId('photo-required')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: tp.save })).toBeDisabled()
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    expect(screen.getByRole('button', { name: tp.save })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: tp.save }))
+    expect(purchasesRepo.createPurchase).not.toHaveBeenCalled()
+    expect(scroll.mock.contexts[0]).toHaveAttribute('data-photo-field')
   })
 
   it('material "rasm majburiy" — QR tasdiqlangan chek bo‘lsa rasmsiz ham', async () => {
@@ -509,6 +543,7 @@ describe('Batch 12 (C, E) — takroriy xarid va rasm majburiy', () => {
       fiscalSign: '1',
       terminalId: 'UZ1',
       receiptNo: '1',
+      verified: true,
     })
     open()
     fireEvent.click(await screen.findByRole('button', { name: ta.scanReceipt }))

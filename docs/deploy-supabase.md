@@ -65,6 +65,17 @@ Authentication → **Rate Limits** — standart qiymatlarni ko'rib chiqing: sign
 Authentication → **Emails → SMTP Settings**:
 
 - **Custom SMTP ULAMANG.** Tizim telefon va Telegram foydalanuvchilariga sintetik email beradi (`…@phone.terron-build.invalid`, `…@tg.terron-build.invalid`). Supabase'ning standart SMTP'si faqat loyiha jamoasi a'zolariga xat yuboradi — sintetik manzillarga hech narsa ketmaydi. Agar keyinchalik custom SMTP kerak bo'lsa — avval **Auth Hooks → Send Email** hook bilan `.invalid` domenlarga xat yuborishni to'xtating.
+- **Custom SMTP xavfi (email login bilan).** Custom SMTP ulangach "Parolni unutdim" / magic link xatlari HAQIQIY manzillarga keta boshlaydi. Admin xodimga begona yoki xato email bergan bo'lsa, shu manzil egasi parolni tiklab, xodim akkauntini (va firma ma'lumotlarini) egallashi mumkin. Shuning uchun custom SMTP'dan oldin barcha email loginlarni qayta ko'rib chiqing.
+
+### Email login berish qoidasi (adminlar uchun)
+
+Veb paneldan (Foydalanuvchilar → Login berish) email kiritilsa, akkaunt **`email_confirm: true`** bilan — ya'ni manzil egasidan tasdiq so'ralmasdan — yaratiladi. Demak tizim manzil haqiqatan shu xodimniki ekanini tekshirmaydi:
+
+- Email loginni **faqat xodimning o'zi foydalanadigan (egalik qiladigan) manzilga** bering. Umumiy, eski, boshqa odamning yoki "taxminiy" manzilni bermang.
+- Shubha bo'lsa — emailsiz (telefon raqami bilan) login bering: sintetik `…@phone.terron-build.invalid` manzilga xat ketmaydi.
+- Xodim ishdan ketsa — profilni nofaol qiling; email boshqa odamga o'tgan bo'lishi mumkin.
+
+Parolni almashtirish (`must_change_password`): belgi `app_metadata` da turadi va uni faqat `admin-users` funksiyasi (`change_password` amali, foydalanuvchining o'z JWT'si bilan) olib tashlaydi — foydalanuvchi uni `auth.updateUser` bilan o'zi o'chira olmaydi. Parol server tomonida (admin API) o'rnatilgani uchun GoTrue'ning **Secure password change** ("yaqinda kirgan bo'lish") tekshiruvi bu yo'lda ishlamaydi — amalda kirish sessiyasi talab qilinadi.
 
 Authentication → **URL Configuration** → Site URL: `https://terron-build.terron-build.workers.dev`
 
@@ -73,18 +84,23 @@ Authentication → **URL Configuration** → Site URL: `https://terron-build.ter
 Admin boshqa foydalanuvchilarni veb paneldan qo'shadi, lekin birinchisini qo'lda yaratish kerak.
 
 1. Authentication → **Users → Add user → Create new user**: email va parol, **Auto Confirm User** belgilangan.
-2. SQL Editor'da (email va ma'lumotlarni o'zingiznikiga almashtiring):
+2. SQL Editor'da (email va ma'lumotlarni o'zingiznikiga almashtiring). `public.create_company` firmani, uning administrator profilini (telefon E.164 ga keltiriladi) yaratadi; materiallar shabloni va 6 ta standart xarajat turi firma qo'shilganda triggerlar orqali avtomatik qo'shiladi:
    ```sql
-   with c as (
-     insert into public.companies (name) values ('Firma nomi') returning id
-   ), t as (
-     select private.apply_material_template(c.id) from c
-   )
-   insert into public.profiles (company_id, role, full_name, phone, auth_user_id, login_kind)
-   select c.id, 'admin', 'Ism Familiya', '+998901234567',
-          (select id from auth.users where email = 'admin@example.com'), 'web'
-   from c;
+   do $$
+   declare
+     r jsonb;
+   begin
+     r := public.create_company('Firma nomi', 'Ism Familiya', '+998901234567');
+     update public.profiles
+        set auth_user_id = (select id from auth.users where email = 'admin@example.com'),
+            login_kind   = 'web'
+      where id = (r ->> 'admin_profile_id')::uuid;
+     raise notice '%', r;   -- {"company_id": ..., "admin_profile_id": ...}
+   end $$;
    ```
+   (`DO` bloki — profil yaratilgandan keyingi `update` uni ko'rishi uchun; bitta `with ... update` so'rovida ko'rinmaydi.)
+   Tekshirish: `select count(*) from public.materials where company_id = '<company_id>'` — 8 ta shablon materiali.
+   Keyingi firmalarni tizim egasi (`super_admin`) shu RPC bilan qo'shadi (boshqa rollarga `company_create_forbidden`).
 3. `https://terron-build.terron-build.workers.dev/login` → shu email va parol bilan kiring.
 
 ## 5. Edge Functions sirlari

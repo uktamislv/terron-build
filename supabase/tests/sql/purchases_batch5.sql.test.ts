@@ -132,6 +132,17 @@ const purchase = (q: Queryable, p: PurchaseIn): Promise<string> =>
     ],
   )
 
+/**
+ * Xarid "haqiqatan eski": created_at = purchased_at (triggerlarsiz). Qoida 1 kutishi
+ * greatest(purchased_at, created_at) + 24 soat (20261112000001 D6) — orqa sana bilan hozir
+ * kiritilgan xarid darhol "kam" bo'lmaydi; eski xaridni taqlid qilish uchun.
+ */
+async function aged(tx: Tx, where: string, params: unknown[]): Promise<void> {
+  await tx.exec('set local session_replication_role = replica')
+  await tx.query(`update public.purchases set created_at = purchased_at where ${where}`, params)
+  await tx.exec('set local session_replication_role = origin')
+}
+
 /** Bog'langan kirim (kg). */
 const kirim = (
   q: Queryable,
@@ -660,6 +671,7 @@ describe('qoida 1: xarid ≠ qabul', () => {
     const r = await inTx(async (tx) => {
       const m = await newMaterial(tx, A)
       const p = await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-2 days' })
+      await aged(tx, 'id = $1', [p])
       await kirim(tx, A, p, m, 97)
       return alertsOf(tx, p, 'xarid_qabul_farqi')
     })
@@ -698,6 +710,7 @@ describe('qoida 1: xarid ≠ qabul', () => {
     const r = await inTx(async (tx) => {
       const m = await newMaterial(tx, A)
       const p = await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-2 days' })
+      await aged(tx, 'id = $1', [p])
       await kirim(tx, A, p, m, 50)
       await become(tx, A.users.admin)
       await tx.query(`update public.alerts set status = 'yopildi', close_note = 'Tekshirildi' where purchase_id = $1`, [p])
@@ -722,6 +735,7 @@ describe('qoida 1: xarid ≠ qabul', () => {
       const m = await newMaterial(tx, A)
       const p1 = await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-2 days' })
       const p2 = await purchase(tx, { co: A, material: m, qty: 10, total: 10000, at: '-2 days' })
+      await aged(tx, 'id = any($1)', [[p1, p2]])
       await kirim(tx, A, p1, m, 100)
       const extra = await kirim(tx, A, p1, m, 10) // p1: 110 → ortiqcha
       const p1Over = await alertsOf(tx, p1, 'xarid_qabul_farqi')
@@ -767,6 +781,7 @@ describe('qoida 1: xarid ≠ qabul', () => {
     const r = await inTx(async (tx) => {
       const m = await newMaterial(tx, A)
       const p = await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-2 days' })
+      await aged(tx, 'id = $1', [p])
       await evalReceipt(tx, p) // kirim yo'q, 2 kun → kam qabul
       const before = await alertsOf(tx, p, 'xarid_qabul_farqi')
       await become(tx, A.users.admin)
@@ -1147,7 +1162,7 @@ describe('check_purchase_price RPC', () => {
     const f = await one(
       db,
       `select p.prorettype::regtype::text as ret, p.proretset, p.prosecdef, p.provolatile, p.proconfig
-         from pg_proc p where p.oid = 'public.check_purchase_price(uuid, numeric)'::regprocedure`,
+         from pg_proc p where p.oid = 'public.check_purchase_price(uuid, numeric, timestamptz)'::regprocedure` /* audit3 D14: + p_purchased_at */,
     )
     expect(f).toEqual({ ret: 'text', proretset: false, prosecdef: true, provolatile: 'v' /* audit2 S8: chastota cheklovi yozadi */, proconfig: ['search_path=""'] })
     expect(await asAnon(db, (tx) => res(tx, `select public.check_purchase_price($1, 1)`, [A.ids.m1]))).toBe('42501:')
@@ -1164,9 +1179,10 @@ describe('evaluate_due_purchases (pg_cron)', () => {
       const due = await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-25 hours' })
       const fresh = await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-23 hours' })
       const ok = await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-25 hours' })
-      await kirim(tx, A, ok, m, 100)
       await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-61 days' })
       const manual = await purchase(tx, { co: A, material: m, qty: 100, total: 100000, at: '-30 hours' })
+      await aged(tx, 'material_id = $1', [m])
+      await kirim(tx, A, ok, m, 100)
       await kirim(tx, A, manual, m, 50) // eski xarid → darhol alert
       await tx.query(`update public.alerts set status = 'yopildi', close_note = 'Tekshirildi' where purchase_id = $1`, [manual])
       const before = await alertsOf(tx, due, 'xarid_qabul_farqi')

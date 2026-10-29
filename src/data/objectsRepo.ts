@@ -1,5 +1,6 @@
 import { toRepoError } from './errors'
 import { softDeleteById } from './rowUpdate'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { ObjectRow, ObjectStatus } from './types'
 
@@ -48,11 +49,7 @@ export function setObjectLocation(id: string, lat: string, lng: string): Promise
 
 /** Ko'rinadigan obyektlar (RLS: firma rollari — hammasi, boshqalar — a'zo bo'lganlari). */
 export async function listObjects(): Promise<ObjectRow[]> {
-  const { data, error } = await getSupabase()
-    .from('objects')
-    .select(OBJECT_COLUMNS)
-    .is('deleted_at', null)
-    .order('name')
+  const { data, error } = await scopeCompany(getSupabase().from('objects').select(OBJECT_COLUMNS).is('deleted_at', null)).order('name')
   if (error) throw toRepoError(error)
   return (data ?? []) as ObjectRow[]
 }

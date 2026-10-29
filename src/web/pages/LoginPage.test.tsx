@@ -39,6 +39,11 @@ beforeEach(() => {
 })
 
 describe('LoginPage', () => {
+  it('login maydoni — inputMode "text" (telefon raqamini ham qulay kiritish uchun)', async () => {
+    await renderLogin()
+    expect(screen.getByLabelText(t.auth.loginLabel)).toHaveAttribute('inputmode', 'text')
+  })
+
   it('email bilan kirish — repo email va parol bilan chaqiriladi', async () => {
     repo.signInWithPassword.mockResolvedValue({ ok: true })
     await renderLogin()

@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useSearchParams } from 'react-router'
 import { useAuth } from '@/auth/authContext'
-import { Notice, RetryNotice, SkeletonRows } from '@/components/ui'
-import { listMaterials } from '@/data/materialsRepo'
+import { Badge, Notice, RetryNotice, SkeletonRows } from '@/components/ui'
+import { colors } from '@/components/ui/tokens'
+import { errorCodeOf } from '@/data/errors'
+import { isBaseUnit, listMaterials } from '@/data/materialsRepo'
 import { requestPhotoHash } from '@/data/functions'
 import { createMovement, listMyMovements } from '@/data/movementsRepo'
 import { listObjects } from '@/data/objectsRepo'
-import { listOpenPurchases } from '@/data/openPurchasesRepo'
+import { listMyOpenPurchases, listOpenPurchases } from '@/data/openPurchasesRepo'
 import { getStock } from '@/data/stockRepo'
-import type { Material, Movement, ObjectRow, OpenPurchase } from '@/data/types'
+import type { Material, Movement, MyOpenPurchase, ObjectRow, OpenPurchase } from '@/data/types'
+import { cmp, isNegative } from '@/domain/decimal'
 import { getMyMaterialUsage } from '@/data/usageRepo'
 import {
   defaultObjectId,
@@ -26,7 +29,6 @@ import { toBaseQty, unitLabel, validateQtyInput } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatQty } from '@/lib/format'
-import { uuid } from '@/lib/uuid'
 import { entryDateFor } from '@/domain/entryDate'
 import { DateChip } from '../entry/DateChips'
 import { TODAY_CHOICE, type DateChipsValue } from '../entry/dateChoice'
@@ -37,9 +39,13 @@ import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
 import { useCompanySettings } from '../entry/useCompanySettings'
 import { useGeoCapture } from '../entry/useGeoCapture'
 import { usePhotoDraft } from '../entry/usePhotoDraft'
+import { draftFingerprint, useDraftId } from '../entry/useDraftId'
+import { useDiscardGuard } from '../entry/useDiscardGuard'
+import { scrollToPhotoField } from '../entry/scrollToField'
 import { IncomingTransfers } from '../movement/IncomingTransfers'
 import { EntryTypeSwitch } from '../movement/EntryTypeSwitch'
 import { MovementDetails } from '../movement/MovementDetails'
+import { PendingReceipts } from '../movement/PendingReceipts'
 import { loadEntryType, loadLastObject, saveEntryType, saveLastObject } from '../movement/prefs'
 import { readMovementPrefill } from '../movement/prefill'
 import { readUuidParam } from '../deepLinks'
@@ -55,6 +61,16 @@ const USAGE_DAYS = 30
 
 type Step = 'object' | 'material' | 'details'
 type FieldErrors = Partial<Record<DraftField, DraftErrorCode>>
+
+/** Asosiy birlik (koeffitsient 1) — "qolgan miqdor" asosiy birlikda keladi. */
+function baseUnitOf(m: Material) {
+  return m.units.find((u) => isBaseUnit(m, u) && cmp(u.factor, '1') === 0) ?? null
+}
+
+/** Asosiy birlikdagi miqdor → kiritish maydoni matni ("1 500,5" → "1500,5"). */
+function qtyText(qtyBase: string): string {
+  return formatQty(qtyBase).replace(/\s/g, '')
+}
 
 export function MovementPage() {
   const { profile } = useAuth()
@@ -95,9 +111,16 @@ export function MovementPage() {
   const photo = usePhotoDraft()
   const preparingPhoto = photo.preparing
   const clearPhotoError = photo.clearError
-  const [stock, setStock] = useState<{ key: string; value: string } | null>(null)
-  // Qoralama id'si — qayta urinishda ikki marta yozilmasin (baza 23505 → saqlangan qator o'qiladi)
-  const [draftId, setDraftId] = useState<string>(() => uuid())
+  const [stock, setStock] = useState<{ key: string; value: string | null } | null>(null)
+  // Qoralama id'si — qayta urinishda ikki marta yozilmasin (baza 23505 → saqlangan qator o'qiladi);
+  // xatodan keyin asosiy maydonlar o'zgarsa — yangi id
+  const draftIds = useDraftId()
+  // Chiqimdan keyin qoldiq manfiy — ikkinchi bosish bilan tasdiq ("Baribir chiqim")
+  const [negativeAsk, setNegativeAsk] = useState(false)
+  const [negativeOk, setNegativeOk] = useState(false)
+  // "Qabul kutilmoqda": obyektlarimdagi to'liq qabul qilinmagan xaridlar (bo'lmasa — ko'rsatilmaydi)
+  const [myOpen, setMyOpen] = useState<MyOpenPurchase[]>([])
+  const [myOpenKey, setMyOpenKey] = useState(0)
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
@@ -111,6 +134,20 @@ export function MovementPage() {
   const [duplicate, setDuplicate] = useState(false)
   const settings = useCompanySettings(companyId)
   const profileId = profile?.id
+
+  useEffect(() => {
+    if (!profileId) return
+    let alive = true
+    Promise.resolve()
+      .then(() => listMyOpenPurchases())
+      .then((rows) => {
+        if (alive && Array.isArray(rows)) setMyOpen(rows)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [profileId, myOpenKey])
 
   useEffect(() => {
     if (!profileId) return
@@ -140,9 +177,15 @@ export function MovementPage() {
         const pre = prefill && active.some((o) => o.id === prefill.objectId) ? prefill : null
         setObjectId((cur) => cur ?? pre?.objectId ?? defaultObjectId(active.map((o) => o.id), loadLastObject()))
         const preMaterial = pre ? usable.find((m) => m.id === pre.materialId) : undefined
-        if (preMaterial) {
+        if (pre && preMaterial) {
+          // Xariddan kelgan kirim: qolgan miqdor asosiy birlikda (xarid — `linkChoice` boshlang'ich qiymatida)
+          const base = pre.qtyBase ? baseUnitOf(preMaterial) : null
           setMaterialId((cur) => cur ?? preMaterial.id)
-          setUnitId((cur) => cur ?? initialUnitId(preMaterial.units, profileId ? loadLastEntry(profileId, preMaterial.id) : null))
+          setUnitId(
+            (cur) => cur ?? base?.id ?? initialUnitId(preMaterial.units, profileId ? loadLastEntry(profileId, preMaterial.id) : null),
+          )
+          const preQty = base && pre.qtyBase ? qtyText(pre.qtyBase) : ''
+          if (preQty) setQty((cur) => cur || preQty)
         }
         setLoadError(null)
       })
@@ -191,19 +234,26 @@ export function MovementPage() {
         if (alive) setStock({ key, value })
       })
       .catch(() => {
-        if (alive) setStock(null)
+        // Xato — neytral "Qoldiqni tekshirib bo'lmadi" (ogohlantirish va tasdiq so'ralmaydi)
+        if (alive) setStock({ key, value: null })
       })
     return () => {
       alive = false
     }
   }, [objectId, materialId])
-  const currentStock = stock && stock.key === stockKey ? stock.value : null
+  const stockLoaded = stock !== null && stock.key === stockKey
+  const currentStock = stockLoaded ? stock.value : null
+  const stockFailed = stockLoaded && stock.value === null
 
   // Bog'langan xarid (faqat kirim): shu obyekt va materialdagi ochiq xaridlar.
   // Taklif qilinadi, lekin bog'lash faqat foydalanuvchi tanlovi bilan (kalit bo'yicha eslab qolinadi).
   const linkKey = type === 'kirim' && objectId && materialId ? `${objectId}:${materialId}` : null
   const [openPurchases, setOpenPurchases] = useState<{ key: string; rows: OpenPurchase[] } | null>(null)
-  const [linkChoice, setLinkChoice] = useState<{ key: string; id: string | null } | null>(null)
+  const [linkChoice, setLinkChoice] = useState<{ key: string; id: string | null } | null>(() =>
+    prefill?.type === 'kirim' && prefill.purchaseId
+      ? { key: `${prefill.objectId}:${prefill.materialId}`, id: prefill.purchaseId }
+      : null,
+  )
   useEffect(() => {
     if (!linkKey || !objectId || !materialId) return
     let alive = true
@@ -228,8 +278,12 @@ export function MovementPage() {
     [openPurchases, linkKey],
   )
   // Batch 12 (A): bittagina ochiq xarid — oldindan tanlangan ("Bog'lamaslik" bilan bir bosishda
-  // olib tashlanadi); bir nechta — foydalanuvchi tanlaydi
-  const chosen = linkChoice !== null && linkChoice.key === linkKey ? linkChoice : null
+  // olib tashlanadi); bir nechta — foydalanuvchi tanlaydi. Oldindan berilgan xarid ("Qabul kutilmoqda",
+  // xariddan keyin) — faqat ochiq xaridlar ro'yxatida bo'lsa
+  const chosen =
+    linkChoice !== null && linkChoice.key === linkKey && (linkChoice.id === null || openRows.some((r) => r.id === linkChoice.id))
+      ? linkChoice
+      : null
   const autoLinked = chosen === null && openRows.length === 1
   const linkedPurchaseId = chosen ? chosen.id : autoLinked ? (openRows[0]?.id ?? null) : null
   const selectLinked = (id: string | null) => {
@@ -258,11 +312,60 @@ export function MovementPage() {
     type === 'chiqim' && qtyBase !== null && currentStock !== null
       ? movementWarnings({ type, qtyBase, currentStock })
       : []
+  // Chiqimdan keyingi qoldiq manfiy bo'ladimi (qoldiq ma'lum bo'lsa) — saqlashdan oldin tasdiq
+  const afterChiqim = type === 'chiqim' && qtyBase !== null && currentStock !== null ? stockAfter(currentStock, 'chiqim', qtyBase) : null
+  const wouldGoNegative = afterChiqim !== null && isNegative(afterChiqim)
+
+  // Obyektdagi ochiq (qabul qilinmagan) xaridlar: banner, material plitkasidagi belgi, chiqimdagi izoh
+  const openHere = useMemo(() => myOpen.filter((r) => r.object_id === objectId), [myOpen, objectId])
+  const pendingFlags = useMemo(() => {
+    const flags = new Map<string, ReactNode>()
+    for (const r of openHere) {
+      if (flags.has(r.material_id)) continue
+      flags.set(
+        r.material_id,
+        <Badge tone="warn" className="self-start">
+          {t.tg.pending.tileFlag}
+        </Badge>,
+      )
+    }
+    return flags
+  }, [openHere])
+  const pendingForMaterial = materialId !== null && openHere.some((r) => r.material_id === materialId)
+
+  const clearNegative = () => {
+    setNegativeAsk(false)
+    setNegativeOk(false)
+  }
 
   const chooseType = (next: EntryType) => {
     haptic.select()
     setType(next)
     saveEntryType(next)
+    clearNegative()
+  }
+
+  /** "Qabul kutilmoqda" qatori: kirim — obyekt, material, qolgan miqdor (asosiy birlikda), xarid bog'lanadi. */
+  const applyPending = (r: MyOpenPurchase) => {
+    const m = materials?.find((x) => x.id === r.material_id)
+    if (!m || !objects?.some((o) => o.id === r.object_id)) return
+    haptic.tap()
+    const base = baseUnitOf(m)
+    setType('kirim')
+    saveEntryType('kirim')
+    setObjectId(r.object_id)
+    setPickingObject(false)
+    setMaterialId(m.id)
+    setUnitId(base?.id ?? initialUnitId(m.units, profileId ? loadLastEntry(profileId, m.id) : null))
+    setQty(base ? qtyText(r.remaining_qty_base) : '')
+    setLinkChoice({ key: `${r.object_id}:${m.id}`, id: r.purchase_id })
+    setStock(null)
+    setDuplicate(false)
+    clearNegative()
+    setFieldErrors({})
+    setSaveError(null)
+    photo.clearError()
+    setSavedText(null)
   }
 
   const chooseObject = (id: string) => {
@@ -280,6 +383,7 @@ export function MovementPage() {
     setQty('')
     setStock(null)
     setDuplicate(false)
+    clearNegative()
     setFieldErrors({})
     setSaveError(null)
     photo.clearError()
@@ -295,15 +399,16 @@ export function MovementPage() {
     setStock(null)
     setLinkChoice(null)
     setDuplicate(false)
+    clearNegative()
     setFieldErrors({})
-    setDraftId(uuid())
+    draftIds.renew()
     setEntryDate(TODAY_CHOICE)
     setDateError(null)
     geo.reset()
   }
 
   const save = useCallback(
-    async (opts: { withoutPhoto?: boolean; confirmDuplicate?: boolean } = {}) => {
+    async (opts: { withoutPhoto?: boolean; confirmDuplicate?: boolean; confirmNegative?: boolean } = {}) => {
       // Sinxron qulf: MainButton va oddiy tugma tez-tez bosilsa ham bitta so'rov
       if (savingRef.current || !profile || preparingPhoto) return
       const nowIso = new Date().toISOString()
@@ -320,9 +425,21 @@ export function MovementPage() {
         return
       }
       if (photoMissing) {
+        // Tugma faol qoladi: bosilsa — rasm maydoniga aylantiriladi (sabab qizil matnda)
+        haptic.error()
+        scrollToPhotoField()
+        return
+      }
+      // Chiqimdan keyin qoldiq manfiy — ikkinchi bosish ("Baribir chiqim") bilan
+      if (wouldGoNegative && !opts.confirmNegative && !negativeOk) {
+        setNegativeAsk(true)
         haptic.error()
         return
       }
+      if (opts.confirmNegative) setNegativeOk(true)
+      setNegativeAsk(false)
+      // Yuboriladigan id: xatodan keyin asosiy maydonlar o'zgargan bo'lsa — yangi
+      const draftId = draftIds.idFor(draftFingerprint([type, objectId, materialId, unitId, result.qtyInput]))
       // Batch 12 (C): takroriy yozuv — ogohlantirish, bloklamaydi ("Baribir saqlash")
       if (!opts.confirmDuplicate && qtyBase !== null) {
         const prev = recent
@@ -376,6 +493,8 @@ export function MovementPage() {
         saveLastObject(objectId)
         rememberLastEntry(profile.id, materialId, unitId, result.qtyInput)
         setRecent((list) => [row, ...list.filter((m) => m.id !== row.id)].slice(0, RECENT_LIMIT))
+        // Kirim xaridni qabul qilgan bo'lishi mumkin — "Qabul kutilmoqda" yangilanadi
+        if (row.type === 'kirim') setMyOpenKey((k) => k + 1)
         setSavedText({
           text: tm.saved(
             t.movements.types[row.type === 'chiqim' ? 'chiqim' : 'kirim'],
@@ -388,6 +507,8 @@ export function MovementPage() {
         resetEntry()
       } catch (err) {
         haptic.error()
+        // Shu id bilan avval boshqa yozuv saqlangan — keyingi urinish yangi id bilan
+        if (errorCodeOf(err) === 'draft_conflict') draftIds.renew()
         // Rasm muammosi saqlashni to'xtatmasin: "Qayta urinish" yoki "Rasmsiz saqlash"
         if (!photo.handleSaveError(err)) setSaveError(errorText(err))
       } finally {
@@ -397,7 +518,7 @@ export function MovementPage() {
     },
     // resetEntry — faqat setState va photo.reset (photo deps ichida)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [profile, preparingPhoto, type, objectId, materialId, unitId, qty, photo, linkedPurchaseId, draftId, note, material, object, isAdmin, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, geo, entryDate],
+    [profile, preparingPhoto, type, objectId, materialId, unitId, qty, photo, linkedPurchaseId, draftIds, note, material, object, isAdmin, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, geo, entryDate, wouldGoNegative, negativeOk],
   )
 
   const onMainButton = useCallback(() => {
@@ -405,6 +526,9 @@ export function MovementPage() {
   }, [save])
   const saveDuplicate = useCallback(() => {
     void save({ confirmDuplicate: true })
+  }, [save])
+  const saveNegative = useCallback(() => {
+    void save({ confirmNegative: true })
   }, [save])
   const saveWithoutPhoto = () => {
     void save({ withoutPhoto: true })
@@ -426,13 +550,18 @@ export function MovementPage() {
 
   useBackButton(canGoBack && !incomingOpen ? onBack : null)
   useMainButton(
-    duplicate ? ta.duplicateSave : tm.save,
-    step === 'details' && !incomingOpen ? (duplicate ? saveDuplicate : onMainButton) : null,
-    preparingPhoto || photoMissing,
+    negativeAsk ? tm.negativeConfirm : duplicate ? ta.duplicateSave : type === 'kirim' ? tm.saveKirim : tm.saveChiqim,
+    step === 'details' && !incomingOpen ? (negativeAsk ? saveNegative : duplicate ? saveDuplicate : onMainButton) : null,
+    // Rasm majburiy, lekin tanlanmagan — tugma faol: bosilsa rasm maydoniga aylantiriladi (save)
+    preparingPhoto,
     saving,
+    // Tur rangi: kirim — yashil, chiqim — ko'k (almashtirgich bilan bir xil)
+    negativeAsk ? colors.danger : type === 'kirim' ? colors.ok : colors.brand,
   )
   // Qoralamada ma'lumot bor — Telegram yopishdan oldin so'raydi
   useClosingConfirmation(Boolean(materialId) || qty.trim() !== '' || note.trim() !== '')
+  // Pastki menyu orqali chiqib ketishdan oldin — tasdiq (kiritilgan miqdor, izoh yoki rasm yo'qolmasin)
+  const discard = useDiscardGuard(qty.trim() !== '' || note.trim() !== '' || photo.photo !== null)
   const insideTelegram = getWebApp() !== null
 
   if (!profile) return null
@@ -453,6 +582,10 @@ export function MovementPage() {
           <EntryTypeSwitch value={type} onChange={chooseType} />
 
           {savedText && <SavedBanner meta={savedText.meta}>{savedText.text}</SavedBanner>}
+
+          {type === 'kirim' && step !== 'details' && objects && materials && (
+            <PendingReceipts rows={manyObjects ? myOpen : openHere} showObject={manyObjects} onPick={applyPending} />
+          )}
 
           {loadError && <RetryNotice message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />}
           {!loadError && (!objects || !materials) && <SkeletonRows rows={3} />}
@@ -490,7 +623,14 @@ export function MovementPage() {
                 )
               )}
 
-              {step === 'material' && <MaterialGrid materials={ranked} pinnedIds={pinned} onPick={chooseMaterial} />}
+              {step === 'material' && (
+                <MaterialGrid
+                  materials={ranked}
+                  pinnedIds={pinned}
+                  flags={type === 'kirim' ? pendingFlags : undefined}
+                  onPick={chooseMaterial}
+                />
+              )}
 
               {step === 'details' && material && (
                 <MovementDetails
@@ -508,6 +648,17 @@ export function MovementPage() {
                       ? { current: currentStock, after: stockAfter(currentStock, 'chiqim', qtyBase) }
                       : null
                   }
+                  stockNow={type === 'chiqim' ? { current: currentStock, failed: stockFailed } : null}
+                  stockEmpty={
+                    type === 'chiqim' && currentStock !== null && cmp(currentStock, '0') <= 0 ? { pending: pendingForMaterial } : null
+                  }
+                  onToKirim={() => chooseType('kirim')}
+                  negativeAfter={negativeAsk && afterChiqim !== null ? afterChiqim : null}
+                  onConfirmNegative={saveNegative}
+                  onCancelNegative={() => {
+                    setNegativeAsk(false)
+                    document.getElementById('movement-qty')?.focus()
+                  }}
                   warning={warnings[0] ?? null}
                   openPurchases={openRows}
                   linkedPurchaseId={linkedPurchaseId}
@@ -518,6 +669,8 @@ export function MovementPage() {
                     setQty(v)
                     setUnitId(uid)
                     setDuplicate(false)
+                    // Miqdor almashdi — oldingi miqdor uchun berilgan manfiy qoldiq tasdig'i amal qilmaydi
+                    clearNegative()
                     setFieldErrors((er) => ({ ...er, qty: undefined, unit: undefined }))
                   }}
                   photoRequiredReason={photoRequiredReason}
@@ -540,12 +693,14 @@ export function MovementPage() {
                   onQty={(v) => {
                     setQty(v)
                     setDuplicate(false)
+                    clearNegative()
                     setFieldErrors((er) => ({ ...er, qty: undefined }))
                   }}
                   onUnit={(id) => {
                     haptic.select()
                     setUnitId(id)
                     setDuplicate(false)
+                    clearNegative()
                     setFieldErrors((er) => ({ ...er, unit: undefined }))
                   }}
                   onNote={setNote}
@@ -561,6 +716,7 @@ export function MovementPage() {
           )}
         </>
       )}
+      {discard.element}
     </div>
   )
 }

@@ -9,7 +9,8 @@ import { toBaseQty, unitLabel, validateQtyInput } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatDate, formatQty, tashkentIsoDate } from '@/lib/format'
-import { uuid } from '@/lib/uuid'
+import { errorCodeOf } from '@/data/errors'
+import { draftFingerprint, useDraftId } from '../entry/useDraftId'
 import { BaseQtyBox } from '../entry/BaseQtyBox'
 import { MaterialGrid } from '../entry/MaterialGrid'
 import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
@@ -43,6 +44,7 @@ export function RequestForm({
   pinnedIds,
   prefill = null,
   onSaved,
+  onDirtyChange,
 }: {
   profile: Profile
   objects: ObjectRow[]
@@ -52,6 +54,8 @@ export function RequestForm({
   /** Batch 12 (K): "Tugayotganlar" dan — obyekt, material, miqdor (asosiy birlikda), izoh. */
   prefill?: RequestPrefill | null
   onSaved: () => void
+  /** Formada kiritilgan ma'lumot bor/yo'q — sahifa chiqishdan oldin tasdiq so'raydi. */
+  onDirtyChange?: (dirty: boolean) => void
 }) {
   // Prefill faqat ko'rinadigan obyekt va faol material bo'lsa qo'llanadi
   const [initial] = useState(() => {
@@ -75,7 +79,8 @@ export function RequestForm({
   const [prefilled, setPrefilled] = useState(initial !== null)
   const [neededBy, setNeededBy] = useState<string | null>(null)
   const [note, setNote] = useState(initial?.prefill.note ?? '')
-  const [draftId, setDraftId] = useState(() => uuid())
+  // Qoralama id'si: xatodan keyin obyekt, material, birlik yoki miqdor o'zgarsa — yangi id
+  const draftIds = useDraftId()
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
@@ -104,7 +109,12 @@ export function RequestForm({
 
   const parsed = validateQtyInput(qty)
   const qtyBase = parsed.ok && unit ? toBaseQty(parsed.value, unit.factor) : null
-  const normState = objectNorms && materialId ? requestNormState(objectNorms, materialId, qtyBase) : null
+  const normState =
+    material && material.outside_estimate
+      ? requestNormState([], material.id, qtyBase, undefined, { outsideEstimate: true })
+      : objectNorms && materialId
+        ? requestNormState(objectNorms, materialId, qtyBase)
+        : null
   const neededOptions = useMemo(
     () => NEEDED_OPTIONS.map((o) => ({ key: o.key, value: o.offset === null ? null : tashkentIsoDate(o.offset) })),
     [],
@@ -132,6 +142,7 @@ export function RequestForm({
     savingRef.current = true
     setSaving(true)
     setSaveError(null)
+    const draftId = draftIds.idFor(draftFingerprint([objectId, materialId, unitId, result.qtyInput]))
     try {
       const row = await createRequest({
         id: draftId,
@@ -161,16 +172,18 @@ export function RequestForm({
       setNote('')
       setNeededBy(null)
       setFieldErrors({})
-      setDraftId(uuid())
+      draftIds.renew()
       onSaved()
     } catch (err) {
       haptic.error()
+      // Shu id bilan avval boshqa so'rov saqlangan — keyingi urinish yangi id bilan
+      if (errorCodeOf(err) === 'draft_conflict') draftIds.renew()
       setSaveError(errorText(err))
     } finally {
       savingRef.current = false
       setSaving(false)
     }
-  }, [objectId, materialId, unitId, qty, draftId, profile.company_id, profile.id, neededBy, note, onSaved])
+  }, [objectId, materialId, unitId, qty, draftIds, profile.company_id, profile.id, neededBy, note, onSaved])
 
   const onMain = useCallback(() => void save(), [save])
   const onBack = useCallback(() => {
@@ -182,6 +195,12 @@ export function RequestForm({
   useBackButton(canGoBack ? onBack : null)
   useMainButton(tr.save, step === 'details' ? onMain : null, false, saving)
   useClosingConfirmation(Boolean(materialId) || qty.trim() !== '' || note.trim() !== '')
+  // Oldindan to'ldirilgan (Tugayotganlar) miqdor ham — foydalanuvchi ko'rgan ma'lumot
+  const dirty = qty.trim() !== '' || note.trim() !== ''
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
   const insideTelegram = getWebApp() !== null
 
   return (
@@ -242,6 +261,7 @@ export function RequestForm({
           {fieldErrors.unit && <p className="text-sm text-danger">{tm.errors.unit}</p>}
           {qtyBase !== null && <BaseQtyBox qtyBase={qtyBase} unit={unit} baseUnit={material.base_unit} />}
 
+          {normState?.kind === 'outside' && <Notice tone="info">{tr.outsideEstimate}</Notice>}
           {normState?.kind === 'not_in_estimate' && <Notice tone="warn">{tr.notInEstimate}</Notice>}
           {normState?.kind === 'no_estimate' && <Notice tone="warn">{tr.noEstimate}</Notice>}
           {normState && (normState.kind === 'ok' || normState.kind === 'over') && (

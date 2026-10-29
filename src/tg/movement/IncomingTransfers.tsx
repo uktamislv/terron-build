@@ -107,6 +107,8 @@ function ReceiveForm({ transfer, onDone }: { transfer: Transfer; onDone: (text: 
       <Button
         variant="secondary"
         size="lg"
+        // Uzun miqdor va birlik ("1 250 000 m² devor · bir g'isht") — bir qatorga sig'masa ko'chadi
+        className="py-2 text-center whitespace-normal!"
         onClick={() => {
           haptic.select()
           setQty(formatQty(transfer.qty_input).replace(/\s/g, ''))

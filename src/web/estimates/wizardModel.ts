@@ -652,6 +652,8 @@ export function planToDiffItems(plan: Pick<Plan, 'rows'>): DiffItem[] {
     unit: r.item.unit,
     price: r.item.price,
     lineSum: r.item.lineSum ?? null,
+    // Aralash birlik (т va кг) — asosiy birlikda yig'ilsin
+    baseUnit: r.itemType === 'material' ? r.baseUnit : null,
   }))
 }
 
@@ -666,6 +668,7 @@ export function estimateItemsToDiff(items: readonly EstimateItem[]): DiffItem[] 
     unit: it.unit ?? '',
     price: it.unit_price,
     lineSum: it.line_sum,
+    baseUnit: it.item_type === 'material' ? it.base_unit : null,
   }))
 }
 

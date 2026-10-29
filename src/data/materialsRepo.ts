@@ -1,5 +1,6 @@
 import { toRepoError } from './errors'
 import { softDeleteById, updateById } from './rowUpdate'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { Material, MaterialAlias, MaterialUnit } from './types'
 
@@ -86,13 +87,9 @@ function cleanWaste(waste: string | undefined): string {
 
 /** O'chirilmagan materiallar — birliklari va muqobil nomlari bilan bitta so'rovda. */
 export async function listMaterials(): Promise<Material[]> {
-  const { data, error } = await getSupabase()
-    .from('materials')
-    .select(MATERIAL_SELECT)
-    .is('deleted_at', null)
-    .is('units.deleted_at', null)
-    .is('aliases.deleted_at', null)
-    .order('name')
+  const { data, error } = await scopeCompany(
+    getSupabase().from('materials').select(MATERIAL_SELECT).is('deleted_at', null).is('units.deleted_at', null).is('aliases.deleted_at', null),
+  ).order('name')
   if (error) throw toRepoError(error, MATERIAL_ERRORS)
   return ((data ?? []) as unknown as RawMaterial[]).map(normalize)
 }

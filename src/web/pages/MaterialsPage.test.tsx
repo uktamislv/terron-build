@@ -408,7 +408,36 @@ describe('/materials — yangi material', () => {
         category: '',
         wastePct: '1.5',
         photoRequired: false,
+        outsideEstimate: false,
       }),
     )
+  })
+
+  it('"Smetaga kirmaydi" belgisi yaratishda ham yuboriladi', async () => {
+    vi.mocked(materialsRepo.createMaterial).mockResolvedValue(makeMaterial('m-mix', 'Mix', 'kg'))
+    renderPage()
+    await screen.findByText('Sement M500')
+    fireEvent.click(screen.getByRole('button', { name: tm.add }))
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText(tm.name), { target: { value: 'Mix' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'kg' }))
+    fireEvent.click(dialog.getByRole('checkbox', { name: new RegExp(tm.outsideEstimate) }))
+    fireEvent.click(dialog.getByRole('button', { name: t.common.save }))
+    await waitFor(() =>
+      expect(materialsRepo.createMaterial).toHaveBeenCalledWith(expect.objectContaining({ name: 'Mix', outsideEstimate: true })),
+    )
+  })
+})
+
+describe('/materials — "Tozalash"', () => {
+  it('kategoriya, qidiruv va holat filtri birga tozalanadi', async () => {
+    renderPage()
+    await screen.findByText('Sement M500')
+    fireEvent.change(screen.getByRole('searchbox', { name: tm.search }), { target: { value: 'zzz' } })
+    fireEvent.change(screen.getByRole('combobox', { name: tm.category }), { target: { value: 'Inert' } })
+    fireEvent.click(screen.getByRole('button', { name: t.ui.clearFilters }))
+    expect(screen.getByRole('searchbox', { name: tm.search })).toHaveValue('')
+    expect(screen.getByRole('combobox', { name: tm.category })).toHaveValue('')
+    expect(await screen.findByText('Sement M500')).toBeInTheDocument()
   })
 })

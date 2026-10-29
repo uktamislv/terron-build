@@ -7,6 +7,7 @@ on:
   pull_request:
 
 # Eng kam huquq: faqat kodni o'qish (deploy — Cloudflare tokeni bilan, GitHub huquqi kerak emas)
+# Action'lar commit SHA bilan qotirilgan (teg ko'chirilsa ham kod o'zgarmaydi); izohda — versiya.
 permissions:
   contents: read
 
@@ -15,8 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -30,7 +31,7 @@ jobs:
           VITE_APP_VERSION: ${{ github.sha }}
       # Edge Functions (Deno): index.ts va Deno'ga xos _shared fayllari tsc'da tekshirilmaydi.
       # Versiya aniq qotirilgan — yangi Deno chiqishi CI'ni kutilmaganda buzmasin.
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: v2.9.7
       - name: Deno check (Edge Functions)
@@ -43,6 +44,10 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.CLOUDFLARE_DEPLOY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # GitHub Environment: Cloudflare sirlari shu yerda saqlanishi va himoya qoidalari (faqat main,
+    # ixtiyoriy tasdiqlovchi) qo'yilishi mumkin. CLOUDFLARE_DEPLOY — repo darajasidagi o'zgaruvchi
+    # bo'lib qoladi (job `if` environment'dan oldin hisoblanadi).
+    environment: production
     concurrency:
       group: deploy-production
       cancel-in-progress: false
@@ -53,8 +58,8 @@ jobs:
       VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
       VITE_APP_VERSION: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm

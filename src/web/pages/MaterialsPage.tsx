@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { Camera, FileMinus, Layers, Package, Percent, Plus, Ruler, SearchX, Store } from 'lucide-react'
+import { useCompanyId } from '@/auth/activeCompany'
 import { useAuth } from '@/auth/authContext'
 import { Badge, Button, EmptyState, FilterBar, PageHeader, RetryNotice, SegmentedControl, SkeletonRows, Tabs } from '@/components/ui'
 import { listMaterials } from '@/data/materialsRepo'
@@ -29,6 +30,8 @@ type Dialog = { kind: 'create' } | { kind: 'view'; id: string } | { kind: 'edit'
 
 export function MaterialsPage() {
   const { profile: me } = useAuth()
+  // super_admin — faol firma (yon menyudagi tanlagich), boshqalar — o'z firmasi
+  const companyId = useCompanyId()
   const [materials, setMaterials] = useState<Material[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
@@ -64,7 +67,7 @@ export function MaterialsPage() {
     [materials, query, category, active],
   )
 
-  if (!me) return null
+  if (!me || !companyId) return null
   const canManage = can(me.role, 'manage_catalog')
   const current = dialog && dialog.kind !== 'create' ? materials?.find((m) => m.id === dialog.id) : undefined
   const tab: 'materials' | 'suppliers' = canManage && params.get('tab') === 'suppliers' ? 'suppliers' : 'materials'
@@ -139,7 +142,12 @@ export function MaterialsPage() {
             ],
           },
         ]}
-        onClear={() => setCategory('')}
+        // Qidiruv va holat filtri ham standart holatga qaytadi
+        onClear={() => {
+          setCategory('')
+          setQuery('')
+          setActive('active')
+        }}
         extra={
           <SegmentedControl
             label={tm.statusFilter}
@@ -226,7 +234,7 @@ export function MaterialsPage() {
 
       {dialog?.kind === 'create' && (
         <MaterialFormDialog
-          companyId={me.company_id}
+          companyId={companyId}
           materials={materials ?? []}
           categories={categories}
           onClose={closeDialog}
@@ -238,7 +246,7 @@ export function MaterialsPage() {
       )}
       {dialog?.kind === 'edit' && current && (
         <MaterialFormDialog
-          companyId={me.company_id}
+          companyId={companyId}
           materials={materials ?? []}
           material={current}
           categories={categories}

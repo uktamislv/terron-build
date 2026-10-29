@@ -200,7 +200,10 @@ function RequestContext({ request: r }: { request: MaterialRequest }) {
   const norm = ctx.data.norms.find((n) => n.material_id === r.material_id)
   // `requested_open_qty_base` shu so'rovni ham o'z ichiga oladi — boshqalari ajratiladi (veb bilan bir xil)
   const other = norm ? sub(norm.requested_open_qty_base, r.qty_base) : undefined
-  const state = requestNormState(ctx.data.norms, r.material_id, r.qty_base, other)
+  const state = requestNormState(ctx.data.norms, r.material_id, r.qty_base, other, {
+    outsideEstimate: r.material_outside_estimate,
+  })
+  const inEstimate = Boolean(norm) && (state.kind === 'ok' || state.kind === 'over')
   const stock = ctx.data.stock
   return (
     <section aria-label={tap.context} className="flex flex-col gap-2">
@@ -212,15 +215,17 @@ function RequestContext({ request: r }: { request: MaterialRequest }) {
       <DetailRows
         className="rounded-xl border border-line bg-paper px-4"
         items={[
-          state.kind === 'no_estimate'
-            ? { label: t.requestsPage.colEstimate, value: t.requestsPage.noEstimate }
-            : state.kind === 'not_in_estimate' || !norm
-              ? { label: t.requestsPage.colEstimate, value: t.requestsPage.notInEstimate }
-              : null,
-          norm && state.kind !== 'not_in_estimate' && state.kind !== 'no_estimate'
+          state.kind === 'outside'
+            ? { label: t.requestsPage.colEstimate, value: t.norms.outsideEstimate }
+            : state.kind === 'no_estimate'
+              ? { label: t.requestsPage.colEstimate, value: t.requestsPage.noEstimate }
+              : state.kind === 'not_in_estimate' || !norm
+                ? { label: t.requestsPage.colEstimate, value: t.requestsPage.notInEstimate }
+                : null,
+          norm && inEstimate
             ? { label: tap.normAllowed, value: <span className="tabular">{formatQtyUnit(norm.allowed_qty_base, unit)}</span> }
             : null,
-          norm && state.kind !== 'not_in_estimate' && state.kind !== 'no_estimate'
+          norm && inEstimate
             ? { label: tap.consumed, value: <span className="tabular">{formatQtyUnit(norm.consumed_qty_base, unit)}</span> }
             : null,
           state.kind === 'ok' || state.kind === 'over'
@@ -236,7 +241,7 @@ function RequestContext({ request: r }: { request: MaterialRequest }) {
           stock !== null ? { label: tap.stock, value: <span className="tabular">{formatQtyUnit(stock, unit)}</span> } : null,
         ]}
       />
-      {norm && state.kind !== 'not_in_estimate' && state.kind !== 'no_estimate' && (
+      {norm && inEstimate && (
         <LevelBar label={tap.consumed} value={Number(usagePct(norm.consumed_qty_base, norm.allowed_qty_base) ?? 0)} max={100} />
       )}
     </section>

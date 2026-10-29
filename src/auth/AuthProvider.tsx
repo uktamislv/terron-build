@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import * as authRepo from '@/data/authRepo'
+import { setCompanyScope } from '@/data/companyScope'
 import { isConfigured } from '@/data/systemRepo'
 import type { AuthSession, Profile } from '@/data/types'
 import { AuthContext, type AuthNotice, type AuthState } from './authContext'
@@ -87,6 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     setNotice(null)
+    // Faol firma filtri (super_admin) keyingi foydalanuvchiga o'tmasin
+    setCompanyScope(null)
     await authRepo.signOut()
     setSession(null)
   }, [])

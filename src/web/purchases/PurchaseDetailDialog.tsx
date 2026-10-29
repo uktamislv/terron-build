@@ -35,6 +35,7 @@ export function PurchaseDetailDialog({
   nowIso,
   onClose,
   footer,
+  error: actionError,
 }: {
   purchase: Purchase
   canSeeAlerts: boolean
@@ -43,6 +44,8 @@ export function PurchaseDetailDialog({
   onClose: () => void
   /** Amallar (o'chirish/tiklash) — container beradi. */
   footer?: ReactNode
+  /** Amal xatosi (masalan tiklash rad etildi) — tafsilot ichida, amallar ustida ko'rinadi. */
+  error?: string | null
 }) {
   const [movements, setMovements] = useState<Movement[] | null>(null)
   const [alerts, setAlerts] = useState<Alert[] | null>(null)
@@ -160,6 +163,7 @@ export function PurchaseDetailDialog({
             )}
           </Section>
         )}
+        {actionError && <Notice>{actionError}</Notice>}
       </div>
     </DetailSheet>
   )

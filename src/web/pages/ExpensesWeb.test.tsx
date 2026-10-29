@@ -155,10 +155,29 @@ describe('/purchases → "Xarajatlar" tabi', () => {
     expect(detail).toHaveTextContent(t.purchases.geoStatus.ok)
   })
 
-  it('havola ?expense=<id> — tafsilot ochiladi', async () => {
+  it('havola ?expense=<id> — tafsilot ochiladi (javob kechiksa ham; parametr URL dan olib tashlanadi)', async () => {
+    // Javob parametr olib tashlangandan keyin keladi — so'rov bekor bo'lib qolmasligi kerak
+    vi.mocked(expensesRepo.getExpenseById).mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(expense()), 50)))
     open('admin', `/purchases?tab=expenses&expense=${EXP_ID}`)
-    expect(await screen.findByTestId('expense-detail')).toBeInTheDocument()
+    expect(await screen.findByTestId('expense-detail', {}, { timeout: 2000 })).toBeInTheDocument()
+    expect(expensesRepo.getExpenseById).toHaveBeenCalledTimes(1)
     expect(expensesRepo.getExpenseById).toHaveBeenCalledWith(EXP_ID)
+  })
+
+  it('o‘chirish: oxirgi sahifadagi yagona qator — oldingi sahifaga qaytadi', async () => {
+    vi.mocked(expensesRepo.listExpenses).mockImplementation(async (_f, page = 0) =>
+      page === 1 ? { rows: [expense()], total: 51 } : { rows: [expense({ id: 'e-other', note: null })], total: 51 },
+    )
+    open('admin', '/purchases?tab=expenses')
+    await screen.findByTestId('expense-row')
+    fireEvent.click(screen.getByRole('button', { name: t.ombor.next }))
+    await waitFor(() => expect(expensesRepo.listExpenses).toHaveBeenLastCalledWith(expect.anything(), 1))
+    fireEvent.click(within(await screen.findByTestId('expense-row')).getByRole('button', { name: t.purchases.open }))
+    fireEvent.click(await screen.findByRole('button', { name: t.ombor.delete }))
+    const dialog = await screen.findByRole('dialog', { name: t.ombor.delete })
+    fireEvent.click(within(dialog).getByRole('button', { name: t.common.yes }))
+    await waitFor(() => expect(expensesRepo.softDeleteExpense).toHaveBeenCalledWith(EXP_ID))
+    await waitFor(() => expect(expensesRepo.listExpenses).toHaveBeenLastCalledWith(expect.anything(), 0))
   })
 
   it('"Umumiy" obyekt filtri — NO_OBJECT; davr URL dan', async () => {
@@ -268,5 +287,27 @@ describe('Sozlamalar → "Xarajat turlari"', () => {
     fireEvent.click(await screen.findByRole('button', { name: te.categories.moveDown('Oziq-ovqat') }))
     await waitFor(() => expect(expenseCategoriesRepo.updateExpenseCategory).toHaveBeenCalledWith('k-food', { sortOrder: 2 }))
     expect(expenseCategoriesRepo.updateExpenseCategory).toHaveBeenCalledWith('k-fuel', { sortOrder: 1 })
+  })
+
+  it('tartib: takror sort_order — barcha turlar 1..n qilib qayta yoziladi; xato — ko‘rsatiladi', async () => {
+    vi.mocked(expenseCategoriesRepo.listExpenseCategories).mockResolvedValue([
+      category('k-a', 'A', { sort_order: 5 }),
+      category('k-b', 'B', { sort_order: 5 }),
+      category('k-c', 'C', { sort_order: 5 }),
+    ])
+    open('admin', '/settings?tab=expenses')
+    fireEvent.click(await screen.findByRole('button', { name: te.categories.moveDown('B') }))
+    await waitFor(() => expect(expenseCategoriesRepo.updateExpenseCategory).toHaveBeenCalledTimes(3))
+    expect(vi.mocked(expenseCategoriesRepo.updateExpenseCategory).mock.calls).toEqual([
+      ['k-a', { sortOrder: 1 }],
+      ['k-c', { sortOrder: 2 }],
+      ['k-b', { sortOrder: 3 }],
+    ])
+
+    vi.mocked(expenseCategoriesRepo.updateExpenseCategory).mockClear()
+    vi.mocked(expenseCategoriesRepo.updateExpenseCategory).mockRejectedValueOnce(new Error('network'))
+    fireEvent.click(await screen.findByRole('button', { name: te.categories.moveUp('C') }))
+    await waitFor(() => expect(expenseCategoriesRepo.updateExpenseCategory).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText(t.errors.unknown)).toBeInTheDocument()
   })
 })

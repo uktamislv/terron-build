@@ -1,4 +1,5 @@
-import { toRepoError } from './errors'
+import { companyScopeArg } from './companyScope'
+import { RepoError, toRepoError } from './errors'
 import { updateById } from './rowUpdate'
 import { getSupabase } from './supabaseClient'
 
@@ -113,6 +114,73 @@ export function updateCompanySettings(companyId: string, patch: Partial<CompanyS
   return updateById('companies', companyId, row)
 }
 
+/** Firma ro'yxati qatori (super_admin — barcha firmalar; boshqalar — o'z firmasi, RLS). */
+export interface CompanyRow {
+  id: string
+  name: string
+  is_active: boolean
+  created_at: string
+}
+
+export const COMPANY_NAME_MAX = 200
+
+/** Nom: chetlari kesiladi, ichki bo'shliqlar bittaga; bo'sh yoki juda uzun — `invalid_value`. */
+export function cleanCompanyName(name: string): string {
+  const clean = name.trim().replace(/\s+/g, ' ')
+  if (!clean || clean.length > COMPANY_NAME_MAX) throw new RepoError('invalid_value')
+  return clean
+}
+
+/** O'chirilmagan firmalar, nom bo'yicha. */
+export async function listCompanies(): Promise<CompanyRow[]> {
+  const { data, error } = await getSupabase()
+    .from('companies')
+    .select('id, name, is_active, created_at')
+    .is('deleted_at', null)
+    .order('name')
+  if (error) throw toRepoError(error)
+  return (data ?? []) as CompanyRow[]
+}
+
+/** Firma nomi (Sozlamalar → Firma). */
+export async function getCompanyName(companyId: string): Promise<string> {
+  const { data, error } = await getSupabase().from('companies').select('name').eq('id', companyId).single()
+  if (error) throw toRepoError(error)
+  return (data as { name: string }).name
+}
+
+/** Nomini o'zgartirish: admin — o'z firmasi, super_admin — istalgan (companies_update RLS). */
+export function renameCompany(companyId: string, name: string): Promise<void> {
+  return updateById('companies', companyId, { name: cleanCompanyName(name) })
+}
+
+/** Faollashtirish / nofaol qilish — faqat super_admin (`company_status_super_admin_only`). */
+export function setCompanyActive(companyId: string, isActive: boolean): Promise<void> {
+  return updateById('companies', companyId, { is_active: isActive })
+}
+
+export interface NewCompany {
+  name: string
+  adminFullName: string
+  adminPhone: string
+}
+
+/**
+ * Yangi firma va uning administratori (RPC `create_company`, faqat super_admin). Materiallar shabloni va
+ * xarajat turlari bazadagi trigger'lar bilan qo'shiladi. Veb login keyin alohida beriladi (admin-users).
+ */
+export async function createCompany(input: NewCompany): Promise<{ companyId: string; adminProfileId: string }> {
+  const { data, error } = await getSupabase().rpc('create_company', {
+    p_name: cleanCompanyName(input.name),
+    p_admin_full_name: input.adminFullName.trim(),
+    p_admin_phone: input.adminPhone.trim(),
+  })
+  if (error) throw toRepoError(error)
+  const r = (data ?? {}) as { company_id?: string; admin_profile_id?: string }
+  if (!r.company_id || !r.admin_profile_id) throw new RepoError('unknown')
+  return { companyId: r.company_id, adminProfileId: r.admin_profile_id }
+}
+
 /** `notification_health()` → oxirgi xatolar. */
 export interface NotificationError {
   id: string
@@ -180,9 +248,10 @@ export async function resetChatBlocked(profileId: string): Promise<boolean> {
   return data === true
 }
 
-/** RPC `notification_health()` — faqat admin (`notification_health_forbidden`). */
+/** RPC `notification_health(p_company_id?)` — faqat admin (`notification_health_forbidden`); super_admin — faol firma. */
 export async function getNotificationHealth(): Promise<NotificationHealth> {
-  const { data, error } = await getSupabase().rpc('notification_health')
+  const scope = companyScopeArg()
+  const { data, error } = await getSupabase().rpc('notification_health', scope.p_company_id ? scope : undefined)
   if (error) throw toRepoError(error)
   return normalizeHealth(data)
 }

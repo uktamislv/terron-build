@@ -129,3 +129,44 @@ describe('diffEstimates', () => {
     })
   })
 })
+
+describe('diffEstimates — bir material turli birliklarda (т va кг)', () => {
+  const tonna = (qty: string, price: string, extra: Partial<DiffItem> = {}): DiffItem =>
+    mat('sement', qty, price, { unit: 'т', qtyBase: String(Number(qty) * 1000), ...extra })
+  const kg = (qty: string, price: string, extra: Partial<DiffItem> = {}): DiffItem =>
+    mat('sement', qty, price, { unit: 'кг', qtyBase: qty, ...extra })
+
+  it('asosiy birlik ma\'lum — guruh kg da: miqdor Σ qtyBase, narx Σ line_sum / Σ qtyBase', () => {
+    const prev = [tonna('10', '1450000', { baseUnit: 'кг', lineSum: '14500000' })]
+    const next = [tonna('8', '1450000', { baseUnit: 'кг' }), kg('2000', '1500', { baseUnit: 'кг' })]
+    const d = diffEstimates(prev, next)
+    expect(d.added).toEqual([])
+    expect(d.removed).toEqual([])
+    expect(d.changed).toHaveLength(1)
+    // 8 т + 2000 кг = 10 000 кг (8 + 2000 = 2008 "т" emas)
+    expect(d.changed[0]).toMatchObject({
+      key: 'm:sement',
+      qtyBefore: '10000',
+      qtyAfter: '10000',
+      unitBefore: 'кг',
+      unitAfter: 'кг',
+      // (8 × 1 450 000 + 2000 × 1500) / 10 000 = 1460
+      priceBefore: '1450',
+      priceAfter: '1460',
+    })
+    expect(d.totalAfter).toBe('14600000')
+  })
+
+  it('asosiy birlik noma\'lum — birlik bo\'yicha alohida guruhlar (qo\'shilmaydi)', () => {
+    const prev = [tonna('10', '1450000')]
+    const next = [tonna('8', '1450000'), kg('2000', '1500')]
+    const d = diffEstimates(prev, next)
+    expect(d.changed.map((c) => [c.key, c.qtyBefore, c.qtyAfter, c.unitAfter])).toEqual([['m:sement|т', '10', '8', 'т']])
+    expect(d.added.map((a) => [a.key, a.qty, a.unit])).toEqual([['m:sement|кг', '2000', 'кг']])
+  })
+
+  it('bitta birlik — avvalgidek (asosiy birlik berilsa ham)', () => {
+    const d = diffEstimates([tonna('10', '5', { baseUnit: 'кг' })], [tonna('4', '5', { baseUnit: 'кг' }), tonna('6', '5', { baseUnit: 'кг' })])
+    expect(d.unchangedCount).toBe(1)
+  })
+})

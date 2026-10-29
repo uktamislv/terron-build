@@ -382,6 +382,11 @@ export const NOTIFY_TEXTS = {
   },
   settingsChange: {
     title: "Firma sozlamasi o'zgartirildi",
+    /** details.kind = material_control / expense_category_control (audit 3, D4) */
+    materialTitle: "Material nazorati o'zgartirildi",
+    categoryTitle: "Xarajat turi nazorati o'zgartirildi",
+    materialTarget: 'Material: ',
+    categoryTarget: 'Xarajat turi: ',
     actor: "O'zgartirdi: ",
     yes: 'ha',
     no: "yo'q",
@@ -400,6 +405,11 @@ export const NOTIFY_TEXTS = {
       forecast_days_warn: 'Tugash ogohlantirishi, kun',
       quiet_hours_start: 'Tinch soatlar boshi',
       quiet_hours_end: 'Tinch soatlar oxiri',
+      material_outside_estimate: 'Smetaga kirmaydi',
+      material_photo_required: 'Rasm majburiy',
+      category_monthly_limit: 'Oylik limit',
+      category_photo_required: 'Rasm majburiy',
+      category_is_active: 'Faol',
     } as Record<string, string>,
   },
   loginChange: {
@@ -1573,7 +1583,11 @@ function settingsChangeLines(p: AlertPayload): string[] {
       return `• ${t.labels[key] ?? nameHtml(key) ?? '?'}: ${settingValue(c.before)} → ${settingValue(c.after)}`
     })
   const actor = nameHtml(p.details.actor_name)
-  return [...items, actor ? t.actor + actor : '']
+  // Material / xarajat turi nazorati — qaysi yozuv (target_name) birinchi qatorda
+  const kind = p.details.kind
+  const target = kind === 'material_control' || kind === 'expense_category_control' ? nameHtml(p.details.target_name) : null
+  const head = target ? [(kind === 'material_control' ? t.materialTarget : t.categoryTarget) + target] : []
+  return [...head, ...items, actor ? t.actor + actor : '']
 }
 
 function roleLabel(v: unknown): string | null {
@@ -1788,7 +1802,11 @@ function alertTitle(type: string, details: Record<string, unknown>): string {
     case 'yozuv_tuzatildi':
       return recordChangeTitle(type, details)
     case 'sozlama_ozgardi':
-      return titles.sozlama_ozgardi
+      return details.kind === 'material_control'
+        ? NOTIFY_TEXTS.settingsChange.materialTitle
+        : details.kind === 'expense_category_control'
+          ? NOTIFY_TEXTS.settingsChange.categoryTitle
+          : titles.sozlama_ozgardi
     case 'login_ozgardi':
       return titles.login_ozgardi
     case 'podotchet_belgisi':

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { AuthProvider } from '@/auth/AuthProvider'
 import * as authRepo from '@/data/authRepo'
@@ -82,18 +82,18 @@ describe('TgAuthGate — eskirgan / takroriy initData, faqat veb rol', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(t.tg.gate.reopenText)
     fireEvent.click(screen.getByRole('button', { name: t.tg.gate.closeApp }))
     expect(tg.closeApp).toHaveBeenCalled()
-    // Eskirgan initData — qurilmadagi sessiya o'chirilmaydi
-    expect(repo.clearLocalSession).not.toHaveBeenCalled()
+    // Server sessiyani tasdiqlamadi — qurilmadagi sessiya o'chiriladi (audit 3, E1)
+    expect(repo.clearLocalSession).toHaveBeenCalled()
     expect(screen.queryByText('ILOVA')).not.toBeInTheDocument()
   })
 
-  it('reopen, lekin qurilmada yaroqli sessiya bor — o‘sha sessiya bilan ilova ochiladi', async () => {
-    auth.session = { userId: 'u1', email: null, mustChangePassword: false }
+  it('reopen (session_mismatch yoki tasdiqlanmagan sessiya) — qurilmadagi sessiya ishlatilmaydi va o‘chiriladi', async () => {
+    auth.session = { userId: 'u-begona', email: null, mustChangePassword: false }
     repo.telegramSignIn.mockResolvedValue('reopen')
     renderGate()
-    expect(await screen.findByText('ILOVA')).toBeInTheDocument()
-    expect(repo.clearLocalSession).not.toHaveBeenCalled()
-    expect(screen.queryByText(t.tg.gate.reopenTitle)).not.toBeInTheDocument()
+    expect(await screen.findByText(t.tg.gate.reopenTitle)).toBeInTheDocument()
+    expect(repo.clearLocalSession).toHaveBeenCalled()
+    expect(screen.queryByText('ILOVA')).not.toBeInTheDocument()
   })
 
   it('inactive / invalid — sarlavha (h1) va "Ilovani yopish"', async () => {
@@ -234,5 +234,14 @@ describe('TgAuthGate', () => {
     repo.telegramSignIn.mockImplementation(okSignIn)
     renderGate()
     expect(await screen.findByText(t.tg.gate.inactive)).toBeInTheDocument()
+  })
+})
+
+describe('TgAuthGate — Telegram sozlamalari kirishdan oldin (audit 3, T8)', () => {
+  it('initTelegram() — tg-auth javobini kutmasdan, kirish/kontakt ekranlarida ham (bir marta)', async () => {
+    repo.telegramSignIn.mockImplementation(() => new Promise(() => undefined))
+    renderGate()
+    await waitFor(() => expect(tg.initTelegram).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('ILOVA')).not.toBeInTheDocument()
   })
 })

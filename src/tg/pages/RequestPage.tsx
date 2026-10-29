@@ -12,6 +12,7 @@ import { MyRequests } from '../request/MyRequests'
 import { RequestForm } from '../request/RequestForm'
 import { TransferForm } from '../request/TransferForm'
 import { haptic } from '../telegram'
+import { useDiscardGuard } from '../entry/useDiscardGuard'
 
 const tr = t.tg.request
 type Tab = 'request' | 'transfer'
@@ -28,6 +29,9 @@ export function RequestPage() {
   const [tab, setTab] = useState<Tab>('request')
   const [mineKey, setMineKey] = useState(0)
   const onSaved = useCallback(() => setMineKey((k) => k + 1), [])
+  // To'ldirilgan forma — bo'lim almashtirish va boshqa bo'limga o'tishdan oldin tasdiq
+  const [formDirty, setFormDirty] = useState(false)
+  const discard = useDiscardGuard(formDirty)
   // "Qayerga" — firmaning faol obyektlari (prorab boshqa obyektlarni RLS orqali ko'rmaydi)
   const [targets, setTargets] = useState<{ id: string; name: string }[] | null>(null)
   const needTargets = tab === 'transfer' && targets === null
@@ -52,7 +56,7 @@ export function RequestPage() {
         size="lg"
         onChange={(next) => {
           haptic.select()
-          setTab(next)
+          discard.guard(() => setTab(next))
         }}
         options={[
           { value: 'request', label: tr.tabRequest, icon: <ClipboardList aria-hidden strokeWidth={1.75} /> },
@@ -65,10 +69,28 @@ export function RequestPage() {
       {objects && objects.length === 0 && <Notice tone="warn">{t.tg.movement.noObjects}</Notice>}
       {objects && objects.length > 0 && materials && (
         tab === 'request' ? (
-          <RequestForm key="request" profile={profile} objects={objects} materials={materials} pinnedIds={pinned} prefill={prefill} onSaved={onSaved} />
+          <RequestForm
+            key="request"
+            profile={profile}
+            objects={objects}
+            materials={materials}
+            pinnedIds={pinned}
+            prefill={prefill}
+            onSaved={onSaved}
+            onDirtyChange={setFormDirty}
+          />
         ) : (
           targets ? (
-            <TransferForm key="transfer" profileId={profile.id} objects={objects} targets={targets} materials={materials} pinnedIds={pinned} onSaved={onSaved} />
+            <TransferForm
+              key="transfer"
+              profileId={profile.id}
+              objects={objects}
+              targets={targets}
+              materials={materials}
+              pinnedIds={pinned}
+              onSaved={onSaved}
+              onDirtyChange={setFormDirty}
+            />
           ) : (
             <SkeletonRows rows={2} />
           )
@@ -76,6 +98,7 @@ export function RequestPage() {
       )}
 
       <MyRequests profileId={profile.id} reloadKey={mineKey} />
+      {discard.element}
     </div>
   )
 }

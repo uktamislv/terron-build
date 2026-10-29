@@ -32,6 +32,8 @@ export type RepoErrorCode =
   // receipt-lookup — so'rovlar chegarasi (429)
   | 'forbidden_target'
   | 'rate_limited'
+  // Klient: qoralama id'si bilan avval BOSHQA ma'lumot saqlangan (23505 → mavjud qator yuborilganidan farq qiladi)
+  | 'draft_conflict'
   | ServerHintCode
   | 'unknown'
 
@@ -169,6 +171,12 @@ export const SERVER_HINTS = {
   expense_category_duplicate: { showServerMessage: false },
   expense_category_inactive: { showServerMessage: false },
   expense_payer_invalid: { showServerMessage: false },
+  // Audit 3 (20261112000001_audit3_fixes.sql): create_company
+  company_create_forbidden: { showServerMessage: false },
+  company_name_invalid: { showServerMessage: false },
+  profile_name_invalid: { showServerMessage: false },
+  phone_invalid: { showServerMessage: false },
+  phone_in_other_company: { showServerMessage: false },
 } as const satisfies Record<string, { showServerMessage: boolean }>
 
 export type ServerHintCode = keyof typeof SERVER_HINTS

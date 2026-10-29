@@ -15,13 +15,15 @@ export interface CreateAuthUserInput {
   password: string
   /** `app_metadata` — foydalanuvchi o'zgartira olmaydi. */
   appMetadata?: Record<string, unknown>
-  /** `user_metadata` — masalan `must_change_password`. */
+  /** `user_metadata` — foydalanuvchi o'zi o'zgartira oladi (huquq / belgi uchun ishlatilmaydi). */
   userMetadata?: Record<string, unknown>
 }
 
 export interface UpdateAuthUserInput {
   email?: string
   password?: string
+  /** `app_metadata` — GoTrue mavjud kalitlar bilan birlashtiradi (merge). */
+  appMetadata?: Record<string, unknown>
   userMetadata?: Record<string, unknown>
 }
 

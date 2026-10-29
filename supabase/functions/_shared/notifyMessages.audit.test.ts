@@ -125,6 +125,53 @@ describe('sozlama_ozgardi', () => {
         WHEN,
     )
   })
+
+  it('material / xarajat turi nazorati: sarlavha, qaysi yozuv (target_name), yangi kalitlar yorlig‘i', () => {
+    expect(
+      formatAlertMessage(
+        alert(
+          'sozlama_ozgardi',
+          {
+            kind: 'material_control',
+            target_name: 'Sement <M400>',
+            changes: [
+              { key: 'material_outside_estimate', before: false, after: true },
+              { key: 'material_photo_required', before: true, after: false },
+            ],
+            actor_name: 'Admin',
+          },
+          { object_name: null, base_unit: null },
+        ),
+      ),
+    ).toBe(
+      "⚙️ <b>Material nazorati o'zgartirildi</b>\n" +
+        'Material: Sement &lt;M400&gt;\n' +
+        "• Smetaga kirmaydi: yo'q → ha\n" +
+        "• Rasm majburiy: ha → yo'q\n" +
+        "O'zgartirdi: Admin\n" +
+        WHEN,
+    )
+    const cat = formatAlertMessage(
+      alert(
+        'sozlama_ozgardi',
+        {
+          kind: 'expense_category_control',
+          target_name: 'Yoqilg‘i',
+          changes: [
+            { key: 'category_monthly_limit', before: null, after: '5000000.00' },
+            { key: 'category_photo_required', before: false, after: true },
+            { key: 'category_is_active', before: true, after: false },
+          ],
+          actor_name: 'Admin',
+        },
+        { object_name: null, material_name: null, base_unit: null },
+      ),
+    )
+    expect(cat).toContain("<b>Xarajat turi nazorati o'zgartirildi</b>\nXarajat turi: Yoqilg‘i\n")
+    expect(cat).toContain('• Oylik limit: — → 5 000 000\n')
+    expect(cat).toContain("• Faol: ha → yo'q\n")
+    expect(cat).not.toContain('category_')
+  })
 })
 
 describe('login_ozgardi', () => {

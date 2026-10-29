@@ -1,6 +1,7 @@
 import { isPkeyConflict, toRepoError } from './errors'
 import { inChunks } from './fetchAll'
 import { attachNames } from './profileDirectory'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { InventoryCount, InventoryCountItem, InventoryDetailRow, InventoryStatus } from './types'
 
@@ -68,7 +69,7 @@ export async function listCounts(
   filters: CountFilters = {},
   page = 0,
 ): Promise<{ rows: InventoryCount[]; total: number }> {
-  let q = getSupabase().from('inventory_counts').select(COUNT_SELECT, { count: 'exact' }).is('deleted_at', null)
+  let q = scopeCompany(getSupabase().from('inventory_counts').select(COUNT_SELECT, { count: 'exact' }).is('deleted_at', null))
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.status) q = q.eq('status', filters.status)
   if (filters.createdBy) q = q.eq('created_by', filters.createdBy)

@@ -53,8 +53,9 @@ export function SupplierPicker({
             aria-pressed={s.id === selectedId}
             onClick={() => onChange(s.id === selectedId ? { kind: 'none' } : { kind: 'existing', id: s.id })}
             className={choiceClass({ selected: s.id === selectedId, size: 'md' })}
+            title={s.name}
           >
-            {s.name}
+            <span className="min-w-0 truncate">{s.name}</span>
           </button>
         ))}
         {!showAll && suppliers.length > visible.length && (

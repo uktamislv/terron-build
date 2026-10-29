@@ -345,3 +345,50 @@ Miqdor va kamomad yo'q (ko'r-ko'rona sanash).
 - `purchase_deleted` va boshqa bir martalik turlar (kind, ref_id) bo'yicha bir marta — xarid tiklanib qayta o'chirilsa ikkinchi xabar yo'q.
 - `payment_source` ni admin / buxgalter keyin o'zgartirsa — `yozuv_ozgartirildi` (ogohlantirish).
 - GUC'lar (`terron.correct_mode`, `terron.merge_rpc`, ...) PostgREST klienti tomonidan o'rnatilmaydi (`set_config` API'da yo'q) — faqat to'g'ridan-to'g'ri SQL (ishonchli zona) ularni soxtalashtira oladi.
+
+---
+
+# 3-tur
+
+Migratsiya: `supabase/migrations/20261112000001_audit3_fixes.sql`. Testlar: `supabase/tests/sql/audit3_fixes.sql.test.ts`. Kutilgan natijasi ataylab o'zgargan eski testlar yangilangan (`audit_fixes`, `audit2_fixes`, `automation_batch12`, `purchases_batch5`, `history_batch10`, `ops_batch4`, `estimate_auto_fixes` — `audit3` izohi bilan). Demo seed (`supabase/seed/demo.sql`): qoida 1 demo xaridlari uchun `p_now` bilan "o'z vaqtida kiritilgan" deb baholanadi (D6; `session_replication_role` ishlatilmaydi). Klient: `src/domain/alerts/receiptMismatch.ts` (+ `createdAt`, chegara 0), `priceDeviation.ts` (0 so'mlik nuqtalar), `src/i18n/uz.ts` (`alertDetails.settingsKeys`).
+
+| # | Nima o'zgardi |
+|---|---|
+| D1 | Yangi firma — materiallar shabloni avtomatik: trigger `zz_material_template` (AFTER INSERT `companies`) → `private.apply_material_template` (idempotent). `docs/deploy-supabase.md` "Birinchi admin" bloki tuzatildi (eski CTE `t` hech qachon bajarilmasdi) — endi `create_company` + `DO` bloki. |
+| D2 | `public.create_company(p_name text, p_admin_full_name text, p_admin_phone text) → jsonb {company_id, admin_profile_id}` — `security definer`, faqat super_admin (tizim konteksti — SQL Editor / service_role — ham); boshqalarga `42501 company_create_forbidden`. Telefon `private.normalize_phone` (= `_shared/phone.ts normalizePhone`) — noto'g'ri bo'lsa `22023 phone_invalid`; `company_name_invalid`, `profile_name_invalid`. Triggerlar: 8 ta shablon materiali + 6 ta xarajat turi. Firmalar ro'yxati / nomi / `is_active` — super_admin uchun mavjud RLS (`companies_select`, `companies_update`) va `b_companies_guard` yetarli (o'zgarmagan, test bilan tasdiqlangan). |
+| D3 | `photos_select`: ko'r sanovchi (tekshiruvchi) skrinshotdan tashqari rasmlarda faqat o'zi yuklaganini ko'radi (`is_company_wide()` uni ham qamrardi). |
+| D4 | `materials.outside_estimate` / `photo_required`, `expense_categories.monthly_limit` / `photo_required` / `is_active` o'zgarsa (foydalanuvchi sessiyasida) — `sozlama_ozgardi` (ogohlantirish). Yangi tur yo'q. `details`: `kind` (`material_control` / `expense_category_control`), `target_id`, `target_name` (+ `material_id/material_name` yoki `category_id/category_name`), `changes: [{key, before, after}]`, `actor_profile_id`, `actor_name`. Kalitlar: `material_outside_estimate`, `material_photo_required`, `category_monthly_limit`, `category_photo_required`, `category_is_active`. |
+| D5 | `enqueue_cash_statements`: firma to'lagan xaridlar (`payment_source = 'firma'`) haftalik "sarflandi" ga va qabul qiluvchilar ro'yxatiga kirmaydi. |
+| D6 | Qoida 1: "kam qabul" kutishi `greatest(purchased_at, created_at) + 24 soat` (`evaluate_purchase_receipt`, `evaluate_due_purchases`) — orqa sana bilan kiritilgan xarid darhol alert bermaydi. Tiklashda (`tg_purchases_alerts`) xaridning o'zi zanjir rejimida baholanadi — yangi alertni soatlik cron yaratadi. Severity: `jiddiy` — faqat chegara > 0 va farq ≥ 3 × chegara (chegara 0 — `ogohlantirish`). Klient `evaluateReceipt` — ixtiyoriy `createdAt`. |
+| D7 | `cash_balances` (expenses versiyasi) — `is_blind_counter()` qo'riqchisi qaytarildi. |
+| D8 | `tg_purchases_auto_guard`, `tg_expenses_auto_guard`: fiskal belgi keshda (`receipt_lookups`) topilmasa foydalanuvchi sessiyasida `receipt_total` va `seller_tin` null. |
+| D9 | `xarajat_limiti` so'rovlari (`evaluate_expense_limit` ×2, `tg_expense_categories_limit`) — `details ? 'category_id'` (qisman indeks `alerts_company_category_month_idx`). |
+| D10 | `enqueue_daily_reports`: har firma alohida blokda; xato — `WARNING`, boshqa firmalar navbatga qo'yiladi. |
+| D11 | `tg_expenses_payer_guard`: admin `payer_id` ni almashtirsa va `payment_source` o'zgarmasa — manba yangi to'lovchi bo'yicha qayta aniqlanadi (unga `berildi` podotchet bo'lsa `podotchet`, aks holda `firma`). Manbani boshqa qiymatga aniq o'zgartirish — saqlanadi. |
+| D12 | `evaluate_duplicate`: qidiruvdan oldin `alert_lock('takroriy_yozuv:by:' || created_by)` — bir muallifning parallel yozuvlari bir-birini ko'radi. |
+| D13 | `price_check`: `total_amount = 0` xaridlar ikkala o'rtachaga kirmaydi (klient `weightedAverage` ham). |
+| D14 | `check_purchase_price(p_material_id, p_price_per_base, p_purchased_at timestamptz default now())` — "oldingi" = shu vaqtgacha. Eski 2 argumentli imzo o'chirildi (2 argumentli chaqiruv ishlaydi). |
+| D15 | `purchase_receipts.unlinked_qty_base numeric(20,6)` — bog'lanmagan nomzod kirimlar ulushi (`receipt_candidates`, `private.purchase_unlinked_qty`); to'liq qabul qilinganda 0. Klient "covered": `received + unlinked` chegarada va kutish o'tgan. |
+| D16 | `public.open_purchases_for_my_objects()` (invoker, stable) → `purchase_id, object_id, object_name, material_id, material_name, base_unit, qty_base, received_qty_base, remaining_qty_base, purchased_at, buyer_id, buyer_name`. prorab / omborchi — a'zo obyektlar; admin / super_admin — o'z firmasi; boshqa rollar va tekshiruvchi — bo'sh. Oxirgi 60 kun, `remaining > 0`, obyekt o'chirilmagan; tartib — obyekt nomi, eng yangi xarid. |
+| D17 | **O'tkazib yuborildi.** LRV (resurs vedomosti) smetalarida 6 xonali raqamli kod — haqiqiy resurs shifri (`__fixtures__/resourceLrv.ts`: `009219` ВОДА, `045050` ЩЕБЕНЬ…). "≤ 6 raqam — identifikator emas" qoidasi shu formatda shifr bo'yicha moslashni butunlay o'chiradi va 13 ta testni (6 tasi veb import sahifasi) buzadi. Mavjud himoya: klient kodni faqat fayl ichida bitta nomga mos bo'lsa yuboradi (`999999` holati), server a) qadami faqat `lang = 'code'` alias'larini qidiradi. Qaror kerak (masalan ≤ 3 raqam yoki shifrni manba formati bilan saqlash). |
+| D18 | `public.svc_phone_in_other_company(p_company_id uuid, p_phone text) → boolean` — faqat `service_role`. Telefon normallashtiriladi; hisobga olinadi: boshqa firmadagi tirik profil yoki auth akkaunti bog'langan (o'chirilgan) profil. |
+
+## Qilinmaganlar va cheklovlar
+
+- D4: Material / tur YARATILGANDA belgilangan bayroqlar — alertsiz (faqat o'zgarish).
+- D6: Klient `receiptStatus` (`evaluateReceipt`) `createdAt` ni hali uzatmaydi — orqa sanali xaridda veb belgisi serverdan oldin "kam" ko'rsatishi mumkin.
+- D11: trigger "aniq o'sha qiymatni yozdi" va "o'zgartirmadi" ni ajrata olmaydi — to'lovchi almashganda eski qiymat bilan bir xil manba qayta aniqlanadi.
+- D8: kesh keyin paydo bo'lsa (receipt-lookup kechikkan) — summa keyingi tahrirda (yoki service_role yozuvida) to'ladi.
+
+## 3-tur tekshiruvi (tasdiqlangan topilmalar)
+
+Migratsiya: `supabase/migrations/20261113000001_audit3_review_fixes.sql`. Testlar: `supabase/tests/sql/audit3_review.sql.test.ts`.
+
+| # | Nima o'zgardi |
+|---|---|
+| 1 | admin-users `change_password` — faqat `profiles.login_kind = 'web'` (Telegram sintetik akkaunti o'ziga parol qo'ya olmaydi, 403 `forbidden`). |
+| 2 | Faol firma (super_admin): `estimate_create_materials(p_items, p_company_id uuid default null)` — imzo o'zgardi; `remember_estimate_aliases` — firma smetadan; `check_purchase_price` — firma materialdan. `private.scope_company(p_company_id)` — `p_company_id` faqat super_admin uchun amal qiladi. `merge_suppliers`, `correct_entry`, `restore_record`, `create_transfer` ko'rib chiqildi — firmani yozuvning o'zidan oladi, o'zgarish kerak emas. |
+| 3 | `create_company`: admin telefoni boshqa firmada (tirik yoki auth bog'langan profil) — `23505 phone_in_other_company`. |
+| 4 | `evaluate_duplicate`: qidiruv ± oyna, belgi juftning keyingisiga (created_at, id). |
+| 10 | `dashboard_summary`, `dashboard_daily`, `spend_breakdown`, `norm_overview`, `notification_health`, `audit_feed`, `deleted_records` — oxirgi parametr `p_company_id uuid default null` (eski imzolar o'chirildi). Klient (`reportsRepo`, `historyRepo`, `companiesRepo`, `estimatesRepo`) `companyScopeArg()` ni uzatadi. |
+| E9 | `private.used_init_data`, `public.svc_use_init_data(text, timestamptz, integer)` (faqat service_role), `private.purge_used_init_data()` + pg_cron `terron-used-init-data-purge` (har soat). |

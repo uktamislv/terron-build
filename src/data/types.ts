@@ -217,6 +217,11 @@ export interface PurchaseReceipt {
   remaining_qty_base: Dec
   receipt_count: number
   last_received_at: string | null
+  /**
+   * Xaridga bog'lanmagan, lekin qoida 1 "covered" holatida hisoblanadigan nomzod kirimlar (asosiy birlikda;
+   * `purchase_receipts.unlinked_qty_base`). To'liq qabul qilingan xaridda "0". So'ralmagan bo'lsa — undefined.
+   */
+  unlinked_qty_base?: Dec
 }
 
 export type AlertType =
@@ -357,6 +362,25 @@ export interface OpenPurchase {
   unit_input: string
   unit_variant: string | null
   qty_input: Dec
+}
+
+/**
+ * `open_purchases_for_my_objects()` RPC qatori (Mini App "Qabul kutilmoqda"): chaqiruvchining obyektlaridagi
+ * oxirgi 60 kunlik, to'liq qabul qilinmagan xaridlar. Miqdorlar asosiy birlikda.
+ */
+export interface MyOpenPurchase {
+  purchase_id: string
+  object_id: string
+  object_name: string | null
+  material_id: string
+  material_name: string | null
+  base_unit: string | null
+  qty_base: Dec
+  received_qty_base: Dec
+  remaining_qty_base: Dec
+  purchased_at: string
+  buyer_id: string | null
+  buyer_name: string | null
 }
 
 /** `cash_balances` view qatori — odamning qo'lidagi pul. */
@@ -511,6 +535,8 @@ export interface MaterialRequest {
   object_name: string | null
   material_name: string | null
   base_unit: string | null
+  /** Material "smetaga kirmaydi" (`materials.outside_estimate`) — smeta holati ko'rsatilmaydi. */
+  material_outside_estimate?: boolean
   created_by_name: string | null
   decided_by_name: string | null
 }

@@ -58,7 +58,7 @@ export function MaterialFormDialog({
         await updateMaterial(material.id, { name, baseUnit, category, wastePct, photoRequired, outsideEstimate })
         onSaved(material.id)
       } else {
-        const created = await createMaterial({ companyId, name, baseUnit, category, wastePct, photoRequired })
+        const created = await createMaterial({ companyId, name, baseUnit, category, wastePct, photoRequired, outsideEstimate })
         onSaved(created.id)
       }
     } catch (err) {

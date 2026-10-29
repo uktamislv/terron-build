@@ -7,6 +7,7 @@ import {
   QTY_SCALE,
   conversionHint,
   findUnit,
+  thousandsAmbiguity,
   formatDecUz,
   fromBaseQty,
   purchasePrices,
@@ -137,6 +138,12 @@ describe('findUnit', () => {
     expect(findUnit(ARMATURA, 'metr', 'Ø20')).toBeUndefined()
   })
 
+  it('bazadagi norm_name kabi: NBSP, ichki bo\'sh joylar va ё/е', () => {
+    expect(findUnit(GISHT, 'm²\u00a0 devor', "bir  g'isht ·\u202f250 mm")?.id).toBe('g4')
+    const units = [u('r1', 'm', 'тонна', '1000'), u('r2', 'm', 'мешок', '50', 'щёбень')]
+    expect(findUnit(units, 'мешок', 'ЩЕБЕНЬ')?.id).toBe('r2')
+  })
+
   it('variant ko\'rsatilmasa: bir nechta variant → undefined (tanlash kerak)', () => {
     expect(findUnit(GISHT, 'm² devor')).toBeUndefined()
     expect(findUnit(ARMATURA, 'metr')).toBeUndefined()
@@ -261,5 +268,18 @@ describe('inputUnitView — qoldiq odatiy birlikda', () => {
     expect(inputUnitView('600', units, 'kg')).toBeNull()
     expect(inputUnitView('600', units, null)).toBeNull()
     expect(inputUnitView('600', units, 'gone')).toBeNull()
+  })
+})
+
+describe('thousandsAmbiguity', () => {
+  it('"1,500" va "1.500" — kasr deb o\'qiladi, minglik muqobili qaytadi', () => {
+    expect(thousandsAmbiguity('1,500')).toEqual({ value: '1.5', thousands: '1500' })
+    expect(thousandsAmbiguity(' 12.250 ')).toEqual({ value: '12.25', thousands: '12250' })
+    expect(thousandsAmbiguity('999,000')).toEqual({ value: '999', thousands: '999000' })
+  })
+  it('noaniq emas — null', () => {
+    for (const s of ['1,5', '1,50', '1,5000', '0,500', '1500', '1 500', '1234,500', '', 'abc']) {
+      expect(thousandsAmbiguity(s)).toBeNull()
+    }
   })
 })

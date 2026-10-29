@@ -167,7 +167,13 @@ describe('remember_estimate_aliases — smeta', () => {
         { material_id: A.ids.m2, name: 'Цемент М500' }, // m2 smetada yo'q
       ])
       expect(e).toBe("22023|estimate_aliases_invalid|Qator 2: material bu smetada yo'q|2")
-      expect(await aliasCount(tx, ['101-0500', 'Цемент М500'])).toBe(0)
+      // "Цемент М500" — firma shablonidagi Sement M500 muqobil nomi (20261112000001 D1); m1/m2 ga hech narsa yozilmagan
+      expect(await aliasCount(tx, ['101-0500'])).toBe(0)
+      expect(
+        await scalar<number>(tx, `select count(*)::int from public.material_aliases where alias = 'Цемент М500' and material_id = any ($1)`, [
+          [A.ids.m1, A.ids.m2],
+        ]),
+      ).toBe(0)
     })
   })
 
@@ -409,7 +415,7 @@ describe('qulf kaliti — estimate_create_materials = private.lock_catalog_names
       db,
       `select p.oid::regprocedure::text as fn, position('terron.catalog_names:' in p.prosrc) > 0 as has
          from pg_proc p
-        where p.oid in ('private.lock_catalog_names(uuid)'::regprocedure, 'public.estimate_create_materials(jsonb)'::regprocedure)
+        where p.oid in ('private.lock_catalog_names(uuid)'::regprocedure, 'public.estimate_create_materials(jsonb, uuid)'::regprocedure)
         order by 1`,
     )
     expect(r.every((x) => x.has)).toBe(true)

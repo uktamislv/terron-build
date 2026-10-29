@@ -287,12 +287,17 @@ export function AlertsPage() {
     setPage(0)
   }
 
-  const act = async (id: string, action: (id: string) => Promise<void>): Promise<boolean> => {
+  /** `nextStatus` — amaldan keyingi holat: joriy filtrga kirmasa, qator ro'yxatdan chiqadi. */
+  const act = async (id: string, action: (id: string) => Promise<void>, nextStatus: AlertStatus): Promise<boolean> => {
     setBusyId(id)
     setActionError(null)
     try {
       await action(id)
-      reload()
+      const statuses = toFilters(form).statuses
+      const leavesPage = statuses !== undefined && !statuses.includes(nextStatus)
+      // Oxirgi sahifadagi yagona qator ketdi — oldingi sahifaga (bo'sh sahifa qolmasin)
+      if (leavesPage && page > 0 && data?.rows.length === 1) setPage((p) => p - 1)
+      else reload()
       return true
     } catch (err) {
       setActionError(errorText(err))
@@ -308,7 +313,7 @@ export function AlertsPage() {
       setCloseNoteError(true)
       return
     }
-    const ok = await act(closing.id, (id) => closeAlert(id, closeNote))
+    const ok = await act(closing.id, (id) => closeAlert(id, closeNote), 'yopildi')
     if (ok) setClosing(null)
   }
 
@@ -329,7 +334,7 @@ export function AlertsPage() {
         error={error}
         actionError={closing ? null : actionError}
         onRetry={reload}
-        onMarkSeen={(a) => void act(a.id, markAlertSeen)}
+        onMarkSeen={(a) => void act(a.id, markAlertSeen, 'korildi')}
         onClose={(a) => {
           setActionError(null)
           setCloseNote('')

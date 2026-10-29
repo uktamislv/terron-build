@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCompanyId } from '@/auth/activeCompany'
 import { useAuth } from '@/auth/authContext'
 import { CashHistoryRow } from '@/components/CashHistoryRow'
 import { History, Pencil, Plus, RotateCcw, Trash2, Undo2, UserRound, Wallet } from 'lucide-react'
 import { Badge, Button, DataTable, DetailRows, DetailSheet, EmptyState, EntryRow, FilterBar, Modal, Money, Notice, PageHeader, RetryNotice, SkeletonRows, TextAreaField } from '@/components/ui'
 import {
+  CASH_HISTORY_LIMIT,
   emptyBalance,
   listAllCashHistory,
   listBalances,
@@ -12,11 +14,12 @@ import {
   softDeleteAdvance,
   updateAdvanceNote,
   type CashHistoryEntry,
+  type CashHistoryFilters,
 } from '@/data/cashRepo'
 import { isAvailable, listDirectory } from '@/data/profileDirectory'
 import type { CashBalance, PersonRef } from '@/data/types'
 import { isNegative, isZero } from '@/domain/decimal'
-import { can } from '@/domain/roles'
+import { can, CASH_COMPANY_WIDE_ROLES } from '@/domain/roles'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { exportFileName, exportWorkbook } from '@/lib/excelExport'
@@ -24,6 +27,7 @@ import { formatDate, formatDateTime, formatSum } from '@/lib/format'
 import { ExportButton } from '../ExportButton'
 import { cashSheets } from '../exports'
 import { IssueAdvanceDialog } from '../cash/IssueAdvanceDialog'
+import { dayStartIso, nextDayStartIso } from '../movements/movementFilters'
 
 const tc = t.cash
 
@@ -41,6 +45,11 @@ function lastActivity(b: CashBalance): string | null {
   return dates.reduce((a, c) => (Date.parse(c) > Date.parse(a) ? c : a))
 }
 
+/** Sarf — xarajatdan (oziq-ovqat, yoqilg'i …), xarid emas. */
+function isExpense(h: CashHistoryEntry): boolean {
+  return h.kind === 'spent' && h.source === 'expense'
+}
+
 type Dialog =
   | { kind: 'issue'; initial?: { recipientId: string; amount: string; note: string | null } }
   | { kind: 'giveBack' }
@@ -52,6 +61,8 @@ type Dialog =
 /** Podotchet: odamlar bo'yicha qo'limdagi pul, pul berish, tarix. */
 export function CashPage() {
   const { profile: me } = useAuth()
+  // super_admin — faol firma (yon menyudagi tanlagich), boshqalar — o'z firmasi
+  const companyId = useCompanyId()
   const [profiles, setProfiles] = useState<PersonRef[]>([])
   const [balances, setBalances] = useState<CashBalance[] | null>(null)
   const [balanceError, setBalanceError] = useState<string | null>(null)
@@ -59,6 +70,10 @@ export function CashPage() {
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [personId, setPersonId] = useState('')
   const [includeDeleted, setIncludeDeleted] = useState(false)
+  // Davr (yyyy-mm-dd, Toshkent) va ko'rsatiladigan yozuvlar soni ("Ko'proq ko'rsatish")
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [limit, setLimit] = useState(CASH_HISTORY_LIMIT)
   const [reloadKey, setReloadKey] = useState(0)
   const [dialog, setDialog] = useState<Dialog>(null)
   const [busy, setBusy] = useState(false)
@@ -69,11 +84,21 @@ export function CashPage() {
   const canIssue = role ? can(role, 'issue_cash') : false
   const canRestore = role ? can(role, 'restore_records') : false
   const canSeeDeleted = canIssue || role === 'direktor'
+  // Ta'minotchi kabi rollar — faqat o'z podotcheti (RLS ham faqat o'z qatorlarini beradi)
+  const ownOnly = role ? !CASH_COMPANY_WIDE_ROLES.includes(role) : false
+  const filterPerson = ownOnly && me ? me.id : personId
+  const historyFilters: CashHistoryFilters = {
+    profileId: filterPerson || undefined,
+    includeDeleted: canSeeDeleted && includeDeleted,
+    from: dayStartIso(from),
+    to: nextDayStartIso(to),
+  }
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
   const closeDialog = useCallback(() => setDialog(null), [])
 
   useEffect(() => {
+    if (ownOnly) return
     let alive = true
     listDirectory()
       .then((list) => alive && setProfiles(list))
@@ -81,7 +106,7 @@ export function CashPage() {
     return () => {
       alive = false
     }
-  }, [])
+  }, [ownOnly])
 
   useEffect(() => {
     let alive = true
@@ -97,9 +122,11 @@ export function CashPage() {
     }
   }, [reloadKey])
 
+  const historyFrom = historyFilters.from
+  const historyTo = historyFilters.to
   useEffect(() => {
     let alive = true
-    listCashHistory({ profileId: personId || undefined, includeDeleted: canSeeDeleted && includeDeleted })
+    listCashHistory({ profileId: filterPerson || undefined, includeDeleted: canSeeDeleted && includeDeleted, from: historyFrom, to: historyTo, limit })
       .then((rows) => {
         if (!alive) return
         setHistory(rows)
@@ -109,7 +136,13 @@ export function CashPage() {
     return () => {
       alive = false
     }
-  }, [personId, includeDeleted, canSeeDeleted, reloadKey])
+  }, [filterPerson, includeDeleted, canSeeDeleted, historyFrom, historyTo, limit, reloadKey])
+
+  /** Filtr o'zgarsa — yana birinchi `CASH_HISTORY_LIMIT` ta. */
+  const filter = (apply: () => void) => {
+    apply()
+    setLimit(CASH_HISTORY_LIMIT)
+  }
 
   // Xarid kiritadigan rollar (pul oluvchilar) + balansi bor har kim
   const recipients = useMemo(
@@ -119,13 +152,15 @@ export function CashPage() {
   const rows = useMemo(() => {
     if (!balances || !me) return []
     const byId = new Map(balances.map((b) => [b.profile_id, b]))
+    // O'z podotcheti: faqat o'zi (balans qatori bo'lmasa — nol)
+    if (ownOnly) return [{ profile: me, balance: byId.get(me.id) ?? emptyBalance(me.company_id, me.id) }]
     const people = new Map<string, PersonRef>()
     for (const p of recipients) people.set(p.id, p)
     for (const p of profiles) if (byId.has(p.id)) people.set(p.id, p)
     return [...people.values()]
-      .map((p) => ({ profile: p, balance: byId.get(p.id) ?? emptyBalance(me.company_id, p.id) }))
+      .map((p) => ({ profile: p, balance: byId.get(p.id) ?? emptyBalance(companyId ?? me.company_id, p.id) }))
       .sort((a, b) => a.profile.full_name.localeCompare(b.profile.full_name, 'uz'))
-  }, [balances, profiles, recipients, me])
+  }, [balances, profiles, recipients, me, companyId, ownOnly])
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true)
@@ -156,16 +191,16 @@ export function CashPage() {
     }
   }
 
-  if (!me) return null
+  if (!me || !companyId) return null
 
   const runExport = async (signal: AbortSignal) => {
     const [all, entries] = await Promise.all([
       listBalances(),
-      listAllCashHistory({ profileId: personId || undefined, includeDeleted: canSeeDeleted && includeDeleted }, signal),
+      listAllCashHistory(historyFilters, signal),
     ])
-    const names = new Map(profiles.map((p) => [p.id, p.full_name]))
+    const names = new Map([...profiles.map((p) => [p.id, p.full_name] as const), [me.id, me.full_name] as const])
     const named = all
-      .filter((b) => !personId || b.profile_id === personId)
+      .filter((b) => !filterPerson || b.profile_id === filterPerson)
       .map((b) => ({ ...b, name: names.get(b.profile_id) ?? '—' }))
       .sort((a, b) => a.name.localeCompare(b.name))
     await exportWorkbook({ fileName: exportFileName(t.excel.sections.cash), sheets: cashSheets(named, entries), signal })
@@ -214,6 +249,7 @@ export function CashPage() {
         ]}
       />
       {done && <Notice tone="ok">{done}</Notice>}
+      {ownOnly && <p className="text-sm text-muted">{tc.ownIntro}</p>}
 
       <section className="flex flex-col gap-3" aria-label={tc.balancesTitle}>
         <h2 className="text-lg font-semibold text-ink md:text-xl">{tc.balancesTitle}</h2>
@@ -275,21 +311,48 @@ export function CashPage() {
         <h2 className="text-lg font-semibold text-ink md:text-xl">{tc.historyTitle}</h2>
         <FilterBar
           label={t.ombor.filters}
-          onClear={() => {
-            setPersonId('')
-            setIncludeDeleted(false)
-          }}
+          onClear={() =>
+            filter(() => {
+              setPersonId('')
+              setIncludeDeleted(false)
+              setFrom('')
+              setTo('')
+            })
+          }
           filters={[
+            ...(ownOnly
+              ? []
+              : [
+                  {
+                    kind: 'select' as const,
+                    key: 'person',
+                    label: tc.filterPerson,
+                    value: personId,
+                    onChange: (v: string) => filter(() => setPersonId(v)),
+                    options: [{ value: '', label: tc.all }, ...profiles.map((p) => ({ value: p.id, label: p.full_name }))],
+                  },
+                ]),
             {
-              kind: 'select',
-              key: 'person',
-              label: tc.filterPerson,
-              value: personId,
-              onChange: setPersonId,
-              options: [{ value: '', label: tc.all }, ...profiles.map((p) => ({ value: p.id, label: p.full_name }))],
+              kind: 'dateRange',
+              key: 'date',
+              label: tc.filterDate,
+              from,
+              to,
+              onFrom: (v) => filter(() => setFrom(v)),
+              onTo: (v) => filter(() => setTo(v)),
+              fromLabel: t.ombor.filterFrom,
+              toLabel: t.ombor.filterTo,
             },
             ...(canSeeDeleted
-              ? [{ kind: 'toggle' as const, key: 'deleted', label: tc.filterDeleted, checked: includeDeleted, onChange: setIncludeDeleted }]
+              ? [
+                  {
+                    kind: 'toggle' as const,
+                    key: 'deleted',
+                    label: tc.filterDeleted,
+                    checked: includeDeleted,
+                    onChange: (v: boolean) => filter(() => setIncludeDeleted(v)),
+                  },
+                ]
               : []),
           ]}
         />
@@ -310,11 +373,20 @@ export function CashPage() {
             ))}
           </ul>
         )}
+        {/* Chegaraga yetdi — eskiroq yozuvlar bo'lishi mumkin */}
+        {history && history.length >= limit && (
+          <div className="flex flex-col items-start gap-2" data-testid="cash-history-limit">
+            <p className="text-sm text-muted">{tc.limitHint(limit)}</p>
+            <Button variant="secondary" onClick={() => setLimit((n) => n + CASH_HISTORY_LIMIT)}>
+              {tc.more}
+            </Button>
+          </div>
+        )}
       </section>
 
       {dialog?.kind === 'issue' && (
         <IssueAdvanceDialog
-          companyId={me.company_id}
+          companyId={companyId}
           isAdmin={me.role === 'admin' || me.role === 'super_admin'}
           recipients={recipients}
           initial={dialog.initial}
@@ -329,7 +401,7 @@ export function CashPage() {
       )}
       {dialog?.kind === 'giveBack' && (
         <IssueAdvanceDialog
-          companyId={me.company_id}
+          companyId={companyId}
           isAdmin={me.role === 'admin' || me.role === 'super_admin'}
           recipients={recipients}
           kind="qaytarildi"
@@ -389,15 +461,23 @@ export function CashPage() {
         >
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap gap-2">
-              <Badge tone={dialog.entry.kind === 'issued' ? 'ok' : dialog.entry.kind === 'returned' ? 'neutral' : 'info'}>{tc.kinds[dialog.entry.kind]}</Badge>
+              <Badge tone={dialog.entry.kind === 'issued' ? 'ok' : dialog.entry.kind === 'returned' ? 'neutral' : 'info'}>
+                {isExpense(dialog.entry) ? t.expenses.cashKind : tc.kinds[dialog.entry.kind]}
+              </Badge>
               {dialog.entry.deletedAt && <Badge tone="danger">{t.movements.deleted}</Badge>}
             </div>
             <Money value={dialog.entry.amount} size="hero" tone={dialog.entry.kind === 'issued' ? 'ok' : undefined} />
             <DetailRows
               items={[
                 { label: t.ombor.colDate, value: <span className="tabular">{formatDateTime(dialog.entry.at)}</span> },
-                dialog.entry.kind === 'spent' && dialog.entry.materialName ? { label: t.ombor.colMaterial, value: dialog.entry.materialName } : null,
-                dialog.entry.kind === 'spent' && dialog.entry.objectName ? { label: t.ombor.colObject, value: dialog.entry.objectName } : null,
+                dialog.entry.kind === 'spent' && dialog.entry.materialName
+                  ? { label: isExpense(dialog.entry) ? tc.expenseCategory : t.ombor.colMaterial, value: dialog.entry.materialName }
+                  : null,
+                dialog.entry.kind === 'spent' && isExpense(dialog.entry)
+                  ? { label: t.ombor.colObject, value: dialog.entry.objectName ?? t.expenses.general }
+                  : dialog.entry.kind === 'spent' && dialog.entry.objectName
+                    ? { label: t.ombor.colObject, value: dialog.entry.objectName }
+                    : null,
                 dialog.entry.kind !== 'spent' && dialog.entry.createdByName ? { label: t.ombor.colUser, value: dialog.entry.createdByName } : null,
                 dialog.entry.note ? { label: t.ombor.colNote, value: dialog.entry.note } : null,
               ]}

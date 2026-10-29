@@ -971,6 +971,8 @@ describe('correct_entry (audit2)', () => {
     const r = await as('admin', async (tx) => {
       const mat = await newMat(tx)
       const p = await purchase(tx, P('taminotchi'), { obj: A.ids.obj1!, mat, qty: '100', total: '1000', at: ago(30) })
+      // audit3 D6: kutish greatest(purchased_at, created_at) + 24 soat — xarid haqiqatan 30 soat oldin kiritilgan
+      await raw(tx, `update public.purchases set created_at = purchased_at where id = $1`, [p])
       await switchTo(tx, 'omborchi')
       const k = await mv(tx, 'kirim', A.ids.obj1!, mat, '100', { extra: { purchase_id: p } })
       const before = await alertsOf(tx, 'xarid_qabul_farqi', `purchase_id = $1`, [p])
@@ -1127,16 +1129,26 @@ describe('Podotchet sanasi — detail', () => {
 describe('L2 / L4: qoida 1 zanjiri', () => {
   const sysPur = async (buyer: string, obj: string, mat: { id: string; unit: string }, qty: number, at: string): Promise<string> =>
     purchase(db, buyer, { obj, mat, qty: String(qty), total: '1000000', at })
+  /** audit3 D6: xarid o'z vaqtida kiritilgan (created_at = purchased_at), triggerlarsiz. */
+  const aged = (ids: string[]): Promise<void> =>
+    db.transaction(async (tx) => {
+      await tx.exec('set local session_replication_role = replica')
+      await tx.query(`update public.purchases set created_at = purchased_at where id = any($1)`, [ids])
+    })
   const sum = (a: AlertRow[]): string[] => a.map((x) => `${x.type}/${x.status}`)
 
   it('F1: orqa sanali ikkinchi xarid avval kiritilgan xaridni qoplagan kirimni "o`g`irlamaydi"', async () => {
     const mat = await newMat()
     const o = A.ids.obj3!
     const real = await sysPur(P('haydovchi'), o, mat, 100, ago(30))
+    await aged([real])
     await mv(db, 'kirim', o, mat, '100', { at: ago(29) })
     await db.query(`select private.evaluate_due_purchases(now())`)
     const fake = await sysPur(P('haydovchi'), o, mat, 100, ago(31))
+    // orqa sanali "fake" hozir kiritilgan — alert kiritilgandan 24 soat o'tib (audit3 D6)
     await db.query(`select private.evaluate_due_purchases(now())`)
+    expect(sum(await alertsQ(db, 'xarid_qabul_farqi', `purchase_id = $1`, [fake]))).toEqual([])
+    await db.query(`select private.evaluate_due_purchases(now() + interval '25 hours')`)
     expect(sum(await alertsQ(db, 'xarid_qabul_farqi', `purchase_id = $1`, [real]))).toEqual([])
     expect(sum(await alertsQ(db, 'xarid_qabul_farqi', `purchase_id = $1`, [fake]))).toEqual(['xarid_qabul_farqi/yangi'])
     const alloc = await rows(db, `select movement_id from private.receipt_candidates($1)`, [fake])
@@ -1148,6 +1160,7 @@ describe('L2 / L4: qoida 1 zanjiri', () => {
     const o = A.ids.obj3!
     const p1 = await sysPur(P('haydovchi'), o, mat, 100, ago(30))
     const p2 = await sysPur(P('taminotchi'), o, mat, 100, ago(29.9))
+    await aged([p1, p2])
     await mv(db, 'kirim', o, mat, '100', { at: ago(29) })
     await db.query(`select private.evaluate_due_purchases(now())`)
     const q = (id: string): Promise<AlertRow[]> => alertsQ(db, 'xarid_qabul_farqi', `purchase_id = $1`, [id])

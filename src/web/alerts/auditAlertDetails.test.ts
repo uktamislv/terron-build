@@ -71,6 +71,25 @@ describe('yangi alert turlari', () => {
     expect(s).toBe(`Sozlama o‘zgardi: ${t.settings.priceDeviationPct}: 8 → 15; Tinch soatlar boshlanishi: 22:00 → o‘chiq; noma_lum: 1 → 2 (Admin)`)
   })
 
+  it('sozlama_ozgardi (material / xarajat turi nazorati): qaysi yozuv — target_name', () => {
+    expect(
+      text('sozlama_ozgardi', {
+        kind: 'material_control',
+        target_name: 'Sement M400',
+        changes: [{ key: 'material_photo_required', before: false, after: true }],
+        actor_name: 'Admin',
+      }),
+    ).toMatch(/^“Sement M400” nazorati o‘zgardi: Material: rasm majburiy: .+ → .+ \(Admin\)$/)
+    expect(
+      text('sozlama_ozgardi', {
+        kind: 'expense_category_control',
+        target_name: 'Yoqilg‘i',
+        changes: [{ key: 'category_monthly_limit', before: null, after: '5000000.00' }],
+        actor_name: null,
+      }),
+    ).toMatch(/^“Yoqilg‘i” nazorati o‘zgardi: Xarajat turi: oylik limit: /)
+  })
+
   it('login_ozgardi: kim uchun, rol, kim o‘zgartirdi', () => {
     expect(text('login_ozgardi', { target_name: 'Vali', target_role: 'prorab', actor_name: 'Admin', changed_at: '2026-10-26T10:00:00Z' })).toBe(
       'Vali (Prorab) uchun veb login o‘zgartirildi — Admin',

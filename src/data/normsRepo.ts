@@ -1,5 +1,6 @@
 import { toRepoError } from './errors'
 import { inChunks } from './fetchAll'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { NormUsage } from './types'
 
@@ -36,7 +37,7 @@ export async function listNormUsage(filters: { objectId?: string; objectIds?: st
 }
 
 async function loadNormUsage(filters: { objectId?: string; objectIds?: string[]; materialId?: string }): Promise<NormUsage[]> {
-  let q = getSupabase().from('norm_usage').select(NORM_COLUMNS)
+  let q = scopeCompany(getSupabase().from('norm_usage').select(NORM_COLUMNS))
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.objectIds) q = q.in('object_id', filters.objectIds)
   if (filters.materialId) q = q.eq('material_id', filters.materialId)

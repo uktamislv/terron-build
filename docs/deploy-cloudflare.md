@@ -29,6 +29,14 @@ Lokal `npm run deploy` build paytida `.env` faylidagi `VITE_` qiymatlarini oladi
 
 `VITE_` qiymatlari ochiq (brauzerga tushadi), shuning uchun Variables'da turadi. `CLOUDFLARE_DEPLOY` qo'yilmaguncha CI faqat tekshiruvlarni bajaradi.
 
+4. Deploy job'i **`production`** GitHub Environment'ida ishlaydi (Settings → Environments → `production` — birinchi deploy'da o'zi yaratiladi). U yerda **Deployment branches → faqat `main`** qo'ying; xohlasangiz Cloudflare sirlarini repo darajasidan shu environment'ga ko'chiring va "Required reviewers" yoqing. `CLOUDFLARE_DEPLOY` o'zgaruvchisi **repo darajasida** qolsin (job sharti environment'dan oldin tekshiriladi).
+
+## Sarlavhalar (`public/_headers`)
+
+- HTML (`/`, `/tg`, barcha SPA yo'llari) — `Cache-Control: no-cache`; `/assets/*` — 1 yil, `immutable` (fayl nomida hash). Yangi deploy'dan keyin eski chunk topilmasa ilova bir marta o'zi qayta yuklanadi.
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` — domen (va uning subdomenlari) faqat HTTPS orqali ochiladi. O'z domeningizni ulashdan oldin barcha subdomenlarda HTTPS borligiga ishonch hosil qiling.
+- `Permissions-Policy`: kamera va joylashuv — faqat o'z saytimiz; mikrofon va to'lov — o'chiq.
+
 ## Muhim
 
 - `service_role` kaliti va `TELEGRAM_BOT_TOKEN` GitHub'ga ham, Cloudflare'ga ham **qo'yilmaydi** — faqat Supabase secrets'da.

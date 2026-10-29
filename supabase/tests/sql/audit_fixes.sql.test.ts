@@ -206,6 +206,8 @@ describe('A1: xarid ≠ qabul — FIFO taqsimlash', () => {
       const o = A.ids.obj3!
       const p1 = await purchase(tx, P('taminotchi'), { obj: o, mat, qty: '100', total: '1000000', at: new Date(Date.now() - 30 * 3600e3).toISOString() })
       const p2 = await purchase(tx, P('haydovchi'), { obj: o, mat, qty: '100', total: '1000000', at: new Date(Date.now() - 30 * 3600e3 + 60e3).toISOString() })
+      // audit3 D6: kutish greatest(purchased_at, created_at) + 24 soat — xaridlar o'z vaqtida kiritilgan
+      await raw(tx, `update public.purchases set created_at = purchased_at where id = any($1)`, [[p1, p2]])
       const k1 = await mv(tx, 'kirim', o, mat, '100', { at: new Date(Date.now() - 29 * 3600e3).toISOString() })
       await sys(tx, () => tx.query(`select private.evaluate_due_purchases(now())`))
       const after1 = await alertsOf(tx, 'xarid_qabul_farqi', `object_id = '${o}' and material_id = '${mat.id}'`)

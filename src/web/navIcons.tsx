@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import {
   Building2,
+  Building,
   ClipboardList,
   FileSpreadsheet,
   History,
@@ -31,4 +32,5 @@ export const webNavIcons: Record<WebNavKey, ReactNode> = {
   users: <Users {...p} />,
   objects: <Building2 {...p} />,
   settings: <Settings {...p} />,
+  companies: <Building {...p} />,
 }

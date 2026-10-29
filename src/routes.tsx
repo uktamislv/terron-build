@@ -5,6 +5,7 @@ import { ComingSoon } from '@/components/ComingSoon'
 import { RouteErrorPage } from '@/components/ErrorBoundary'
 import { NotFound } from '@/components/NotFound'
 import { LazyBoundary } from '@/components/LazyBoundary'
+import { importWithReload } from '@/lib/lazyWithReload'
 import { ToastProvider } from '@/components/ui'
 import { t } from '@/i18n'
 import type { TgNavKey, WebNavKey } from '@/domain/roles'
@@ -17,8 +18,10 @@ import { webNavItems } from '@/web/nav'
 import { LoginPage } from '@/web/pages/LoginPage'
 
 // Sahifalar route darajasida alohida chunk'larda (bosh bundle'da — layout, auth va login).
+// Chunk yuklanmasa (yangi deploy) — bir martalik avtomatik qayta yuklash (importWithReload).
 function page<M extends Record<string, unknown>>(load: () => Promise<M>, name: keyof M & string) {
-  return lazy(() => load().then((m) => ({ default: m[name] as ComponentType })))
+  const loadOnce = importWithReload(load)
+  return lazy(() => loadOnce().then((m) => ({ default: m[name] as ComponentType })))
 }
 
 const DashboardPage = page(() => import('@/web/pages/DashboardPage'), 'DashboardPage')
@@ -33,6 +36,7 @@ const HistoryPage = page(() => import('@/web/pages/HistoryPage'), 'HistoryPage')
 const UsersPage = page(() => import('@/web/pages/UsersPage'), 'UsersPage')
 const ObjectsPage = page(() => import('@/web/pages/ObjectsPage'), 'ObjectsPage')
 const SettingsPage = page(() => import('@/web/pages/SettingsPage'), 'SettingsPage')
+const CompaniesPage = page(() => import('@/web/pages/CompaniesPage'), 'CompaniesPage')
 const HelpPage = page(() => import('@/web/pages/HelpPage'), 'HelpPage')
 
 const TgHomePage = page(() => import('@/tg/pages/TgHomePage'), 'TgHomePage')
@@ -58,6 +62,7 @@ const webPages: Partial<Record<WebNavKey, ComponentType>> = {
   users: UsersPage,
   objects: ObjectsPage,
   settings: SettingsPage,
+  companies: CompaniesPage,
 }
 
 const webSections = (Object.keys(webNavItems) as WebNavKey[]).filter((key) => key !== 'dashboard')

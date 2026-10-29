@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js'
 import { loginEmailFromPhone } from '@shared/loginEmail'
 import { looksLikePhone, normalizePhone } from '@shared/phone'
+import { setLoginErrorCode } from './adminUsersRepo'
 import { RepoError, toRepoError } from './errors'
 import { invokeFunction } from './functions'
 import { PROFILE_COLUMNS } from './profilesRepo'
@@ -11,8 +12,9 @@ export type SignInError = 'not_configured' | 'invalid_login' | 'invalid_credenti
 export type SignInResult = { ok: true } | { ok: false; error: SignInError }
 
 /**
- * `reopen` — initData eskirgan yoki takroriy (`invalid_init_data`, `init_data_replayed`): ilovani yopib,
- * qayta ochish kerak. `web_only` — rol Mini App uchun emas (`role_web_only`, masalan super_admin).
+ * `reopen` — initData eskirgan yoki takroriy (`invalid_init_data`, `init_data_replayed`) yoki qurilmadagi
+ * sessiya boshqa foydalanuvchiniki (`session_mismatch`): ilovani yopib, qayta ochish kerak. Server
+ * sessiyani tasdiqlamagan — klient lokal sessiyani o'chiradi. `web_only` — rol Mini App uchun emas (`role_web_only`, masalan super_admin).
  */
 export type TelegramSignInStatus = 'ok' | 'need_contact' | 'inactive' | 'invalid' | 'reopen' | 'web_only'
 
@@ -20,11 +22,14 @@ export const MIN_PASSWORD_LENGTH = 8
 
 function toAuthSession(session: Session | null): AuthSession | null {
   if (!session) return null
-  const meta = (session.user.user_metadata ?? {}) as { must_change_password?: unknown }
+  // Audit 3 (E3): belgi app_metadata da (faqat server yozadi). Eski akkauntlar — user_metadata.
+  const app = (session.user.app_metadata ?? {}) as { must_change_password?: unknown }
+  const legacy = (session.user.user_metadata ?? {}) as { must_change_password?: unknown }
+  const flag = typeof app.must_change_password === 'boolean' ? app.must_change_password : legacy.must_change_password
   return {
     userId: session.user.id,
     email: session.user.email ?? null,
-    mustChangePassword: meta.must_change_password === true,
+    mustChangePassword: flag === true,
   }
 }
 
@@ -86,13 +91,20 @@ export function onAuthChange(cb: (session: AuthSession | null) => void): () => v
   return () => data.subscription.unsubscribe()
 }
 
-/** Parolni o'zgartiradi va "majburiy o'zgartirish" belgisini olib tashlaydi. */
+/**
+ * Parolni o'zgartiradi va "majburiy o'zgartirish" belgisini olib tashlaydi (audit 3, E3).
+ * Belgi `app_metadata` da — uni faqat server o'zgartiradi, shuning uchun parol `admin-users`
+ * (`change_password`, o'z JWT bilan) orqali o'rnatiladi. Keyin sessiya yangilanadi — yangi JWT da
+ * belgi olib tashlangan bo'ladi.
+ */
 export async function changePassword(password: string): Promise<void> {
   if (password.length < MIN_PASSWORD_LENGTH) throw new RepoError('weak_password')
-  const { error } = await getSupabase().auth.updateUser({
-    password,
-    data: { must_change_password: false },
-  })
+  const res = await invokeFunction<{ ok: true }>('admin-users', { action: 'change_password', password })
+  if (!res.ok) {
+    if (res.network) throw new RepoError('network')
+    throw new RepoError(setLoginErrorCode(res.status, res.body?.error), res.body?.error)
+  }
+  const { error } = await getSupabase().auth.refreshSession()
   if (error) throw toRepoError(error)
 }
 
@@ -119,7 +131,8 @@ export async function telegramSignIn(initData: string): Promise<TelegramSignInSt
     if (result.network) throw new RepoError('network')
     const code = result.body?.error
     if (code === 'role_web_only') return 'web_only'
-    if (code === 'invalid_init_data' || code === 'init_data_replayed') return 'reopen'
+    // session_mismatch — qurilmadagi sessiya boshqa foydalanuvchiniki (audit 3, E1): ham "qayta oching"
+    if (code === 'invalid_init_data' || code === 'init_data_replayed' || code === 'session_mismatch') return 'reopen'
     if (result.status === 403) return 'inactive'
     if (result.status === 401) return 'invalid'
     throw new RepoError('unknown', result.body?.error)

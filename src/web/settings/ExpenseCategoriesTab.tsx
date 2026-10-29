@@ -8,6 +8,7 @@ import {
   createExpenseCategory,
   EXPENSE_CATEGORY_NAME_MAX,
   listExpenseCategories,
+  sortOrderPatches,
   updateExpenseCategory,
 } from '@/data/expenseCategoriesRepo'
 import { errorCodeOf } from '@/data/errors'
@@ -71,15 +72,26 @@ export function ExpenseCategoriesTab({ companyId, canEdit }: { companyId: string
     }
   }
 
-  /** Qo'shni bilan tartibni almashtirish (sort_order — ro'yxatdagi o'rin). */
+  /**
+   * Qo'shni bilan tartibni almashtirish. Bazadagi sort_order takror yoki bo'shliqli bo'lishi mumkin —
+   * shuning uchun har siljitishda barcha turlarning tartibi 1..n qilib qayta yoziladi.
+   */
   const move = (index: number, dir: -1 | 1) => {
     if (!rows) return
     const a = rows[index]
     const b = rows[index + dir]
     if (!a || !b) return
+    const ordered = [...rows]
+    ordered[index] = b
+    ordered[index + dir] = a
+    // Ketma-ket: xato bo'lsa — to'xtaydi, xato ko'rsatiladi va ro'yxat bazadagi holatdan qayta yuklanadi
     void run(a.id, async () => {
-      await updateExpenseCategory(a.id, { sortOrder: index + dir + 1 })
-      await updateExpenseCategory(b.id, { sortOrder: index + 1 })
+      try {
+        for (const p of sortOrderPatches(ordered)) await updateExpenseCategory(p.id, { sortOrder: p.sortOrder })
+      } catch (err) {
+        reload()
+        throw err
+      }
     })
   }
 

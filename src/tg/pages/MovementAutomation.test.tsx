@@ -292,13 +292,18 @@ describe('Batch 12 (D) — joylashuv', () => {
 })
 
 describe('Batch 12 (E) — rasm majburiy', () => {
-  it('kirimda "rasm majburiy" material — belgi, sabab, Saqlash nofaol', async () => {
+  it('kirimda "rasm majburiy" material — belgi, sabab; Saqlash faol, lekin rasmsiz saqlamaydi (rasm maydoniga aylantiradi)', async () => {
     open()
     await pickMaterial('Kafel')
     typeQty('5')
     expect(screen.getByTestId('photo-required')).toBeInTheDocument()
     expect(screen.getByText(ta.photoRequiredMaterial)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: tm.save })).toBeDisabled()
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    expect(screen.getByRole('button', { name: tm.save })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: tm.save }))
+    expect(movementsRepo.createMovement).not.toHaveBeenCalled()
+    expect(scroll.mock.contexts[0]).toHaveAttribute('data-photo-field')
     fireEvent.change(screen.getByLabelText(tm.takePhoto), {
       target: { files: [new File(['x'], 'k.jpg', { type: 'image/jpeg' })] },
     })

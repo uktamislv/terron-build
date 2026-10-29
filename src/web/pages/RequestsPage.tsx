@@ -65,7 +65,10 @@ function EstimateCell({ request, objectNorms }: { request: MaterialRequest; obje
   // `requested_open_qty_base` shu so'rovni ham o'z ichiga oladi (ochiq bo'lsa) — boshqalari ajratiladi
   const other =
     norm && OPEN.includes(request.status) ? sub(norm.requested_open_qty_base, request.qty_base) : norm?.requested_open_qty_base
-  const state = requestNormState(objectNorms, request.material_id, request.qty_base, other)
+  const state = requestNormState(objectNorms, request.material_id, request.qty_base, other, {
+    outsideEstimate: request.material_outside_estimate,
+  })
+  if (state.kind === 'outside') return <Badge tone="neutral">{t.norms.outsideEstimate}</Badge>
   if (state.kind === 'no_estimate') return <Badge tone="neutral">{tp.noEstimate}</Badge>
   if (state.kind === 'not_in_estimate' || !norm) return <Badge tone="warn">{tp.notInEstimate}</Badge>
   return (

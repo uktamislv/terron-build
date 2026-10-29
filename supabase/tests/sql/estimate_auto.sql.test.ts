@@ -172,7 +172,7 @@ describe('estimate_create_materials — ruxsat', () => {
       `select p.prosecdef as definer, p.proconfig as cfg,
               has_function_privilege('anon', p.oid, 'execute') as anon,
               has_function_privilege('authenticated', p.oid, 'execute') as auth
-         from pg_proc p where p.oid = 'public.estimate_create_materials(jsonb)'::regprocedure`,
+         from pg_proc p where p.oid = 'public.estimate_create_materials(jsonb, uuid)'::regprocedure`,
     )
     expect(f).toEqual({ definer: false, cfg: ['search_path=""'], anon: false, auth: true })
   })

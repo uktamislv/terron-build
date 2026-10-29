@@ -3,7 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { ChevronRight, History, PencilLine, Plus, Receipt, RotateCcw, ShoppingCart, Trash2 } from 'lucide-react'
 import { AddExpenseDialog } from '../purchases/AddExpenseDialog'
 import { ExpensesTab } from '../purchases/ExpensesTab'
+import { CancelOwnDialog } from '@/components/corrections/CancelOwnDialog'
 import { CorrectionForm } from '@/components/corrections/CorrectionForm'
+import { useCompanyId } from '@/auth/activeCompany'
 import { useAuth } from '@/auth/authContext'
 import {
   ActionMenu,
@@ -26,6 +28,7 @@ import {
   type TabItem,
 } from '@/components/ui'
 import { DEFAULT_COMPANY_SETTINGS, getCompanySettings } from '@/data/companiesRepo'
+import { cancelOwnEntry } from '@/data/correctionsRepo'
 import { listMaterials } from '@/data/materialsRepo'
 import { listObjects } from '@/data/objectsRepo'
 import { listDirectory } from '@/data/profileDirectory'
@@ -406,6 +409,7 @@ type Dialog =
   | { kind: 'detail'; purchase: Purchase }
   | { kind: 'delete'; purchase: Purchase }
   | { kind: 'correct'; purchase: Purchase }
+  | { kind: 'cancel'; purchase: Purchase }
   | { kind: 'add' }
   | null
 
@@ -419,11 +423,23 @@ function purchasesTabs(value: PurchasesTabKey, onChange: (k: PurchasesTabKey) =>
   return <Tabs label={t.expenses.tabsLabel} items={items} value={value} onChange={onChange} />
 }
 
+/** Tab almashganda URL'da qoladigan filtrlar. */
+const TAB_KEPT_PARAMS = ['from', 'to', 'object'] as const
+
 /** "Xaridlar" sahifasi: "Xaridlar" va "Xarajatlar" tablari (`?tab=expenses`). */
 export function PurchasesPage() {
   const [params, setParams] = useSearchParams()
   const tab: PurchasesTabKey = params.get('tab') === 'expenses' ? 'expenses' : 'purchases'
-  const onTab = (next: PurchasesTabKey) => setParams(next === 'expenses' ? { tab: 'expenses' } : {}, { replace: true })
+  // Tab almashganda davr va obyekt filtri (bosh sahifa havolasi) saqlanadi
+  const onTab = (next: PurchasesTabKey) => {
+    const kept = new URLSearchParams()
+    for (const key of TAB_KEPT_PARAMS) {
+      const value = params.get(key)
+      if (value) kept.set(key, value)
+    }
+    if (next === 'expenses') kept.set('tab', 'expenses')
+    setParams(kept, { replace: true })
+  }
   if (tab === 'expenses') return <ExpensesPanel tabs={purchasesTabs(tab, onTab)} />
   return <MaterialPurchasesPage tabs={purchasesTabs(tab, onTab)} />
 }
@@ -490,7 +506,7 @@ function MaterialPurchasesPage({ tabs }: { tabs: ReactNode }) {
   const [nowIso, setNowIso] = useState(() => new Date().toISOString())
 
   const role = me?.role
-  const companyId = me?.company_id
+  const companyId = useCompanyId()
   // Xaridni o'chirish va tiklash — faqat admin (purchases_update RLS)
   const canDelete = role ? can(role, 'restore_records') : false
   const canSeeDeleted = canDelete || role === 'direktor'
@@ -559,15 +575,21 @@ function MaterialPurchasesPage({ tabs }: { tabs: ReactNode }) {
   const update = (patch: Partial<PurchaseFilterForm>) => {
     setForm((f) => ({ ...f, ...patch }))
     setPage(0)
+    setSavedText(null)
   }
 
-  const run = async (action: () => Promise<void>) => {
+  /** `leavesPage` — qator joriy ro'yxatdan chiqadi (o'chirildi/bekor qilindi va o'chirilganlar ko'rsatilmayapti). */
+  const run = async (action: () => Promise<void>, opts: { leavesPage?: boolean; text?: string } = {}) => {
     setBusy(true)
     setActionError(null)
+    setSavedText(null)
     try {
       await action()
       setDialog(null)
-      reload()
+      if (opts.text) setSavedText(opts.text)
+      // Oxirgi sahifadagi yagona qator ketdi — oldingi sahifaga (bo'sh sahifa qolmasin)
+      if (opts.leavesPage && !form.includeDeleted && page > 0 && data?.rows.length === 1) setPage((p) => p - 1)
+      else reload()
     } catch (err) {
       setActionError(errorText(err))
     } finally {
@@ -605,7 +627,8 @@ function MaterialPurchasesPage({ tabs }: { tabs: ReactNode }) {
         nowIso={nowIso}
         busy={busy}
         error={error}
-        actionError={dialog?.kind === 'delete' ? null : actionError}
+        // Dialog ochiq bo'lsa xato o'sha dialog ichida ko'rsatiladi
+        actionError={dialog ? null : actionError}
         onRetry={reload}
         onOpen={(p) => setDialog({ kind: 'detail', purchase: p })}
         onDelete={(p) => setDialog({ kind: 'delete', purchase: p })}
@@ -668,6 +691,7 @@ function MaterialPurchasesPage({ tabs }: { tabs: ReactNode }) {
           thresholdPct={threshold}
           nowIso={nowIso}
           onClose={closeDialog}
+          error={actionError}
           footer={
             (canDelete || Boolean(purchaseHistoryHref('purchases', dialog.purchase.id)) || correctionFor(dialog.purchase) !== null) && (
               <>
@@ -682,6 +706,16 @@ function MaterialPurchasesPage({ tabs }: { tabs: ReactNode }) {
                       {t.correction.action}
                     </Button>
                   )}
+                {correctionFor(dialog.purchase)?.admin === false && (
+                  <Button
+                    variant="secondary"
+                    className="flex-1 sm:flex-none"
+                    icon={<Trash2 aria-hidden className="size-5" strokeWidth={1.75} />}
+                    onClick={() => setDialog({ kind: 'cancel', purchase: dialog.purchase })}
+                  >
+                    {t.correction.cancelAction}
+                  </Button>
+                )}
                 {canDelete &&
                   (dialog.purchase.deleted_at ? (
                     <Button
@@ -711,6 +745,16 @@ function MaterialPurchasesPage({ tabs }: { tabs: ReactNode }) {
           }
         />
       )}
+      {dialog?.kind === 'cancel' && (
+        <CancelOwnDialog
+          busy={busy}
+          error={actionError}
+          onClose={closeDialog}
+          onConfirm={(reason) =>
+            void run(() => cancelOwnEntry('purchases', dialog.purchase.id, reason), { leavesPage: true, text: t.correction.cancelled })
+          }
+        />
+      )}
       {dialog?.kind === 'delete' && (
         <Modal
           title={to.delete}
@@ -720,7 +764,7 @@ function MaterialPurchasesPage({ tabs }: { tabs: ReactNode }) {
               <Button variant="secondary" onClick={closeDialog}>
                 {t.common.no}
               </Button>
-              <Button variant="danger" loading={busy} onClick={() => void run(() => softDeletePurchase(dialog.purchase.id))}>
+              <Button variant="danger" loading={busy} onClick={() => void run(() => softDeletePurchase(dialog.purchase.id), { leavesPage: true })}>
                 {t.common.yes}
               </Button>
             </>

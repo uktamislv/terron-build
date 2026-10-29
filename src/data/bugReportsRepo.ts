@@ -5,6 +5,7 @@ import type { Role } from '@/domain/roles'
 import { isPkeyConflict, RepoError, toRepoError } from './errors'
 import { updateById } from './rowUpdate'
 import { attachNameAndRole } from './profileDirectory'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 
 export type BugReportStatus = 'yangi' | 'korildi' | 'hal_qilindi'
@@ -98,7 +99,7 @@ export interface BugReportFilters {
 /** Admin: firmaning xabarlari, yangisi birinchi, 50 tadan sahifa (0 dan). */
 export async function listBugReports(filters: BugReportFilters = {}, page = 0): Promise<{ rows: BugReport[]; total: number }> {
   const from = page * BUG_REPORTS_PAGE_SIZE
-  let q = getSupabase().from('bug_reports').select(BUG_SELECT, { count: 'exact' }).is('deleted_at', null)
+  let q = scopeCompany(getSupabase().from('bug_reports').select(BUG_SELECT, { count: 'exact' }).is('deleted_at', null))
   if (filters.status) q = q.eq('status', filters.status)
   const { data, error, count } = await q
     .order('created_at', { ascending: false })

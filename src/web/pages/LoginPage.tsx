@@ -62,7 +62,8 @@ export function LoginPage() {
             label={t.auth.loginLabel}
             placeholder={t.auth.loginPlaceholder}
             autoComplete="username"
-            inputMode="email"
+            // Login — email yoki telefon: inputMode="email" telefonda raqam kiritishni qiyinlashtiradi
+            inputMode="text"
             autoCapitalize="none"
             value={login}
             onChange={(e) => setLogin(e.target.value)}

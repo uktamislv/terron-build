@@ -1,12 +1,13 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { loginEmailFromPhone } from '@shared/loginEmail'
-import { changePassword, resolveLoginEmail, signInWithPassword, telegramSignIn } from './authRepo'
+import { changePassword, getSession, resolveLoginEmail, signInWithPassword, telegramSignIn } from './authRepo'
 
 const fake = vi.hoisted(() => ({
   signInWithPassword: vi.fn(),
   setSession: vi.fn(),
   getSession: vi.fn(),
   updateUser: vi.fn(),
+  refreshSession: vi.fn(),
   invoke: vi.fn(),
 }))
 
@@ -18,6 +19,7 @@ vi.mock('./supabaseClient', () => ({
       setSession: fake.setSession,
       getSession: fake.getSession,
       updateUser: fake.updateUser,
+      refreshSession: fake.refreshSession,
     },
     functions: { invoke: fake.invoke },
   }),
@@ -105,6 +107,8 @@ describe('telegramSignIn', () => {
     expect(await telegramSignIn('init')).toBe('reopen')
     fake.invoke.mockResolvedValueOnce({ data: null, error: httpError(401, { error: 'init_data_replayed' }) })
     expect(await telegramSignIn('init')).toBe('reopen')
+    fake.invoke.mockResolvedValueOnce({ data: null, error: httpError(401, { error: 'session_mismatch' }) })
+    expect(await telegramSignIn('init')).toBe('reopen')
     fake.invoke.mockResolvedValueOnce({ data: null, error: httpError(403, { error: 'role_web_only' }) })
     expect(await telegramSignIn('init')).toBe('web_only')
   })
@@ -115,14 +119,44 @@ describe('telegramSignIn', () => {
   })
 })
 
-describe('changePassword', () => {
-  it('parol va must_change_password: false yuboriladi', async () => {
-    fake.updateUser.mockResolvedValue({ error: null })
+describe('changePassword (audit 3, E3: belgi app_metadata da, server tozalaydi)', () => {
+  it('admin-users change_password chaqiriladi, keyin sessiya yangilanadi; updateUser ishlatilmaydi', async () => {
+    fake.invoke.mockResolvedValue({ data: { ok: true }, error: null })
+    fake.refreshSession.mockResolvedValue({ data: {}, error: null })
     await changePassword('yangi-parol-1')
-    expect(fake.updateUser).toHaveBeenCalledWith({ password: 'yangi-parol-1', data: { must_change_password: false } })
+    expect(fake.invoke).toHaveBeenCalledWith('admin-users', { body: { action: 'change_password', password: 'yangi-parol-1' } })
+    expect(fake.refreshSession).toHaveBeenCalled()
+    expect(fake.updateUser).not.toHaveBeenCalled()
+  })
+  it('server xatosi → RepoError (weak_password, session_expired, network)', async () => {
+    fake.invoke.mockResolvedValueOnce({ data: null, error: httpError(400, { error: 'weak_password' }) })
+    await expect(changePassword('yangi-parol-1')).rejects.toMatchObject({ code: 'weak_password' })
+    fake.invoke.mockResolvedValueOnce({ data: null, error: httpError(401, { error: 'unauthorized' }) })
+    await expect(changePassword('yangi-parol-1')).rejects.toMatchObject({ code: 'session_expired' })
+    fake.invoke.mockResolvedValueOnce({ data: null, error: new Error('fetch failed') })
+    await expect(changePassword('yangi-parol-1')).rejects.toMatchObject({ code: 'network' })
+    expect(fake.refreshSession).not.toHaveBeenCalled()
   })
   it('qisqa parol — server chaqirilmaydi', async () => {
     await expect(changePassword('123')).rejects.toMatchObject({ code: 'weak_password' })
-    expect(fake.updateUser).not.toHaveBeenCalled()
+    expect(fake.invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('getSession — mustChangePassword (app_metadata birinchi, user_metadata — eski akkauntlar)', () => {
+  const withMeta = (app: Record<string, unknown>, user: Record<string, unknown>) =>
+    fake.getSession.mockResolvedValue({
+      data: { session: { access_token: 't', user: { id: 'u1', email: null, app_metadata: app, user_metadata: user } } },
+      error: null,
+    })
+  it.each([
+    [{ must_change_password: true }, {}, true],
+    [{ must_change_password: false }, { must_change_password: true }, false],
+    [{ must_change_password: true }, { must_change_password: false }, true],
+    [{}, { must_change_password: true }, true],
+    [{}, {}, false],
+  ])('app %j, user %j → %s', async (app, user, expected) => {
+    withMeta(app, user)
+    expect((await getSession())?.mustChangePassword).toBe(expected)
   })
 })

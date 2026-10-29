@@ -5,7 +5,7 @@ import { useId, useState } from 'react'
 import { CalendarDays, ChevronDown } from 'lucide-react'
 import { BottomSheet, Button, choiceClass, cx, DateField } from '@/components/ui'
 import { isoDateToDisplay } from '@/lib/format'
-import { entryDateBounds, type EntryDateChoice } from '@/domain/entryDate'
+import { entryDateBounds, yesterdayIsoDate, type EntryDateChoice } from '@/domain/entryDate'
 import type { DateChipsValue } from './dateChoice'
 import { t } from '@/i18n'
 import { haptic } from '../telegram'
@@ -47,7 +47,9 @@ export function DateChips({
             className={choiceClass({ selected: value.choice === c.key, size: 'md' })}
             onClick={() => {
               haptic.select()
-              onChange({ choice: c.key, other: c.key === 'other' ? value.other : '' })
+              // "Kecha" — sana shu bosishda qotiriladi (saqlash yarim tundan keyin bo'lsa ham o'sha kun)
+              const other = c.key === 'other' ? value.other : c.key === 'yesterday' ? yesterdayIsoDate(nowIso) : ''
+              onChange({ choice: c.key, other })
             }}
           >
             {c.label}

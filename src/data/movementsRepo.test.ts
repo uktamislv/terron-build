@@ -89,10 +89,21 @@ describe('movementsRepo', () => {
 
   it('createMovement: qayta urinishda 23505 (shu id saqlangan) — saqlangan qator qaytadi', async () => {
     fake.results.push({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "movements_pkey"', hint: null } })
-    fake.results.push({ data: raw, error: null })
+    fake.results.push({ data: { ...raw, object_id: 'o', material_id: 'm', unit_id: 'u', qty_input: '3.000000' }, error: null })
     const saved = await createMovement({ id: 'd1', companyId: 'c', type: 'kirim', objectId: 'o', materialId: 'm', unitId: 'u', qtyInput: '3' })
     expect(saved.id).toBe('mv1')
     expect(fake.calls.filter((c) => c[0] === 'eq')).toEqual([['eq', 'id', 'd1']])
+  })
+
+  it('createMovement: 23505, lekin saqlangan qator BOSHQA yozuv (miqdor yoki tur farq qiladi) — draft_conflict', async () => {
+    const input = { id: 'd1', companyId: 'c', type: 'kirim' as const, objectId: 'o', materialId: 'm', unitId: 'u', qtyInput: '4' }
+    const same = { ...raw, object_id: 'o', material_id: 'm', unit_id: 'u' }
+    fake.results.push({ data: null, error: { code: '23505', message: 'dup "movements_pkey"', hint: null } })
+    fake.results.push({ data: same, error: null })
+    await expect(createMovement(input)).rejects.toMatchObject({ code: 'draft_conflict' })
+    fake.results.push({ data: null, error: { code: '23505', message: 'dup "movements_pkey"', hint: null } })
+    fake.results.push({ data: { ...same, type: 'chiqim' }, error: null })
+    await expect(createMovement({ ...input, qtyInput: '3' })).rejects.toMatchObject({ code: 'draft_conflict' })
   })
 
   it('createMovement: 23505 va qator topilmasa — duplicate xatosi', async () => {

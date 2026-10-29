@@ -1,7 +1,9 @@
+import { decEq, ensureSameDraft } from './draftConflict'
 import { isPkeyConflict, toRepoError } from './errors'
 import { chunkOpts, fetchAll, type ChunkOpts } from './fetchAll'
 import { updateById } from './rowUpdate'
 import { attachNames } from './profileDirectory'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { MaterialRequest, RequestStatus } from './types'
 
@@ -12,7 +14,7 @@ const REQUEST_COLUMNS =
 const REQUEST_SELECT =
   `${REQUEST_COLUMNS}, ` +
   'object:objects!material_requests_object_fkey(name), ' +
-  'material:materials!material_requests_material_fkey(name, base_unit)'
+  'material:materials!material_requests_material_fkey(name, base_unit, outside_estimate)'
 
 export const REQUESTS_PAGE_SIZE = 50
 export const DECISION_NOTE_MAX = 500
@@ -37,9 +39,12 @@ export interface RequestFilters {
   materialId?: string
 }
 
-type RawRequest = Omit<MaterialRequest, 'object_name' | 'material_name' | 'base_unit' | 'created_by_name' | 'decided_by_name'> & {
+type RawRequest = Omit<
+  MaterialRequest,
+  'object_name' | 'material_name' | 'base_unit' | 'material_outside_estimate' | 'created_by_name' | 'decided_by_name'
+> & {
   object: { name: string } | null
-  material: { name: string; base_unit: string } | null
+  material: { name: string; base_unit: string; outside_estimate?: boolean | null } | null
 }
 
 function normalize(raw: RawRequest): MaterialRequest {
@@ -49,6 +54,7 @@ function normalize(raw: RawRequest): MaterialRequest {
     object_name: object?.name ?? null,
     material_name: material?.name ?? null,
     base_unit: material?.base_unit ?? null,
+    material_outside_estimate: material?.outside_estimate === true,
     created_by_name: null,
     decided_by_name: null,
   }
@@ -91,7 +97,16 @@ export async function createRequest(input: NewRequest): Promise<MaterialRequest>
   if (error) {
     if (isPkeyConflict(error, 'material_requests_pkey')) {
       const existing = await getRequestById(input.id).catch(() => null)
-      if (existing) return existing
+      if (existing) {
+        // Boshqa so'rov (obyekt, material, birlik yoki miqdor farq qiladi) — `draft_conflict`
+        return ensureSameDraft(
+          existing,
+          existing.object_id === input.objectId &&
+            existing.material_id === input.materialId &&
+            existing.unit_id === input.unitId &&
+            decEq(existing.qty_input, input.qtyInput),
+        )
+      }
     }
     throw toRepoError(error)
   }
@@ -125,7 +140,7 @@ async function loadRequests(
   to: number,
   opts: ChunkOpts = { count: true },
 ): Promise<{ rows: MaterialRequest[]; total: number | null }> {
-  let q = getSupabase().from('material_requests').select(REQUEST_SELECT, opts.count ? { count: 'exact' } : undefined).is('deleted_at', null)
+  let q = scopeCompany(getSupabase().from('material_requests').select(REQUEST_SELECT, opts.count ? { count: 'exact' } : undefined).is('deleted_at', null))
   if (filters.statuses && filters.statuses.length > 0) q = q.in('status', filters.statuses)
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.materialId) q = q.eq('material_id', filters.materialId)

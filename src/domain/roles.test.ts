@@ -35,11 +35,12 @@ const ALL_WEB: WebNavKey[] = [
 ]
 
 const EXPECTED_WEB: Record<Role, WebNavKey[]> = {
-  super_admin: ALL_WEB,
+  // Audit 3: "Firmalar" — faqat tizim egasi
+  super_admin: [...ALL_WEB, 'companies'],
   admin: ALL_WEB,
   direktor: ['dashboard', 'movements', 'purchases', 'cash', 'estimates', 'requests', 'alerts', 'history'],
   buxgalter: ['dashboard', 'materials', 'movements', 'purchases', 'cash', 'estimates', 'alerts'],
-  taminotchi: ['dashboard', 'materials', 'purchases', 'requests'],
+  taminotchi: ['dashboard', 'materials', 'purchases', 'cash', 'requests'],
   // Audit: prorab smetani (faqat ko'rish) va norma sarfini ko'radi
   prorab: ['dashboard', 'movements', 'estimates', 'requests'],
   omborchi: ['dashboard', 'movements'],
@@ -95,6 +96,9 @@ describe('webNavFor', () => {
     const a = webNavFor('admin')
     a.pop()
     expect(webNavFor('admin')).toEqual(ALL_WEB)
+  })
+  it('companies faqat super_admin da', () => {
+    for (const role of ROLES) expect(webNavFor(role).includes('companies')).toBe(role === 'super_admin')
   })
   it('users va objects faqat admin/super_admin da', () => {
     for (const role of ROLES) {

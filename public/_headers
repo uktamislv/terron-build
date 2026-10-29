@@ -3,8 +3,15 @@
 # Bir nechta qoida mos kelsa sarlavhalar QO'SHILADI (vergul bilan) — shuning uchun /tg da umumiy CSP
 # "! Content-Security-Policy" bilan olib tashlanib, Telegram ichida ochilishga ruxsat beruvchi CSP qo'yiladi.
 # CSP: skriptlar — faqat o'zimiz va telegram.org (Mini App SDK); API — Supabase; shriftlar — o'zimiz (Inter).
+# Audit 3 (E5): HTML (/, /index.html, /tg, /tg/* va boshqa SPA yo'llari) — "no-cache" (har safar qayta
+# tekshiriladi: yangi deploy'dan keyin eski index.html yo'q chunk'larga murojaat qilmasin). /assets/* da
+# umumiy Cache-Control "!" bilan olib tashlanib, uzoq kesh qo'yiladi. Permissions-Policy: kamera va
+# joylashuv — faqat o'zimiz (rasm, QR, GPS belgisi), mikrofon va to'lov — o'chiq.
 
 /*
+  Cache-Control: no-cache
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Permissions-Policy: camera=(self), geolocation=(self), microphone=(), payment=()
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Content-Security-Policy: default-src 'self'; script-src 'self' https://telegram.org; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: blob: https://*.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
@@ -19,4 +26,5 @@
 
 # Vite fayl nomlarida hash bor — o'zgarmaydi, uzoq keshlanadi
 /assets/*
+  ! Cache-Control
   Cache-Control: public, max-age=31536000, immutable

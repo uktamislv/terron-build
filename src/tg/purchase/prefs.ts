@@ -62,3 +62,14 @@ export function loadLastExpenseObject(): string | null {
 export function saveLastExpenseObject(objectId: string | null): void {
   writeKey(EXPENSE_OBJECT_KEY, objectId ?? GENERAL_OBJECT)
 }
+
+const PURCHASE_OBJECT_KEY = 'terron.purchase.object'
+
+/** Xarid uchun oxirgi obyekt — kirim/chiqimnikidan alohida (ta'minotchi boshqa obyektga xarid qiladi). */
+export function loadLastPurchaseObject(): string | null {
+  return readKey(PURCHASE_OBJECT_KEY)
+}
+
+export function saveLastPurchaseObject(objectId: string): void {
+  writeKey(PURCHASE_OBJECT_KEY, objectId)
+}

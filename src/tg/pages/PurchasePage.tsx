@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { useAuth } from '@/auth/authContext'
-import { Receipt, ShoppingCart } from 'lucide-react'
-import { BottomSheet, Notice, RetryNotice, SegmentedControl, SkeletonRows } from '@/components/ui'
+import { ArrowDownLeft, Receipt, ShoppingCart } from 'lucide-react'
+import { BottomSheet, Button, Notice, RetryNotice, SegmentedControl, SkeletonRows } from '@/components/ui'
 import { getMyBalance } from '@/data/cashRepo'
 import { errorCodeOf } from '@/data/errors'
 import { requestPhotoHash } from '@/data/functions'
@@ -19,13 +19,13 @@ import { formatSumInput, parseSumInput } from '@/domain/cash'
 import { cmp, isZero, round } from '@/domain/decimal'
 import { defaultObjectId, rankMaterials, validateMovementDraft, type UsageStat } from '@/domain/movements'
 import { parseReceiptQr, type ReceiptQr } from '@/domain/receipt'
-import { findDuplicateEntry, photoRequired, receiptVerified } from '@/domain/rules'
+import { findDuplicateEntry, photoRequired, receiptPhotoExempt, receiptVerified } from '@/domain/rules'
 import { purchasePrices, toBaseQty, unitLabel, validateQtyInput } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatQty, formatSum } from '@/lib/format'
 import { uuid } from '@/lib/uuid'
-import { entryDateFor } from '@/domain/entryDate'
+import { entryDateFor, entryDateToIso } from '@/domain/entryDate'
 import { DateChips } from '../entry/DateChips'
 import { readUuidParam } from '../deepLinks'
 import { TODAY_CHOICE, type DateChipsValue } from '../entry/dateChoice'
@@ -35,11 +35,24 @@ import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
 import { useCompanySettings } from '../entry/useCompanySettings'
 import { useGeoCapture } from '../entry/useGeoCapture'
 import { usePhotoDraft } from '../entry/usePhotoDraft'
+import { draftFingerprint, useDraftId } from '../entry/useDraftId'
+import { useDiscardGuard } from '../entry/useDiscardGuard'
+import { scrollToPhotoField } from '../entry/scrollToField'
+import { makeMovementPrefillState, type MovementPrefill } from '../movement/prefill'
+import { saveEntryType } from '../movement/prefs'
+import { tgNavForRole } from '../nav'
 import { ApprovedRequestChips, RequestTag } from '../purchase/ApprovedRequests'
 import { ReceiptCard, ScanReceiptButton } from '../purchase/ReceiptCard'
 import { canScanQr, scanQr } from '../qrScan'
-import { loadLastObject, saveLastObject } from '../movement/prefs'
-import { loadPurchaseMode, loadRecentSuppliers, rememberSupplier, savePurchaseMode, type PurchaseMode } from '../purchase/prefs'
+import {
+  loadLastPurchaseObject,
+  loadPurchaseMode,
+  loadRecentSuppliers,
+  rememberSupplier,
+  saveLastPurchaseObject,
+  savePurchaseMode,
+  type PurchaseMode,
+} from '../purchase/prefs'
 import { ExpenseEntry } from '../purchase/ExpenseEntry'
 import { CashHistory } from '../purchase/CashHistory'
 import { BalanceCard, PurchaseDetails, type PurchaseFieldErrors } from '../purchase/PurchaseDetails'
@@ -92,7 +105,14 @@ function orderSuppliers(list: Supplier[], recent: string[]): Supplier[] {
 }
 
 /** Material xaridi (oldingi "Xarid" ekrani). Balans kartasi — `PurchasePage` da (ikkala rejim uchun umumiy). */
-function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) {
+function MaterialPurchase({
+  onBalanceChange,
+  onDirtyChange,
+}: {
+  onBalanceChange: () => void
+  /** Formada kiritilgan ma'lumot bor/yo'q — sahifa chiqishdan oldin tasdiq so'raydi. */
+  onDirtyChange: (dirty: boolean) => void
+}) {
   const { profile } = useAuth()
   const companyId = profile?.company_id
   const profileId = profile?.id
@@ -122,15 +142,19 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
   const preparingPhoto = photo.preparing
   const clearPhotoError = photo.clearError
 
-  // Qoralama id'lari — qayta urinishda ikki marta yozilmasin (baza 23505 → saqlangan qator o'qiladi)
-  const [draftId, setDraftId] = useState<string>(() => uuid())
+  // Qoralama id'lari — qayta urinishda ikki marta yozilmasin (baza 23505 → saqlangan qator o'qiladi);
+  // xatodan keyin asosiy maydonlar (obyekt, material, birlik, miqdor, summa) o'zgarsa — yangi id
+  const draftIds = useDraftId()
   const [supplierDraftId, setSupplierDraftId] = useState<string>(() => uuid())
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [savedText, setSavedText] = useState<{ text: string; meta: string } | null>(null)
+  const [savedText, setSavedText] = useState<{ text: string; meta: string; receive: MovementPrefill | null } | null>(null)
+  // Xariddan keyin "Qabul qilish (kirim)" — faqat kirim qila oladigan rollarga
+  const canReceive = profile ? tgNavForRole(profile.role).some((i) => i.key === 'movement') : false
+  const navigate = useNavigate()
 
   const sumRef = useRef<HTMLInputElement>(null)
   const caretRef = useRef<number | null>(null)
@@ -171,7 +195,7 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
         const active = objs.filter((o) => o.status === 'faol' && o.company_id === companyId)
         setObjects(active)
         setMaterials(mats.filter((m) => m.is_active && m.company_id === companyId))
-        setObjectId((cur) => cur ?? defaultObjectId(active.map((o) => o.id), loadLastObject()))
+        setObjectId((cur) => cur ?? defaultObjectId(active.map((o) => o.id), loadLastPurchaseObject()))
         setLoadError(null)
       })
       .catch((err: unknown) => {
@@ -258,7 +282,7 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
   // Server bilan bir xil (receiptVerified): soliq.uz javobidagi chek jami yoki qator summasi xarid summasidan
   // ≤ 1 so'm farq qiladi va chek sanasi xarid sanasidan ±3 kun ichida. Javob yo'q yoki jami noma'lum — tasdiqlanmagan.
   // Rasm majburiyatidan ozod qilish va "Chek tasdiqlandi" belgisi shu natijaga tayanadi.
-  const qrVerified = receipt?.lookup
+  const qrVerified = receipt?.lookup?.verified
     ? receiptVerified({
         lookupTotal: receipt.lookup.total,
         lookupItems: receipt.lookup.items,
@@ -266,6 +290,10 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
         totalAmount: parseSumInput(sum),
         purchasedAt: receipt.lookup.datetime ?? receipt.qr.datetime ?? entryDateFor(entryDate.choice, entryDate.other, new Date().toISOString(), isAdmin) ?? new Date().toISOString(),
       })
+    : false
+  // Rasmdan ozod — server guard bilan bir xil: tasdiqlangan, jami ma'lum va bir qatorli chek
+  const photoExempt = receipt?.lookup
+    ? receiptPhotoExempt({ verified: qrVerified, total: receipt.lookup.total, itemCount: receipt.lookup.items.length })
     : false
 
   // Jonli narx: "1 kg narxi: …" va oxirgi o'rtachadan og'ish (bloklamaydi)
@@ -278,21 +306,28 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
       : null
 
   // Narx tekshiruvi serverda (RPC): faqat 'ok' | 'high' | 'low' — foiz va o'rtacha ko'rsatilmaydi.
-  // Yozish paytida har tugmada emas — 400 ms tinchlikdan keyin.
-  const priceKey = materialId && pricePerBase !== null ? `${materialId}:${pricePerBase}` : null
+  // Yozish paytida har tugmada emas — 400 ms tinchlikdan keyin. Orqa sana bilan xarid — o'rtacha shu
+  // sanagacha (`p_purchased_at`). Kalit barqaror: chek sanasi yoki tanlangan kun (`d:yyyy-mm-dd`).
+  const receiptAt = receipt?.lookup?.datetime ?? receipt?.qr.datetime ?? null
+  const priceAt = receiptAt ?? (entryDate.choice !== 'today' && entryDate.other ? `d:${entryDate.other}` : null)
+  const priceKey = materialId && pricePerBase !== null ? `${materialId}:${pricePerBase}:${priceAt ?? ''}` : null
   useEffect(() => {
     if (!priceKey || !materialId || pricePerBase === null) return
     let alive = true
     const timer = window.setTimeout(() => {
-      checkPurchasePrice(materialId, pricePerBase)
+      const purchasedAt = priceAt?.startsWith('d:')
+        ? (entryDateToIso(priceAt.slice(2), new Date().toISOString(), isAdmin) ?? null)
+        : priceAt
+      checkPurchasePrice(materialId, pricePerBase, purchasedAt)
         .then((result) => alive && setPriceCheck({ key: priceKey, result }))
-        .catch(() => alive && setPriceCheck({ key: priceKey, result: 'ok' }))
+        // Tekshirib bo'lmadi — hech narsa ko'rsatilmaydi ("odatdagidek" deb aldamaymiz)
+        .catch(() => alive && setPriceCheck(null))
     }, PRICE_CHECK_DELAY_MS)
     return () => {
       alive = false
       window.clearTimeout(timer)
     }
-  }, [priceKey, materialId, pricePerBase])
+  }, [priceKey, materialId, pricePerBase, priceAt, isAdmin])
   const priceVerdict: PriceCheck | null = priceCheck && priceCheck.key === priceKey ? priceCheck.result : null
 
   // Batch 12 (E): summa chegarasi yoki material belgisi; QR orqali tasdiqlangan chek — rasmsiz ham
@@ -301,7 +336,7 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
         totalAmount: sumDec,
         thresholdAmount: settings.photoRequiredAmount,
         materialPhotoRequired: Boolean(material.photo_required),
-        qrVerified,
+        qrVerified: photoExempt,
       })
     : null
   const photoRequiredReason =
@@ -451,7 +486,7 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
     setSupplier({ kind: 'none' })
     photo.reset()
     setFieldErrors({})
-    setDraftId(uuid())
+    draftIds.renew()
     setSupplierDraftId(uuid())
     setReceipt(null)
     setReceiptNotice(null)
@@ -508,10 +543,14 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
         return
       }
       if (photoMissing) {
+        // Tugma faol qoladi: bosilsa — chek rasmi maydoniga aylantiriladi (sabab qizil matnda)
         haptic.error()
+        scrollToPhotoField()
         return
       }
       const nowIso = new Date().toISOString()
+      // Yuboriladigan id: xatodan keyin asosiy maydonlar o'zgargan bo'lsa — yangi
+      const draftId = draftIds.idFor(draftFingerprint([objectId, materialId, unitId, result.ok ? result.qtyInput : qty, total]))
       // Batch 12 (C): takroriy xarid — ogohlantirish, bloklamaydi
       if (!opts.confirmDuplicate && qtyBase !== null) {
         const prev = recent
@@ -547,7 +586,7 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
             fiscalSign: receipt.qr.fiscalSign,
             terminalId: receipt.qr.terminalId,
             receiptNo: receipt.qr.receiptNo,
-            verified: receipt.lookup !== null,
+            verified: receipt.lookup?.verified === true,
             // Ko'p qatorli chekda ham — butun chek jami (server chek_farqi ni bunday chekda chiqarmaydi)
             total: receipt.lookup?.total ?? receipt.qr.total ?? null,
             sellerTin: receipt.lookup?.sellerTin ?? null,
@@ -581,7 +620,7 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
         if (receiptPhotoPath) void requestPhotoHash('purchases', row.id)
         haptic.success()
         flashMainButtonSaved()
-        saveLastObject(objectId)
+        saveLastPurchaseObject(objectId)
         rememberLastEntry(profile.id, materialId, unitId, result.qtyInput)
         setRecent((list) => [row, ...list.filter((p) => p.id !== row.id)].slice(0, RECENT_LIMIT))
         if (request) {
@@ -596,11 +635,16 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
             row.material_name ?? material?.name ?? '',
           ),
           meta: formatSum(row.total_amount),
+          receive: canReceive
+            ? { type: 'kirim', objectId: row.object_id, materialId: row.material_id, qtyBase: row.qty_base, purchaseId: row.id }
+            : null,
         })
         onBalanceChange()
         resetEntry()
       } catch (err) {
         haptic.error()
+        // Shu id bilan avval boshqa xarid saqlangan — keyingi urinish yangi id bilan
+        if (errorCodeOf(err) === 'draft_conflict') draftIds.renew()
         // Rasm muammosi saqlashni to'xtatmasin: "Qayta urinish" yoki "Rasmsiz saqlash"
         if (!photo.handleSaveError(err)) setSaveError(errorText(err))
         // Batch 12 (G): chek boshqa xaridda — chek kartasida "olib tashlash" izohi
@@ -618,7 +662,7 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
     },
     // resetEntry — faqat setState va photo.reset (photo deps ichida)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onBalanceChange, profile, preparingPhoto, objectId, materialId, unitId, qty, sum, supplier, resolveSupplier, photo, draftId, note, material, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, receipt, request, geo, entryDate, isAdmin],
+    [onBalanceChange, profile, preparingPhoto, objectId, materialId, unitId, qty, sum, supplier, resolveSupplier, photo, draftIds, note, material, photoMissing, qtyBase, recent, settings.duplicateWindowMinutes, receipt, request, geo, entryDate, isAdmin, canReceive],
   )
 
   const onMainButton = useCallback(() => {
@@ -649,11 +693,19 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
   useMainButton(
     duplicate ? ta.duplicateSave : tp.save,
     step === 'details' ? (duplicate ? saveDuplicate : onMainButton) : null,
-    preparingPhoto || photoMissing,
+    // Rasm majburiy, lekin tanlanmagan — tugma faol: bosilsa rasm maydoniga aylantiriladi (save)
+    preparingPhoto,
     saving,
   )
   // Qoralamada ma'lumot bor — Telegram yopishdan oldin so'raydi
   useClosingConfirmation(Boolean(materialId) || qty.trim() !== '' || sum.trim() !== '' || note.trim() !== '')
+  // Kiritilgan ma'lumot — sahifa (PurchasePage) bo'limdan chiqishdan oldin tasdiq so'raydi
+  const dirty =
+    qty.trim() !== '' || sum.trim() !== '' || note.trim() !== '' || photo.photo !== null || (supplier.kind === 'new' && supplier.name.trim() !== '')
+  useEffect(() => {
+    onDirtyChange(dirty)
+  }, [dirty, onDirtyChange])
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange])
   const receiptView = receipt
     ? {
         receiptNo: receipt.qr.receiptNo,
@@ -693,7 +745,31 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
 
   return (
     <div className="flex flex-col gap-4">
-      {savedText && <SavedBanner meta={savedText.meta}>{savedText.text}</SavedBanner>}
+      {savedText && (
+        <SavedBanner
+          meta={savedText.meta}
+          action={
+            savedText.receive ? (
+              <Button
+                variant="secondary"
+                size="md"
+                icon={<ArrowDownLeft aria-hidden className="size-5" strokeWidth={2} />}
+                onClick={() => {
+                  const receive = savedText.receive
+                  if (!receive) return
+                  haptic.tap()
+                  saveEntryType('kirim')
+                  navigate('/tg/movement', { state: makeMovementPrefillState(receive) })
+                }}
+              >
+                {t.tg.pending.receiveNow}
+              </Button>
+            ) : null
+          }
+        >
+          {savedText.text}
+        </SavedBanner>
+      )}
 
       {loadError && <RetryNotice message={loadError} onRetry={() => setReloadKey((k) => k + 1)} />}
       {!loadError && (!objects || !materials) && <SkeletonRows rows={3} />}
@@ -703,7 +779,7 @@ function MaterialPurchase({ onBalanceChange }: { onBalanceChange: () => void }) 
         <>
           {step === 'object' && allObjectsMode && <ApprovedRequestChips requests={approvedRows} onPick={pickRequest} groupByObject />}
           {step === 'object' ? (
-            <ObjectChooser objects={objects} selectedId={objectId} lastUsed={loadLastObject()} onPick={chooseObject} />
+            <ObjectChooser objects={objects} selectedId={objectId} lastUsed={loadLastPurchaseObject()} onPick={chooseObject} />
           ) : (
             object && <ObjectBar object={object} onChange={manyObjects ? () => setPickingObject(true) : null} />
           )}
@@ -835,6 +911,9 @@ export function PurchasePage() {
   }, [companyId, profileId, balanceKey])
 
   const refreshBalance = useCallback(() => setBalanceKey((k) => k + 1), [])
+  // Material/Xarajat formasi to'ldirilgan — rejim almashtirish va boshqa bo'limga o'tishdan oldin tasdiq
+  const [formDirty, setFormDirty] = useState(false)
+  const discard = useDiscardGuard(formDirty)
   if (!profile) return null
   return (
     <div className="flex flex-col gap-4">
@@ -844,8 +923,10 @@ export function PurchasePage() {
         size="lg"
         onChange={(next) => {
           haptic.select()
-          setMode(next)
-          savePurchaseMode(next)
+          discard.guard(() => {
+            setMode(next)
+            savePurchaseMode(next)
+          })
         }}
         options={[
           { value: 'material', label: te.modeMaterial, tone: 'navy', icon: <ShoppingCart aria-hidden strokeWidth={1.75} /> },
@@ -864,7 +945,12 @@ export function PurchasePage() {
           <CashHistory profileId={profile.id} />
         </BottomSheet>
       )}
-      {mode === 'material' ? <MaterialPurchase onBalanceChange={refreshBalance} /> : <ExpenseEntry profile={profile} onSaved={refreshBalance} />}
+      {mode === 'material' ? (
+        <MaterialPurchase onBalanceChange={refreshBalance} onDirtyChange={setFormDirty} />
+      ) : (
+        <ExpenseEntry profile={profile} onSaved={refreshBalance} onDirtyChange={setFormDirty} />
+      )}
+      {discard.element}
     </div>
   )
 }

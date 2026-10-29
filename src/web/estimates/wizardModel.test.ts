@@ -1,10 +1,14 @@
-import type { ParsedRow } from '@/domain/estimate'
+import type { EstimateItem } from '@/data/types'
+import { diffEstimates, type ParsedRow } from '@/domain/estimate'
 import { makeMaterial, makeUnit } from '@/test/fixtures'
 import {
   buildPlan,
   collectItems,
   columnLetter,
   estimateDateValid,
+  estimateItemsToDiff,
+  planToDiffItems,
+  type PlanRow,
   sanitizeMapping,
   shiftRowNumbers,
   toImportItems,
@@ -131,5 +135,34 @@ describe('ko‘rib chiqish tuzatishlari', () => {
   it('O5: aniq moslikda muqobil nom saqlanmaydi', () => {
     const plan = buildPlan({ items: [item({ price: '1', sum: null })], materials: [sement], decisions: {}, answers: {}, canCatalog: true })
     expect(plan.aliases).toHaveLength(0)
+  })
+})
+
+describe('farq qatorlari — asosiy birlik (aralash т / кг)', () => {
+  const est = (over: Partial<EstimateItem>): EstimateItem => ({
+    id: 'i', estimate_id: 'e', item_type: 'material', name: 'Sement', material_id: 'm1', unit: 'кг', unit_id: null,
+    qty: '1', unit_price: null, line_sum: null, norm_qty_base: '1', sort_order: 1, code: null, row_number: 1,
+    material_name: 'Sement', base_unit: 'kg', ...over,
+  })
+  const planRow = (unit: string, qty: string, qtyBase: string): PlanRow => ({
+    item: { rowNumber: 1, name: 'Sement', unit, qty, price: null, sum: null, type: 'material', code: '', sumMismatch: false },
+    groupKey: 'g', itemType: 'material', materialKey: 'm1', materialName: 'Sement', baseUnit: 'kg',
+    unitRef: null, unitText: unit, factor: null, qtyBase, sum: '0', warnings: [],
+  })
+
+  it('saqlangan versiya: material qatorida baseUnit = base_unit; ish qatorida null', () => {
+    const d = estimateItemsToDiff([est({}), est({ item_type: 'ish', material_id: null, base_unit: null })])
+    expect(d.map((x) => x.baseUnit)).toEqual(['kg', null])
+  })
+
+  it('т + кг (eski) va 1500 кг (yangi) — asosiy birlikda yig‘iladi, farq yo‘q (birlik bo‘yicha bo‘linmaydi)', () => {
+    const prev = estimateItemsToDiff([
+      est({ unit: 'т', qty: '1', norm_qty_base: '1000' }),
+      est({ id: 'i2', unit: 'кг', qty: '500', norm_qty_base: '500' }),
+    ])
+    const next = planToDiffItems({ rows: [planRow('кг', '1500', '1500')] })
+    expect(next[0]?.baseUnit).toBe('kg')
+    const r = diffEstimates(prev, next)
+    expect(r).toMatchObject({ added: [], removed: [], changed: [], unchangedCount: 1 })
   })
 })

@@ -101,6 +101,7 @@ export function purchasesSheet(rows: Purchase[]): ExportSheetSpec {
       { header: c.remaining, key: 'remaining', type: 'qty' },
       { header: c.buyer, key: 'buyer', type: 'text' },
       { header: c.supplier, key: 'supplier', type: 'text' },
+      { header: c.paymentSource, key: 'payment_source', type: 'text' },
       { header: c.note, key: 'note', type: 'text' },
       { header: c.deleted, key: 'deleted', type: 'text' },
     ],
@@ -119,6 +120,7 @@ export function purchasesSheet(rows: Purchase[]): ExportSheetSpec {
         remaining: p.receipt?.remaining_qty_base ?? null,
         buyer: p.buyer_name,
         supplier: p.supplier_name,
+        payment_source: p.payment_source ? t.purchases.paymentSources[p.payment_source] : null,
         note: p.note,
         deleted: yesNo(p.deleted_at),
       }),
@@ -215,6 +217,7 @@ export function materialsSheets(materials: Material[]): ExportSheetSpec[] {
         { header: c.wastePct, key: 'waste_pct', type: 'qty' },
         { header: c.active, key: 'active', type: 'text' },
         { header: c.photoRequired, key: 'photo_required', type: 'text' },
+        { header: c.outsideEstimate, key: 'outside_estimate', type: 'text' },
         { header: c.aliases, key: 'aliases', type: 'text' },
       ],
       rows: materials.map(
@@ -225,6 +228,7 @@ export function materialsSheets(materials: Material[]): ExportSheetSpec[] {
           waste_pct: m.waste_pct,
           active: yesNo(m.is_active),
           photo_required: yesNo(m.photo_required),
+          outside_estimate: yesNo(m.outside_estimate),
           aliases: m.aliases.map((a) => a.alias).join(', '),
         }),
       ),
@@ -304,24 +308,30 @@ export function cashSheets(
         { header: c.date, key: 'at', type: 'datetime' },
         { header: c.person, key: 'person', type: 'text' },
         { header: c.kind, key: 'kind', type: 'text' },
+        { header: c.source, key: 'source', type: 'text' },
         { header: c.amount, key: 'amount', type: 'money' },
         { header: c.material, key: 'material', type: 'text' },
+        { header: c.expenseCategory, key: 'category', type: 'text' },
         { header: c.object, key: 'object', type: 'text' },
         { header: c.note, key: 'note', type: 'text' },
         { header: c.deleted, key: 'deleted', type: 'text' },
       ],
-      rows: history.map(
-        (h): ExportRow => ({
+      rows: history.map((h): ExportRow => {
+        // Sarf: xarid (material) yoki xarajat (xarajat turi; obyektsiz — "Umumiy")
+        const expense = h.kind === 'spent' && h.source === 'expense'
+        return {
           at: h.at,
           person: h.profileName,
-          kind: t.excel.cashKinds[h.kind],
+          kind: expense ? t.excel.cashKinds.spentExpense : t.excel.cashKinds[h.kind],
+          source: h.kind === 'spent' ? t.excel.sources[expense ? 'expense' : 'purchase'] : null,
           amount: h.amount,
-          material: h.kind === 'spent' ? h.materialName : null,
-          object: h.kind === 'spent' ? h.objectName : null,
+          material: h.kind === 'spent' && !expense ? h.materialName : null,
+          category: expense ? h.materialName : null,
+          object: h.kind === 'spent' ? (expense ? (h.objectName ?? t.expenses.general) : h.objectName) : null,
           note: h.note,
           deleted: yesNo(h.deletedAt),
-        }),
-      ),
+        }
+      }),
     },
   ]
 }

@@ -1,12 +1,14 @@
 // Xarajatlar (ombordan tashqari: oziq-ovqat, yoqilg'i, transport …) — docs/expenses-design.md.
 // Qoldiqqa ta'sir qilmaydi; podotchet xarajat to'lovchining qo'lidagi puldan ayiriladi (server).
 // Tuzatish va bekor qilish — `correct_entry('expenses', …)` / `cancel_own_entry` (src/data/correctionsRepo.ts).
+import { decEq, ensureSameDraft } from './draftConflict'
 import { isPkeyConflict, toRepoError } from './errors'
 import { chunkOpts, fetchAll, inChunks, type ChunkOpts } from './fetchAll'
 import { geoColumns, GEO_SELECT } from './geo'
 import { attachNames } from './profileDirectory'
 import { softDeleteById, updateById } from './rowUpdate'
 import { cleanTin } from './suppliersRepo'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { AlertType, Expense, GeoFix, PaymentSource } from './types'
 import type { PurchaseReceiptQr } from './purchasesRepo'
@@ -130,7 +132,8 @@ async function finish(raw: RawExpense[], alerts = true): Promise<Expense[]> {
 
 /**
  * Xarajat yaratadi. Idempotent: oldingi urinish aslida saqlangan bo'lsa, shu `id` bilan `expenses_pkey`
- * 23505 keladi — unda saqlangan qator o'qib qaytariladi.
+ * 23505 keladi — unda saqlangan qator o'qib qaytariladi; boshqa yozuv bo'lsa (tur, obyekt yoki summa farq
+ * qiladi) — `draft_conflict`.
  */
 export async function createExpense(input: NewExpense): Promise<Expense> {
   const row: Record<string, unknown> = {
@@ -160,7 +163,14 @@ export async function createExpense(input: NewExpense): Promise<Expense> {
   if (error) {
     if (isPkeyConflict(error, 'expenses_pkey')) {
       const existing = await getExpenseById(input.id).catch(() => null)
-      if (existing) return existing
+      if (existing) {
+        return ensureSameDraft(
+          existing,
+          existing.category_id === input.categoryId &&
+            (existing.object_id ?? null) === (input.objectId || null) &&
+            decEq(existing.amount, input.amount),
+        )
+      }
     }
     throw toRepoError(error)
   }
@@ -193,7 +203,7 @@ async function loadExpenses(
   to: number,
   opts: ChunkOpts = { count: true },
 ): Promise<{ rows: Expense[]; total: number | null }> {
-  let q = getSupabase().from('expenses').select(EXPENSE_SELECT, opts.count ? { count: 'exact' } : undefined)
+  let q = scopeCompany(getSupabase().from('expenses').select(EXPENSE_SELECT, opts.count ? { count: 'exact' } : undefined))
   if (!filters.includeDeleted) q = q.is('deleted_at', null)
   if (filters.categoryId) q = q.eq('category_id', filters.categoryId)
   if (filters.objectId === NO_OBJECT) q = q.is('object_id', null)

@@ -3,9 +3,19 @@ import { useAuth } from '@/auth/authContext'
 import { ProfileErrorScreen } from '@/auth/screens'
 import { Clock, Copy, ExternalLink, LoaderCircle, Monitor, Phone, RefreshCw, Send, ShieldX, WifiOff } from 'lucide-react'
 import { Button, cx, FullPageSpinner, Notice, Wordmark } from '@/components/ui'
-import { clearLocalSession, getSession, telegramSignIn, type TelegramSignInStatus } from '@/data/authRepo'
+import { clearLocalSession, telegramSignIn, type TelegramSignInStatus } from '@/data/authRepo'
 import { t } from '@/i18n'
-import { botLink, closeApp, getInitData, haptic, isInsideTelegram, openExternalLink, requestContact, stripLaunchParamsFromUrl } from './telegram'
+import {
+  botLink,
+  closeApp,
+  getInitData,
+  haptic,
+  initTelegram,
+  isInsideTelegram,
+  openExternalLink,
+  requestContact,
+  stripLaunchParamsFromUrl,
+} from './telegram'
 
 type GateState =
   | 'outside'
@@ -38,17 +48,11 @@ async function signInOnce(refreshSession: () => Promise<void>): Promise<Telegram
   if (status === 'ok') {
     stripLaunchParamsFromUrl()
     await refreshSession()
-  } else if (status === 'reopen') {
-    // initData eskirgan yoki takroriy — bu "begona foydalanuvchi" emas. Qurilmada yaroqli sessiya bo'lsa,
-    // u bilan davom etiladi (sessiya o'chirilmaydi); sessiya yo'q bo'lsagina "Qayta oching" ekrani.
-    const session = await getSession().catch(() => null)
-    if (session) {
-      await refreshSession()
-      return 'ok'
-    }
   } else {
-    // Server bu Telegram foydalanuvchisini tanimadi — qurilmadagi eski sessiya (boshqa odamniki
-    // bo'lishi mumkin) ishlatilmasin
+    // Server sessiyani tasdiqlamadi: begona foydalanuvchi, yoki initData eskirgan / takroriy /
+    // session_mismatch ("reopen"). Amaldagi sessiya shu foydalanuvchiniki bo'lsa server uni eski
+    // initData bilan ham tasdiqlaydi — demak qurilmadagi sessiya (boshqa odamniki bo'lishi mumkin)
+    // ishlatilmaydi (audit 3, E1).
     await clearLocalSession().catch(() => undefined)
   }
   return status
@@ -126,6 +130,12 @@ function WebOnlyActions() {
 export function TgAuthGate({ children, pollIntervalMs = 2000, pollTimeoutMs = 30000 }: Props) {
   const { profile, profileError, notice, refreshSession } = useAuth()
   const [state, setState] = useState<GateState>(() => (isInsideTelegram() ? 'checking' : 'outside'))
+
+  // Mini App ochilishi bilan (kirishdan oldin ham): ready(), to'liq ekran, bizning ranglarimiz — aks holda
+  // kirish / kontakt ekranlari Telegram mavzusi rangida va yarim oynada ko'rinardi
+  useEffect(() => {
+    initTelegram()
+  }, [])
 
   // Birinchi tekshiruv (va "Qayta urinish")
   useEffect(() => {

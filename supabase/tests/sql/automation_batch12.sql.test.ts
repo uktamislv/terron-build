@@ -292,6 +292,8 @@ describe('A: kirim_manbasiz va xarid nomzodlari', () => {
         obj: A.ids.obj3!, mat: A.ids.m2, qty: '100', total: '100000',
         at: new Date(Date.now() - 30 * 3600_000).toISOString(),
       })
+      // audit3 D6: kutish greatest(purchased_at, created_at) + 24 soat — xarid o'z vaqtida kiritilgan
+      await raw(tx, `update public.purchases set created_at = purchased_at where id = $1`, [p])
       const k = await mv(tx, 'kirim', A.ids.obj3!, '98', { mat: A.ids.m2, at: new Date(Date.now() - 29 * 3600_000).toISOString() })
       await sys(tx, () => tx.query(`select private.evaluate_purchase_receipt($1)`, [p]))
       return {
@@ -313,6 +315,8 @@ describe('A: kirim_manbasiz va xarid nomzodlari', () => {
         obj: A.ids.obj3!, mat: A.ids.m2, qty: '100', total: '100000',
         at: new Date(Date.now() - 30 * 3600_000).toISOString(),
       })
+      // audit3 D6: kutish greatest(purchased_at, created_at) + 24 soat — xarid o'z vaqtida kiritilgan
+      await raw(tx, `update public.purchases set created_at = purchased_at where id = $1`, [p])
       const k = await mv(tx, 'kirim', A.ids.obj3!, '50', { mat: A.ids.m2, at: new Date(Date.now() - 29 * 3600_000).toISOString() })
       // 72 soatdan tashqari (oldin) — nomzod emas
       await mv(tx, 'kirim', A.ids.obj3!, '40', { mat: A.ids.m2, at: new Date(Date.now() - 31 * 3600_000).toISOString() })
@@ -732,7 +736,12 @@ describe('G: chek', () => {
   it('chek_farqi: farq aynan 1 — yo`q; > 1 — ogohlantirish; tuzatilsa yopiladi; receipt_total null — yo`q', async () => {
     const r = await as('admin', async (tx) => {
       const me = P('admin')
-      // QR skanerlangan, lekin sahifa ochilmagan (keshsiz) — receipt_total klientdan saqlanadi
+      // Chek summasi faqat keshdan (receipt-lookup): keshsiz klient receipt_total / seller_tin saqlanmaydi (audit3 D8)
+      await sys(tx, async () => {
+        for (const s of ['700000000001', '700000000003']) {
+          await tx.query(`select public.svc_upsert_receipt_lookup($1, null, $2, null, null, '{}', 1000, null, null, null)`, [A.id, s])
+        }
+      })
       const ok = await purchase(tx, me, { obj: A.ids.obj1!, qty: '1', total: '1001', extra: { receipt_total: '1000', receipt_fiscal_sign: '700000000001' } })
       const none = await purchase(tx, me, { obj: A.ids.obj1!, qty: '2', total: '5000' })
       const bad = await purchase(tx, me, { obj: A.ids.obj1!, qty: '3', total: '1001.01', extra: { receipt_total: '1000', receipt_fiscal_sign: '700000000003' } })
@@ -812,6 +821,10 @@ describe('G: chek', () => {
 
   it('P2-8: Telegram "Ko`rildi" belgilari qayta baholashda saqlanadi (chek_farqi)', async () => {
     const r = await as('admin', async (tx) => {
+      // audit3 D8: chek summasi keshdan
+      await sys(tx, () =>
+        tx.query(`select public.svc_upsert_receipt_lookup($1, null, '800000000004', null, null, '{}', 1000, null, null, null)`, [A.id]),
+      )
       const p = await purchase(tx, P('admin'), { obj: A.ids.obj1!, qty: '1', total: '2000', extra: { receipt_fiscal_sign: '800000000004', receipt_total: '1000' } })
       const a = (await alertsOf(tx, 'chek_farqi', 'purchase_id = $1', [p]))[0]!
       await sys(tx, async () => {

@@ -3,6 +3,7 @@ import { isZero } from '@/domain/decimal'
 import { evaluateRequest } from '@/domain/norms'
 
 export type RequestNormState =
+  | { kind: 'outside' }
   | { kind: 'no_estimate' }
   | { kind: 'not_in_estimate' }
   | { kind: 'ok' | 'over'; available: string; overQty: string }
@@ -10,6 +11,8 @@ export type RequestNormState =
 /**
  * So'rov uchun smeta holati. `objectNorms` — obyektning barcha `norm_usage` qatorlari (bo'sh — obyektda
  * joriy smeta yo'q). `otherOpenQtyBase` berilmasa — `requested_open_qty_base` (yangi so'rov uchun).
+ * `outsideEstimate` — material "smetaga kirmaydi" (`materials.outside_estimate`): server qoida 6 ni
+ * bunday materialda tekshirmaydi, shuning uchun birinchi navbatda `outside` qaytadi.
  * Faqat ogohlantirish — saqlashni bloklamaydi.
  */
 export function requestNormState(
@@ -17,7 +20,9 @@ export function requestNormState(
   materialId: string,
   qtyBase: string | null,
   otherOpenQtyBase?: string,
+  opts: { outsideEstimate?: boolean } = {},
 ): RequestNormState {
+  if (opts.outsideEstimate) return { kind: 'outside' }
   if (objectNorms.length === 0) return { kind: 'no_estimate' }
   const norm = objectNorms.find((n) => n.material_id === materialId)
   if (!norm || isZero(norm.norm_qty_base)) return { kind: 'not_in_estimate' }

@@ -39,10 +39,10 @@ const R = {
 }
 
 const RPC_SIGS = [
-  'public.dashboard_summary(date, date, uuid)',
-  'public.dashboard_daily(date, date, uuid)',
-  'public.spend_breakdown(date, date, uuid, text)',
-  'public.norm_overview(uuid)',
+  'public.dashboard_summary(date, date, uuid, uuid)', // audit3 tekshiruvi: + p_company_id
+  'public.dashboard_daily(date, date, uuid, uuid)',
+  'public.spend_breakdown(date, date, uuid, text, uuid)',
+  'public.norm_overview(uuid, uuid)',
 ] as const
 
 async function ins(table: string, values: Row): Promise<string> {

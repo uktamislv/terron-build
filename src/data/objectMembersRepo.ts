@@ -1,5 +1,6 @@
 import { toRepoError } from './errors'
 import { softDeleteById } from './rowUpdate'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { ObjectMember } from './types'
 
@@ -8,10 +9,7 @@ const MEMBER_ERRORS = { '23505': 'already_member' } as const
 
 /** Faol biriktirishlar (RLS: firma rollari — hammasi, boshqalar — o'z qatorlari). */
 export async function listObjectMembers(): Promise<ObjectMember[]> {
-  const { data, error } = await getSupabase()
-    .from('object_members')
-    .select(MEMBER_COLUMNS)
-    .is('deleted_at', null)
+  const { data, error } = await scopeCompany(getSupabase().from('object_members').select(MEMBER_COLUMNS).is('deleted_at', null))
   if (error) throw toRepoError(error, MEMBER_ERRORS)
   return (data ?? []) as ObjectMember[]
 }

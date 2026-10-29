@@ -163,8 +163,8 @@ afterAll(async () => {
 // ============================================================================
 describe('ruxsatlar va metama`lumot', () => {
   const SIGS = [
-    'public.audit_feed(date, date, text, text, uuid, text, uuid, bigint, integer)',
-    'public.deleted_records(date, date, text, integer, integer)',
+    'public.audit_feed(date, date, text, text, uuid, text, uuid, bigint, integer, uuid)', // audit3 tekshiruvi: + p_company_id
+    'public.deleted_records(date, date, text, integer, integer, uuid)',
     'public.restore_record(text, uuid)',
     'private.audit_record_label(text, uuid, jsonb, jsonb)',
   ]
@@ -828,7 +828,8 @@ describe('O3 / P7 — tiklash signali va qoida zanjirlari', () => {
     expect(types(r.afterDel)).toEqual(['yozuv_ochirildi', 'yozuv_ochirildi'])
     expect({ ra: r.ra, rb: r.rb }).toEqual({ ra: 'OK:1', rb: 'OK:1' })
     expect(types(r.openA)).toEqual(['narx_ogishi', 'ozi_qabul_qilgan', 'yozuv_tiklandi'])
-    expect(types(r.openB)).toEqual(['xarid_qabul_farqi', 'yozuv_tiklandi'])
+    // audit3 D6: tiklash — zanjir rejimi, yangi xarid_qabul_farqi ni soatlik cron yaratadi (kutish kiritilgan vaqtdan)
+    expect(types(r.openB)).toEqual(['yozuv_tiklandi'])
     expect(r.closedDel).toEqual([
       expect.objectContaining({ status: 'yopildi', details: expect.objectContaining({ closed_reason: 'restored', auto_closed: true }) }),
     ])

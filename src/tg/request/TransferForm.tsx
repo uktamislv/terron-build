@@ -8,7 +8,8 @@ import { toBaseQty, unitLabel, validateQtyInput } from '@/domain/units'
 import { t } from '@/i18n'
 import { errorText } from '@/i18n/errorText'
 import { formatQty } from '@/lib/format'
-import { uuid } from '@/lib/uuid'
+import { errorCodeOf } from '@/data/errors'
+import { draftFingerprint, useDraftId } from '../entry/useDraftId'
 import { BaseQtyBox } from '../entry/BaseQtyBox'
 import { MaterialGrid } from '../entry/MaterialGrid'
 import { ObjectBar, ObjectChooser } from '../entry/ObjectPicker'
@@ -38,7 +39,10 @@ export function TransferForm({
   materials,
   pinnedIds,
   onSaved,
+  onDirtyChange,
 }: {
+  /** Formada kiritilgan ma'lumot bor/yo'q — sahifa chiqishdan oldin tasdiq so'raydi. */
+  onDirtyChange?: (dirty: boolean) => void
   /** Batch 12 (L): oxirgi birlik/miqdor uchun. */
   profileId: string
   objects: ObjectRow[]
@@ -60,7 +64,8 @@ export function TransferForm({
   const [unitId, setUnitId] = useState<string | null>(null)
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
-  const [draftId, setDraftId] = useState(() => uuid())
+  // Qoralama id'si: xatodan keyin qayerdan/qayerga, material, birlik yoki miqdor o'zgarsa — yangi id
+  const draftIds = useDraftId()
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
@@ -112,6 +117,7 @@ export function TransferForm({
     savingRef.current = true
     setSaving(true)
     setSaveError(null)
+    const draftId = draftIds.idFor(draftFingerprint([fromId, to.id, materialId, unitId, result.qtyInput]))
     try {
       await createTransfer({
         id: draftId,
@@ -134,16 +140,18 @@ export function TransferForm({
       setQty('')
       setNote('')
       setFieldErrors({})
-      setDraftId(uuid())
+      draftIds.renew()
       onSaved()
     } catch (err) {
       haptic.error()
+      // Shu id bilan avval boshqa o'tkazma saqlangan (server `transfer_id_reused`) — keyingi urinish yangi id bilan
+      if (errorCodeOf(err) === 'transfer_id_reused') draftIds.renew()
       setSaveError(errorText(err))
     } finally {
       savingRef.current = false
       setSaving(false)
     }
-  }, [fromId, materialId, unitId, qty, toOptions, selectedToId, draftId, note, unit, material, onSaved, profileId])
+  }, [fromId, materialId, unitId, qty, toOptions, selectedToId, draftIds, note, unit, material, onSaved, profileId])
 
   const onMain = useCallback(() => void save(), [save])
   const onBack = useCallback(() => {
@@ -155,6 +163,11 @@ export function TransferForm({
   useBackButton(canGoBack ? onBack : null)
   useMainButton(tt.save, step === 'details' && toOptions.length > 0 ? onMain : null, false, saving)
   useClosingConfirmation(Boolean(materialId) || qty.trim() !== '' || note.trim() !== '')
+  const dirty = qty.trim() !== '' || note.trim() !== ''
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange])
   const insideTelegram = getWebApp() !== null
 
   return (

@@ -1,6 +1,8 @@
-import { useCallback, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { Fragment, useCallback, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { BellRing, Bug, CircleHelp, KeyRound, LogOut, Menu, X } from 'lucide-react'
+import { useActiveCompany } from '@/auth/activeCompany'
+import { ActiveCompanyProvider } from '@/auth/ActiveCompanyProvider'
 import { useAuth } from '@/auth/authContext'
 import { ChangePasswordForm } from '@/auth/ChangePasswordForm'
 import { BugReportForm } from '@/components/bugReport/BugReportForm'
@@ -21,11 +23,54 @@ function DrawerBehaviour({ target, onClose }: { target: RefObject<HTMLElement | 
   return null
 }
 
+/** super_admin: faol firma tanlagichi (yon menyudagi foydalanuvchi bloki). Boshqa rollarga ko'rinmaydi. */
+function CompanySwitcher() {
+  const active = useActiveCompany()
+  const id = useId()
+  if (!active?.canSwitch || active.companies.length === 0) return null
+  return (
+    <div className="flex flex-col gap-1 px-1 pb-2 lg:hidden xl:flex">
+      <label htmlFor={id} className="text-xs text-navy-muted">
+        {t.companies.switcher}
+      </label>
+      <select
+        id={id}
+        value={active.companyId}
+        title={t.companies.switcherHint}
+        onChange={(e) => active.setCompanyId(e.target.value)}
+        className="min-h-11 w-full rounded-xl border border-white/15 bg-white/10 px-3 text-sm text-white [&>option]:text-ink"
+      >
+        {/* Tanlangan firma ro'yxatda bo'lmasa ham (masalan hali yuklanmagan) — ko'rinsin */}
+        {!active.companies.some((c) => c.id === active.companyId) && <option value={active.companyId}>—</option>}
+        {active.companies.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.is_active ? c.name : `${c.name} (${t.companies.inactive})`}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+/** Sahifalar faol firma almashganda qaytadan yuklanadi (har sahifa o'z ro'yxatini qayta so'raydi). */
+function CompanyKeyed({ children }: { children: ReactNode }) {
+  const active = useActiveCompany()
+  return <Fragment key={active?.companyId ?? ''}>{children}</Fragment>
+}
+
 /**
  * Veb panel: navy yon menyu (≥ 1280 — keng, 1024–1279 — faqat belgilar + tooltip, < 1024 — varaq),
  * pastda foydalanuvchi bloki. Kontent chapga tekislangan, maksimal 1280 px.
  */
 export function WebLayout({ children }: { children?: ReactNode } = {}) {
+  return (
+    <ActiveCompanyProvider>
+      <WebShell>{children}</WebShell>
+    </ActiveCompanyProvider>
+  )
+}
+
+function WebShell({ children }: { children?: ReactNode }) {
   const [open, setOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
   // Ish xabarlari (so'rov, o'tkazma, xarid) — o'z profilida; direktorga tegishli emas
@@ -111,6 +156,7 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
         </nav>
         {profile && (
           <div className="shrink-0 border-t border-white/10 p-3">
+            <CompanySwitcher />
             <div className="flex items-center gap-3 px-1 py-2 lg:justify-center xl:justify-start">
               <span
                 aria-hidden
@@ -208,10 +254,12 @@ export function WebLayout({ children }: { children?: ReactNode } = {}) {
             className="text-ink"
             onClick={() => setOpen(true)}
           />
-          <Wordmark className="ml-1 text-2xl" />
+          <NavLink to="/" end className="ml-1 inline-flex min-h-11 items-center rounded-lg">
+            <Wordmark className="text-2xl" />
+          </NavLink>
         </header>
         <main className="w-full max-w-7xl flex-1 px-4 py-4 md:px-6 md:py-6 lg:px-8 lg:py-8 print:max-w-none print:p-0">
-          {children ?? <Outlet />}
+          <CompanyKeyed>{children ?? <Outlet />}</CompanyKeyed>
         </main>
       </div>
       {bugOpen && profile && (

@@ -2,6 +2,7 @@ import { isUuid } from '@/lib/uuid'
 import { RepoError, toRepoError } from './errors'
 import { fetchAll, inChunks } from './fetchAll'
 import { attachNames } from './profileDirectory'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { Transfer, TransferStatus } from './types'
 
@@ -114,7 +115,7 @@ export async function listTransfers(
   filters: TransferFilters = {},
   page = 0,
 ): Promise<{ rows: Transfer[]; total: number }> {
-  let q = getSupabase().from('transfers').select(TRANSFER_SELECT, { count: 'exact' }).is('deleted_at', null)
+  let q = scopeCompany(getSupabase().from('transfers').select(TRANSFER_SELECT, { count: 'exact' }).is('deleted_at', null))
   if (filters.status) q = q.eq('status', filters.status)
   if (filters.objectId) {
     // .or() satri filtr sintaksisi — faqat UUID qo'yiladi
@@ -140,6 +141,7 @@ export async function listAllTransfers(filters: TransferFilters = {}, signal?: A
         .select(TRANSFER_SELECT, req.first ? { count: 'exact' } : undefined)
         .is('deleted_at', null)
         .lte('created_at', req.before)
+      q = scopeCompany(q)
       if (filters.status) q = q.eq('status', filters.status)
       if (filters.objectId) q = q.or(`from_object_id.eq.${filters.objectId},to_object_id.eq.${filters.objectId}`)
       let ranged = q.order('created_at', { ascending: false }).order('id').range(req.from, req.to)

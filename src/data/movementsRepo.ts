@@ -1,8 +1,10 @@
+import { decEq, ensureSameDraft } from './draftConflict'
 import { isPkeyConflict, toRepoError } from './errors'
 import { chunkOpts, fetchAll, type ChunkOpts } from './fetchAll'
 import { softDeleteById, updateById } from './rowUpdate'
 import { geoColumns, GEO_SELECT } from './geo'
 import { attachNames } from './profileDirectory'
+import { scopeCompany } from './companyScope'
 import { getSupabase } from './supabaseClient'
 import type { GeoFix, Movement, MovementKind } from './types'
 
@@ -92,7 +94,8 @@ function clean(value: string | null | undefined): string | null {
 /**
  * Kirim/chiqim yaratadi. Javob — saqlangan qator (bazada hisoblangan `qty_base` bilan).
  * Idempotent: oldingi urinish aslida saqlangan bo'lsa (javob yo'qolgan), shu `id` bilan 23505 keladi —
- * unda saqlangan qator o'qib qaytariladi.
+ * unda saqlangan qator o'qib qaytariladi. U boshqa yozuv bo'lsa (tur, obyekt, material, birlik yoki miqdor
+ * farq qiladi) — `draft_conflict`.
  */
 export async function createMovement(input: NewMovement): Promise<Movement> {
   const row: Record<string, unknown> = {
@@ -116,7 +119,16 @@ export async function createMovement(input: NewMovement): Promise<Movement> {
   if (error) {
     if (isPkeyConflict(error, 'movements_pkey')) {
       const existing = await getMovementById(input.id).catch(() => null)
-      if (existing) return existing
+      if (existing) {
+        return ensureSameDraft(
+          existing,
+          existing.type === input.type &&
+            existing.object_id === input.objectId &&
+            existing.material_id === input.materialId &&
+            existing.unit_id === input.unitId &&
+            decEq(existing.qty_input, input.qtyInput),
+        )
+      }
     }
     throw toRepoError(error)
   }
@@ -147,7 +159,7 @@ async function loadMovements(
   to: number,
   opts: ChunkOpts = { count: true },
 ): Promise<{ rows: Movement[]; total: number | null }> {
-  let q = getSupabase().from('movements').select(MOVEMENT_SELECT, opts.count ? { count: 'exact' } : undefined)
+  let q = scopeCompany(getSupabase().from('movements').select(MOVEMENT_SELECT, opts.count ? { count: 'exact' } : undefined))
   if (!filters.includeDeleted) q = q.is('deleted_at', null)
   if (filters.objectId) q = q.eq('object_id', filters.objectId)
   if (filters.materialId) q = q.eq('material_id', filters.materialId)

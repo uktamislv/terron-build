@@ -7,6 +7,7 @@ import {
   decDiv,
   handleReceiptLookup,
   matchesQr,
+  parseReceiptDocumentChecked,
   MAX_RESPONSE_BYTES,
   parseReceiptDateTime,
   parseReceiptDocument,
@@ -45,6 +46,7 @@ const API_JSON = JSON.stringify({
   data: {
     tin: '301234567',
     paymentDate: '2026-10-20 14:30:05',
+    fiscalSign: '111122223333',
     isRefund: 0,
     receiptType: 0,
     cashTotal: 150000,
@@ -326,6 +328,15 @@ describe('QR bilan moslik (fiskal belgi, terminal)', () => {
   })
 })
 
+describe('parseReceiptDocumentChecked (audit 3, E6)', () => {
+  it('fiskal belgi bor va teng → verified; yo‘q → verified false (QR qiymati qo‘yiladi)', () => {
+    expect(parseReceiptDocumentChecked(API_JSON, 'application/json', QR)?.verified).toBe(true)
+    const none = parseReceiptDocumentChecked('<table><tr><td>Jami to‘lov</td><td>5 000,00</td></tr></table>', null, QR)
+    expect(none?.verified).toBe(false)
+    expect(none?.receipt.fiscalSign).toBe(QR.fiscalSign)
+  })
+})
+
 describe('coerceReceiptData (kesh)', () => {
   it('to\'g\'ri qiymat — o\'zgarmaydi (round-trip)', () => {
     const r = parseReceiptDocument(API_JSON, 'application/json', QR) as ReceiptData
@@ -431,12 +442,26 @@ describe('handleReceiptLookup', () => {
     expect((r.body as { cached: boolean }).cached).toBe(false)
     expect((r.body as { receipt: ReceiptData }).receipt.total).toBe('1500000.5')
     expect(puts.length).toBe(1)
+    expect((r.body as { verified: boolean }).verified).toBe(true)
+  })
+  it('audit 3 (E6): sahifada fiskal belgi yo‘q → 200, verified: false, keshga yozilmaydi', async () => {
+    const j = JSON.parse(API_JSON) as { data: Record<string, unknown> }
+    const body = JSON.stringify({ ...j, data: { ...j.data, fiscalSign: null } })
+    const { deps, puts } = fake({ page: { ok: true, body, contentType: 'application/json' } })
+    const r = await handleReceiptLookup(AUTH, { url: URL_CHECK }, deps)
+    expect(r.status).toBe(200)
+    expect(r.body).toMatchObject({ cached: false, verified: false })
+    expect(puts).toEqual([])
+    const html = fake({ page: { ok: true, body: '<table><tr><td>Jami to‘lov</td><td>5 000,00</td></tr></table>', contentType: 'text/html' } })
+    const h = await handleReceiptLookup(AUTH, { url: URL_CHECK }, html.deps)
+    expect(h.body).toMatchObject({ cached: false, verified: false })
+    expect(html.puts).toEqual([])
   })
   it('kesh topilsa — so\'rov yo\'q', async () => {
     const cached = parseReceiptDocument(API_JSON, 'application/json', QR) as ReceiptData
     const { deps, fetched } = fake({ cache: cached })
     const r = await handleReceiptLookup(AUTH, { url: URL_CHECK }, deps)
-    expect(r).toEqual({ status: 200, body: { receipt: cached, cached: true } })
+    expect(r).toEqual({ status: 200, body: { receipt: cached, cached: true, verified: true } })
     expect(fetched).toEqual([])
   })
   it('kesh xatosi — baribir ishlaydi', async () => {

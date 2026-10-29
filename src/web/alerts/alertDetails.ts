@@ -437,6 +437,8 @@ function auditText(a: Pick<Alert, 'type' | 'details' | 'base_unit'>): string | n
         .filter((c) => typeof c.key === 'string')
         .map((c) => td.change(settingLabel(String(c.key)), settingValue(c.before), settingValue(c.after)))
         .join('; ')
+      const target = d.kind === 'material_control' || d.kind === 'expense_category_control' ? str(d, 'target_name') : ''
+      if (target) return td.controlChanged(target, changes, str(d, 'actor_name'))
       return td.settingsChanged(changes, str(d, 'actor_name'))
     }
     case 'login_ozgardi': {

@@ -1,6 +1,6 @@
 // Kirim/chiqim: tanlangan material uchun forma (taqdimot komponenti — holat sahifada, MovementPage).
 import type { ReactNode } from 'react'
-import { Button, Notice, RetryNotice } from '@/components/ui'
+import { Badge, Button, Notice, RetryNotice } from '@/components/ui'
 import type { Material, MaterialUnit, OpenPurchase } from '@/data/types'
 import type { DraftErrorCode, EntryType, MovementWarning } from '@/domain/movements'
 import { t } from '@/i18n'
@@ -11,8 +11,10 @@ import type { LastEntry } from '../entry/lastEntry'
 import { LastQtyChip } from '../entry/LastQtyChip'
 import { PhotoErrorBox, PhotoField, type PickedPhoto } from '../entry/PhotoPicker'
 import { BigNumberInput, MaterialHeader, NoteField } from '../entry/QtyField'
+import { qtyAmbiguityHint } from '../entry/qtyHint'
 import { UnitChips } from '../entry/UnitChips'
 import { LinkedPurchases } from './LinkedPurchases'
+import { EmptyStockNotice, NegativeStockWarning, StockLine } from './StockNotices'
 
 const tm = t.tg.movement
 
@@ -29,6 +31,18 @@ export interface MovementDetailsProps {
   qtyBase: string | null
   /** Chiqimda: joriy qoldiq va chiqimdan keyingisi. */
   stock: { current: string; after: string } | null
+  /**
+   * Chiqimda: forma ochilishi bilan joriy qoldiq (`current` null — yuklanmoqda), `failed` — so'rov xato.
+   * Kirimda — null.
+   */
+  stockNow?: { current: string | null; failed: boolean } | null
+  /** Chiqim, qoldiq ≤ 0: ogohlantirish; `pending` — shu material bo'yicha qabul qilinmagan xarid bor. */
+  stockEmpty?: { pending: boolean } | null
+  onToKirim?: () => void
+  /** Chiqimdan keyin qoldiq manfiy — tasdiq kutilmoqda (keyingi qoldiq). */
+  negativeAfter?: string | null
+  onConfirmNegative?: () => void
+  onCancelNegative?: () => void
   warning: MovementWarning | null
   openPurchases: OpenPurchase[]
   linkedPurchaseId: string | null
@@ -64,9 +78,28 @@ export interface MovementDetailsProps {
 
 export function MovementDetails(p: MovementDetailsProps) {
   const { material } = p
+  const kirim = p.type === 'kirim'
   return (
     <section className="flex flex-col gap-4" aria-label={material.name}>
-      <MaterialHeader name={material.name} onChange={p.onChangeMaterial} />
+      <MaterialHeader
+        name={material.name}
+        onChange={p.onChangeMaterial}
+        // Tur belgisi — almashtirgich ekrandan chiqib ketganda ham nima yozilayotgani ko'rinsin
+        badge={
+          <Badge tone={kirim ? 'ok' : 'info'} className="text-sm">
+            <span data-testid="movement-type-badge">{t.movements.types[kirim ? 'kirim' : 'chiqim']}</span>
+          </Badge>
+        }
+      />
+      {p.type === 'chiqim' && p.stockNow && p.qtyBase === null && (
+        <StockLine current={p.stockNow.current} failed={p.stockNow.failed} unit={material.base_unit} />
+      )}
+      {p.type === 'chiqim' && p.stockNow?.failed && p.qtyBase !== null && (
+        <StockLine current={null} failed unit={material.base_unit} />
+      )}
+      {p.type === 'chiqim' && p.stockEmpty && p.onToKirim && (
+        <EmptyStockNotice pending={p.stockEmpty.pending} onToKirim={p.onToKirim} />
+      )}
 
       <div className="flex flex-col gap-2">
       <BigNumberInput
@@ -76,6 +109,7 @@ export function MovementDetails(p: MovementDetailsProps) {
         onChange={p.onQty}
         suffix={p.unit?.unit ?? null}
         error={p.qtyError ? tm.errors.qty[p.qtyError] : null}
+        hint={qtyAmbiguityHint(p.qty, p.unit?.unit)}
       />
       {/* Birlik chiplari — miqdor maydoni ostida darhol (klaviatura ochiq bo'lsa ham ko'rinadi) */}
       <UnitChips units={material.units} selectedId={p.unitId} onPick={p.onUnit} errorId={p.unitError ? 'movement-unit-error' : undefined} />
@@ -98,7 +132,7 @@ export function MovementDetails(p: MovementDetailsProps) {
           )}
         </BaseQtyBox>
       )}
-      {p.warning && <Notice tone="warn">{tm.warnings[p.warning]}</Notice>}
+      {p.warning && p.negativeAfter == null && <Notice tone="warn">{tm.warnings[p.warning]}</Notice>}
 
       {p.type === 'kirim' && (
         <LinkedPurchases
@@ -125,6 +159,15 @@ export function MovementDetails(p: MovementDetailsProps) {
 
       {p.extra}
       {p.objectError && <Notice>{tm.errors.object}</Notice>}
+      {p.negativeAfter != null && (
+        <NegativeStockWarning
+          after={p.negativeAfter}
+          unit={material.base_unit}
+          busy={p.saving}
+          onConfirm={() => p.onConfirmNegative?.()}
+          onCancel={() => p.onCancelNegative?.()}
+        />
+      )}
       {p.duplicateMinutes != null && (
         <DuplicateWarning
           minutes={p.duplicateMinutes}
@@ -139,7 +182,7 @@ export function MovementDetails(p: MovementDetailsProps) {
       )}
 
       {p.showSaveButton && (
-        <Button size="lg" onClick={p.onSave} disabled={p.photo.preparing || Boolean(p.photoRequiredReason && !p.photo.photo)} loading={p.saving}>
+        <Button size="lg" onClick={p.onSave} disabled={p.photo.preparing} loading={p.saving}>
           {p.saving ? t.common.saving : tm.save}
         </Button>
       )}

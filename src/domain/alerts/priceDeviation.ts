@@ -41,13 +41,15 @@ const MIN_POINTS = 2
 
 /**
  * round(sum(total) / sum(qty), 4) — PostgreSQL bilan bit-bit.
+ * total_amount = 0 (bepul) nuqtalar hisobga olinmaydi (bazadagi `q.total_amount > 0`).
  * < 2 nuqta → null; sum(qty) = 0 → null (bazada qty_base > 0, bo'lmaydi).
  */
 export function weightedAverage(points: PricePoint[]): Dec | null {
-  if (points.length < MIN_POINTS) return null
+  const paid = points.filter((p) => cmp(p.totalAmount, '0') > 0)
+  if (paid.length < MIN_POINTS) return null
   let total: Dec = '0'
   let qty: Dec = '0'
-  for (const p of points) {
+  for (const p of paid) {
     total = add(total, p.totalAmount)
     qty = add(qty, p.qtyBase)
   }

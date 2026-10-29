@@ -1,15 +1,18 @@
 // Prorab / omborchi bosh ekrani: ikki katta "Kirim" / "Chiqim" plitkasi va bugungi yozuvlar.
 import type { ReactNode } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { ArrowDownLeft, ArrowUpRight, ChevronRight } from 'lucide-react'
 import { cx, EntryRow, type EntryKind, RetryNotice, SkeletonRows } from '@/components/ui'
 import { listMyMovements } from '@/data/movementsRepo'
-import type { Movement, Profile } from '@/data/types'
+import { listMyOpenPurchases } from '@/data/openPurchasesRepo'
+import type { Movement, MyOpenPurchase, Profile } from '@/data/types'
 import type { EntryType } from '@/domain/movements'
 import { unitLabel } from '@/domain/units'
 import { t } from '@/i18n'
 import { formatTime } from '@/lib/format'
 import { useLoad, type Loaded } from '@/lib/useLoad'
+import { PendingReceipts } from '../movement/PendingReceipts'
+import { makeMovementPrefillState } from '../movement/prefill'
 import { saveEntryType } from '../movement/prefs'
 import { haptic } from '../telegram'
 import { SectionTitle } from '../ui'
@@ -21,11 +24,33 @@ const TODAY_LIMIT = 20
 
 export function WorkerHome({ profile, sections }: { profile: Profile; sections?: ReactNode }) {
   const recent = useLoad(() => listMyMovements(profile.id, TODAY_LIMIT), profile.id)
+  // "Qabul kutilmoqda" — xato bo'lsa ko'rsatilmaydi (bosh ekran baribir ishlaydi)
+  const open = useLoad(() => Promise.resolve().then(() => listMyOpenPurchases()), profile.id)
+  const navigate = useNavigate()
+  const pending = open.data ?? []
   return (
     <WorkerHomeView
       name={profile.full_name}
       roleLabel={t.roles[profile.role]}
       today={{ ...recent, data: recent.data ? todayOnly(recent.data) : null }}
+      pending={
+        <PendingReceipts
+          rows={pending}
+          showObject={new Set(pending.map((r) => r.object_id)).size > 1}
+          onPick={(r: MyOpenPurchase) => {
+            saveEntryType('kirim')
+            navigate('/tg/movement', {
+              state: makeMovementPrefillState({
+                type: 'kirim',
+                objectId: r.object_id,
+                materialId: r.material_id,
+                qtyBase: r.remaining_qty_base,
+                purchaseId: r.purchase_id,
+              }),
+            })
+          }}
+        />
+      }
       sections={sections}
       onStart={(type) => {
         haptic.tap()
@@ -98,11 +123,14 @@ export function WorkerHomeView({
   today,
   onStart,
   sections,
+  pending,
 }: {
   name: string | null
   roleLabel?: string
   today: Loaded<Movement[]>
   onStart: (type: EntryType) => void
+  /** "Qabul kutilmoqda (N)" — plitkalar ostida. */
+  pending?: ReactNode
   /** "Bo'limlar" — plitkalar ostida (Qoldiq, Tasdiqlash, Sanash). */
   sections?: ReactNode
 }) {
@@ -113,6 +141,7 @@ export function WorkerHomeView({
         <ActionTile type="kirim" onStart={onStart} count={countOf(today.data, 'kirim')} />
         <ActionTile type="chiqim" onStart={onStart} count={countOf(today.data, 'chiqim')} />
       </section>
+      {pending}
       {sections}
       <section aria-label={th.today} className="flex flex-col gap-2">
         <SectionTitle>{th.today}</SectionTitle>

@@ -229,7 +229,7 @@ describe('storage: photos bucket', () => {
       }).toEqual({
         a_prorab: [],
         a_direktor: ['A'],
-        a_tekshiruvchi: ['A'],
+        a_tekshiruvchi: [], // audit3 D3: ko'r sanovchi — faqat o'zi yuklagan rasm
         a_haydovchi: [],
         b_admin: ['B'],
         a_super_admin: [aPhoto < bPhoto ? 'A' : 'B', aPhoto < bPhoto ? 'B' : 'A'],
